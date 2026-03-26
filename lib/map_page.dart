@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'game_page.dart';
 
 // ─────────────────────────────────────────────
 //  DIFFICULTY & BOTTLE ICONS
@@ -61,7 +62,7 @@ class LevelNodeData {
 }
 
 // ─────────────────────────────────────────────
-//  DIFFICULTY PER LEVEL (customize freely)
+//  DIFFICULTY PER LEVEL
 // ─────────────────────────────────────────────
 
 const _levelDifficulties = <int, LevelDifficulty>{
@@ -92,26 +93,16 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   late final AnimationController _bgController;
   late final AnimationController _entryController;
 
-  final completedLevels = <int>{1};
-  // test: final completedLevels = <int>{1,2,3,4,5,6,7,8,9};
+  // Mutable — changes when levels are completed
+  Set<int> completedLevels = <int>{1};
 
-  late final Set<int> _unlocked;
-  late final List<LevelNodeData> _levels;
+  late Set<int> _unlocked;
+  late List<LevelNodeData> _levels;
 
   @override
   void initState() {
     super.initState();
-    _unlocked = _computeUnlockedLevels(completedLevels);
-    _levels = List.generate(10, (i) {
-      final id = i + 1;
-      return LevelNodeData(
-        id: id,
-        isCompleted: completedLevels.contains(id),
-        isUnlocked: _unlocked.contains(id),
-        starCount: completedLevels.contains(id) ? (1 + id % 3) : 0,
-        difficulty: _levelDifficulties[id] ?? LevelDifficulty.easy,
-      );
-    });
+    _rebuildLevels();
 
     _bgController = AnimationController(
       vsync: this,
@@ -129,6 +120,20 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     _bgController.dispose();
     _entryController.dispose();
     super.dispose();
+  }
+
+  void _rebuildLevels() {
+    _unlocked = _computeUnlockedLevels(completedLevels);
+    _levels = List.generate(10, (i) {
+      final id = i + 1;
+      return LevelNodeData(
+        id: id,
+        isCompleted: completedLevels.contains(id),
+        isUnlocked: _unlocked.contains(id),
+        starCount: completedLevels.contains(id) ? (1 + id % 3) : 0,
+        difficulty: _levelDifficulties[id] ?? LevelDifficulty.easy,
+      );
+    });
   }
 
   static Set<int> _computeUnlockedLevels(Set<int> completed) {
@@ -158,21 +163,40 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     };
   }
 
+  /// Navigate to GamePage and handle completion result
+  Future<void> _navigateToLevel(int levelId) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GamePage(level: levelId, mapNumber: 1),
+      ),
+    );
+
+    if (result == true && mounted) {
+      setState(() {
+        completedLevels = {...completedLevels, levelId};
+        _rebuildLevels();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF08050D),
       body: Stack(
         children: [
-          // Animated background
+          // Animated background — fills entire screen
           _PremiumMapBackground(controller: _bgController),
 
+          // SafeArea content
           SafeArea(
             child: Column(
               children: [
                 _buildTopBar(),
                 _buildProgressCard(),
                 const SizedBox(height: 6),
+                // Map fills all remaining space
                 Expanded(child: _buildMapArea()),
                 const SizedBox(height: 10),
               ],
@@ -232,95 +256,92 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   }
 
   Widget _buildMapArea() {
-    return Center(
-      child: AspectRatio(
-        aspectRatio: 1,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(34),
-              gradient: LinearGradient(
-                colors: [
-                  Colors.white.withOpacity(0.07),
-                  Colors.white.withOpacity(0.025),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Container(
+        // No AspectRatio — fills all available height
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(34),
+          gradient: LinearGradient(
+            colors: [
+              Colors.white.withOpacity(0.07),
+              Colors.white.withOpacity(0.025),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: Colors.white.withOpacity(0.10)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.32),
+              blurRadius: 32,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(34),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final h = constraints.maxHeight;
+              final positions = _levelPositions(w, h);
+
+              return Stack(
+                children: [
+                  // Stars layer
+                  Positioned.fill(
+                    child: AnimatedBuilder(
+                      animation: _bgController,
+                      builder: (_, __) => CustomPaint(
+                        painter: _MapStarsPainter(twinkle: _bgController.value),
+                      ),
+                    ),
+                  ),
+
+                  // Fog / atmosphere
+                  Positioned.fill(
+                    child: AnimatedBuilder(
+                      animation: _bgController,
+                      builder: (_, __) => CustomPaint(
+                        painter: _FogPainter(t: _bgController.value),
+                      ),
+                    ),
+                  ),
+
+                  // Path connections
+                  Positioned.fill(
+                    child: _AnimatedPathLayer(
+                      positions: positions,
+                      completedLevels: completedLevels,
+                      unlockedLevels: _unlocked,
+                    ),
+                  ),
+
+                  // Glow orbs behind nodes
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: _MapGlowDecor(positions: positions),
+                    ),
+                  ),
+
+                  // Level nodes with staggered entry
+                  for (final level in _levels)
+                    Positioned(
+                      left: positions[level.id]!.dx - 42,
+                      top: positions[level.id]!.dy - 42,
+                      child: _StaggeredNodeEntry(
+                        index: level.id - 1,
+                        controller: _entryController,
+                        child: PremiumLevelNodeWidget(
+                          data: level,
+                          onTap: () => _navigateToLevel(level.id),
+                        ),
+                      ),
+                    ),
                 ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.32),
-                  blurRadius: 32,
-                  offset: const Offset(0, 18),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(34),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final w = constraints.maxWidth;
-                  final h = constraints.maxHeight;
-                  final positions = _levelPositions(w, h);
-
-                  return Stack(
-                    children: [
-                      // Stars layer
-                      Positioned.fill(
-                        child: AnimatedBuilder(
-                          animation: _bgController,
-                          builder: (_, __) => CustomPaint(
-                            painter: _MapStarsPainter(
-                              twinkle: _bgController.value,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // Fog / atmosphere
-                      Positioned.fill(
-                        child: AnimatedBuilder(
-                          animation: _bgController,
-                          builder: (_, __) => CustomPaint(
-                            painter: _FogPainter(t: _bgController.value),
-                          ),
-                        ),
-                      ),
-
-                      // Path connections
-                      Positioned.fill(
-                        child: _AnimatedPathLayer(
-                          positions: positions,
-                          completedLevels: completedLevels,
-                          unlockedLevels: _unlocked,
-                        ),
-                      ),
-
-                      // Glow orbs behind nodes
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: _MapGlowDecor(positions: positions),
-                        ),
-                      ),
-
-                      // Level nodes with staggered entry
-                      for (final level in _levels)
-                        Positioned(
-                          left: positions[level.id]!.dx - 42,
-                          top: positions[level.id]!.dy - 42,
-                          child: _StaggeredNodeEntry(
-                            index: level.id - 1,
-                            controller: _entryController,
-                            child: PremiumLevelNodeWidget(data: level),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-            ),
+              );
+            },
           ),
         ),
       ),
@@ -365,7 +386,7 @@ class _StaggeredNodeEntry extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-//  ANIMATED PATH LAYER (flowing dash effect)
+//  ANIMATED PATH LAYER
 // ─────────────────────────────────────────────
 
 class _AnimatedPathLayer extends StatefulWidget {
@@ -419,13 +440,14 @@ class _AnimatedPathLayerState extends State<_AnimatedPathLayer>
 }
 
 // ─────────────────────────────────────────────
-//  PREMIUM LEVEL NODE WIDGET
+//  PREMIUM LEVEL NODE WIDGET  (onTap callback added)
 // ─────────────────────────────────────────────
 
 class PremiumLevelNodeWidget extends StatefulWidget {
   final LevelNodeData data;
+  final VoidCallback? onTap;
 
-  const PremiumLevelNodeWidget({super.key, required this.data});
+  const PremiumLevelNodeWidget({super.key, required this.data, this.onTap});
 
   @override
   State<PremiumLevelNodeWidget> createState() => _PremiumLevelNodeWidgetState();
@@ -476,9 +498,10 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
       return;
     }
     HapticFeedback.mediumImpact();
-    _tapController.forward().then((_) => _tapController.reverse()).then((_) {
-      // Navigate to level
-    });
+    _tapController
+        .forward()
+        .then((_) => _tapController.reverse())
+        .then((_) => widget.onTap?.call());
   }
 
   @override
@@ -487,7 +510,6 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
     final isCompleted = widget.data.isCompleted;
     final isCurrent = widget.data.isUnlocked && !widget.data.isCompleted;
 
-    // Colors per state
     final Color topColor;
     final Color bottomColor;
     final Color rimColor;
@@ -528,7 +550,7 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Outer glow ring (animated for current)
+              // Outer glow ring
               if (!isLocked)
                 AnimatedBuilder(
                   animation: _pulseController,
@@ -613,7 +635,7 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
                   child: _StarRow(count: widget.data.starCount),
                 ),
 
-              // Difficulty bottles (bottom)
+              // Difficulty bottles
               Positioned(
                 bottom: 0,
                 child: _BottleRow(
@@ -641,7 +663,6 @@ class _OrbitRingPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 2;
-
     const dotCount = 8;
     for (int i = 0; i < dotCount; i++) {
       final angle = (i / dotCount) * 2 * pi;
@@ -686,7 +707,7 @@ class _StarRow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-//  BOTTLE ROW (difficulty indicator)
+//  BOTTLE ROW
 // ─────────────────────────────────────────────
 
 class _BottleRow extends StatelessWidget {
@@ -700,7 +721,6 @@ class _BottleRow extends StatelessWidget {
     final count = difficulty.bottleCount;
     final color =
         isLocked ? Colors.white.withOpacity(0.22) : difficulty.bottleColor;
-
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(count, (i) => _BottleIcon(color: color)),
@@ -733,30 +753,22 @@ class _BottlePainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
-
     final w = size.width;
     final h = size.height;
-
-    // Bottle neck
-    final neck = RRect.fromRectAndRadius(
-      Rect.fromLTWH(w * 0.3, 0, w * 0.4, h * 0.28),
-      const Radius.circular(1),
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.3, 0, w * 0.4, h * 0.28),
+          const Radius.circular(1)),
+      paint,
     );
-    canvas.drawRRect(neck, paint);
-
-    // Bottle body
-    final body = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, h * 0.3, w, h * 0.7),
-      Radius.circular(w * 0.32),
-    );
-    canvas.drawRRect(body, paint);
-
-    // Shine
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(w * 0.15, h * 0.38, w * 0.2, h * 0.28),
-        Radius.circular(w * 0.1),
-      ),
+          Rect.fromLTWH(0, h * 0.3, w, h * 0.7), Radius.circular(w * 0.32)),
+      paint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          Rect.fromLTWH(w * 0.15, h * 0.38, w * 0.2, h * 0.28),
+          Radius.circular(w * 0.1)),
       Paint()..color = Colors.white.withOpacity(0.30),
     );
   }
@@ -766,7 +778,7 @@ class _BottlePainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────
-//  HEX CLIPPER (for fog overlay)
+//  HEX CLIPPER
 // ─────────────────────────────────────────────
 
 class _HexClipper extends CustomClipper<Path> {
@@ -831,23 +843,18 @@ class _HexBadgePainter extends CustomPainter {
     final radius = size.width / 2;
     final hex = _hexPath(center, radius * 0.92);
 
-    // Drop shadow / 3D depth
-    final shadowPath = _hexPath(center.translate(0, 5), radius * 0.92);
     canvas.drawPath(
-      shadowPath,
+      _hexPath(center.translate(0, 5), radius * 0.92),
       Paint()
         ..color = Colors.black.withOpacity(0.45)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
     );
 
-    // 3D extrusion — bottom face
-    final extrudeHex = _hexPath(center.translate(0, 6), radius * 0.92);
     canvas.drawPath(
-      extrudeHex,
+      _hexPath(center.translate(0, 6), radius * 0.92),
       Paint()..color = bottomColor.withOpacity(0.55),
     );
 
-    // Main fill
     canvas.drawPath(
       hex,
       Paint()
@@ -858,7 +865,6 @@ class _HexBadgePainter extends CustomPainter {
         ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
     );
 
-    // Inner bevel (dark edge)
     canvas.drawPath(
       hex,
       Paint()
@@ -867,7 +873,6 @@ class _HexBadgePainter extends CustomPainter {
         ..strokeWidth = 3.5,
     );
 
-    // Outer rim glow
     canvas.drawPath(
       hex,
       Paint()
@@ -876,17 +881,14 @@ class _HexBadgePainter extends CustomPainter {
         ..strokeWidth = 2.8,
     );
 
-    // Inner hex accent ring
-    final innerHex = _hexPath(center, radius * 0.72);
     canvas.drawPath(
-      innerHex,
+      _hexPath(center, radius * 0.72),
       Paint()
         ..color = Colors.white.withOpacity(0.07)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0,
     );
 
-    // Top-left shine
     final shinePath = Path()
       ..moveTo(size.width * 0.22, size.height * 0.24)
       ..lineTo(size.width * 0.78, size.height * 0.24)
@@ -917,14 +919,14 @@ class _HexBadgePainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────
-//  BRANCH MAP PAINTER (animated flow)
+//  BRANCH MAP PAINTER
 // ─────────────────────────────────────────────
 
 class PremiumBranchMapPainter extends CustomPainter {
   final Map<int, Offset> positions;
   final Set<int> completedLevels;
   final Set<int> unlockedLevels;
-  final double flowOffset; // 0..1
+  final double flowOffset;
 
   PremiumBranchMapPainter({
     required this.positions,
@@ -971,7 +973,6 @@ class PremiumBranchMapPainter extends CustomPainter {
     final isActive = completedLevels.contains(a) || unlockedLevels.contains(b);
     final path = _buildPath(p1, p2);
 
-    // Shadow
     canvas.drawPath(
       path,
       Paint()
@@ -982,7 +983,6 @@ class PremiumBranchMapPainter extends CustomPainter {
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
 
-    // Base stroke (inactive = faint dashes)
     if (!isActive) {
       _drawDashedPath(
         canvas,
@@ -999,7 +999,6 @@ class PremiumBranchMapPainter extends CustomPainter {
       return;
     }
 
-    // Active glow
     canvas.drawPath(
       path,
       Paint()
@@ -1010,7 +1009,6 @@ class PremiumBranchMapPainter extends CustomPainter {
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
     );
 
-    // Active gradient stroke
     canvas.drawPath(
       path,
       Paint()
@@ -1028,7 +1026,6 @@ class PremiumBranchMapPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round,
     );
 
-    // Animated flowing dashes on top
     _drawDashedPath(
       canvas,
       path,
@@ -1042,7 +1039,6 @@ class PremiumBranchMapPainter extends CustomPainter {
       offset: flowOffset,
     );
 
-    // Arrow dots at midpoints
     _drawDirectionDot(canvas, path, 0.5);
   }
 
@@ -1062,10 +1058,7 @@ class PremiumBranchMapPainter extends CustomPainter {
       while (start < total) {
         final end = (start + dashLen).clamp(0.0, total);
         if (start >= 0 && end > start) {
-          canvas.drawPath(
-            metric.extractPath(start, end),
-            paint,
-          );
+          canvas.drawPath(metric.extractPath(start, end), paint);
         }
         start += period;
       }
@@ -1077,10 +1070,7 @@ class PremiumBranchMapPainter extends CustomPainter {
     final tangent = metric.getTangentForOffset(metric.length * t);
     if (tangent == null) return;
     canvas.drawCircle(
-      tangent.position,
-      3.5,
-      Paint()..color = Colors.white.withOpacity(0.45),
-    );
+        tangent.position, 3.5, Paint()..color = Colors.white.withOpacity(0.45));
     canvas.drawCircle(
       tangent.position,
       6,
@@ -1099,7 +1089,7 @@ class PremiumBranchMapPainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────
-//  MAP STARS PAINTER (animated twinkle)
+//  MAP STARS PAINTER
 // ─────────────────────────────────────────────
 
 class _MapStarsPainter extends CustomPainter {
@@ -1128,7 +1118,6 @@ class _MapStarsPainter extends CustomPainter {
       final t = sin((twinkle + phase) * pi);
       final opacity = 0.10 + t.abs() * 0.25;
       final r = s[2] as double;
-
       canvas.drawCircle(
         Offset(size.width * s[0], size.height * s[1]),
         r,
@@ -1163,7 +1152,6 @@ class _FogPainter extends CustomPainter {
       [0.5, 0.85, 0.45, 0.10, 0.3],
       [0.8, 0.60, 0.50, 0.08, 0.6],
     ];
-
     for (final d in drifts) {
       final phase = d[4];
       final drift = sin((t + phase) * pi) * 12;
@@ -1172,11 +1160,8 @@ class _FogPainter extends CustomPainter {
       final rx = size.width * d[2];
       final ry = size.height * d[3];
       final opacity = 0.04 + sin((t + phase) * pi).abs() * 0.05;
-
-      final rect = Rect.fromCenter(
-          center: Offset(cx, cy), width: rx * 2, height: ry * 2);
       canvas.drawOval(
-        rect,
+        Rect.fromCenter(center: Offset(cx, cy), width: rx * 2, height: ry * 2),
         Paint()
           ..color = const Color(0xFF6A3AFF).withOpacity(opacity)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22),
@@ -1325,7 +1310,7 @@ class _GlassButton extends StatelessWidget {
           ),
           border: Border.all(color: Colors.white.withOpacity(0.11)),
         ),
-        child: child,
+        child: Center(child: child),
       ),
     );
   }
