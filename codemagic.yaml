@@ -13,16 +13,26 @@ workflows:
         script: |
           flutter pub get
 
+      - name: Install CocoaPods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+
       - name: Set up code signing
         script: |
           xcode-project use-profiles
 
       - name: Build IPA
         script: |
-          flutter build ipa --release
+          xcode-project build-ipa \
+            --workspace ios/Runner.xcworkspace \
+            --scheme Runner \
+            --archive-directory build/ios/archive \
+            --ipa-directory build/ios/ipa
 
     artifacts:
       - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
 
     publishing:
       app_store_connect:
