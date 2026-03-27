@@ -26,6 +26,7 @@ workflows:
       - name: Create App Store Connect key
         script: |
           echo "$APP_STORE_CONNECT_PUBLISHER_PRIVATE_KEY_BASE64" | base64 --decode > /tmp/appstore_key.p8 || echo "$APP_STORE_CONNECT_PUBLISHER_PRIVATE_KEY_BASE64" | base64 -d > /tmp/appstore_key.p8
+          head -n 2 /tmp/appstore_key.p8
 
       - name: Build IPA
         script: |
@@ -35,14 +36,17 @@ workflows:
             --archive-directory build/ios/archive \
             --ipa-directory build/ios/ipa
 
+      - name: Publish to App Store Connect
+        script: |
+          app-store-connect publish \
+            --path /Users/builder/clone/build/ios/ipa/likora.ipa \
+            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --private-key /tmp/appstore_key.p8 \
+            --testflight \
+            --altool-additional-arguments "--use-old-altool"
+
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
       - flutter_drive.log
-
-    publishing:
-      app_store_connect:
-        api_key: /tmp/appstore_key.p8
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_testflight: true
