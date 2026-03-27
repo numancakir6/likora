@@ -26,4 +26,12 @@ workflows:
 
     publishing:
       app_store_connect:
+        api_key: -----BEGIN PRIVATE KEY-----
+MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgk1SFwTVIz2su6/BJ
+QqcdgVVok6Ktgg1KNS33tjstNkCgCgYIKoZIzj0DAQehRANCAATsKHlWhtk70ZTP
+4hbJP1DJ6ZfeeWyx0uooyD+btfZYInVjHEIkFDr5iOH4eHs0g2uejwm2NTUSxVU4
+h0Q/KTup
+-----END PRIVATE KEY-----
+        key_id: SUK8ATPS9V
+        issuer_id: e175452e-e747-4bd1-bc32-53db5c3a2000
         submit_to_testflight: true
