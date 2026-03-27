@@ -21,6 +21,10 @@ workflows:
         script: |
           xcode-project use-profiles
 
+      - name: Create App Store Connect key
+        script: |
+          echo "$APP_STORE_CONNECT_PUBLISHER_PRIVATE_KEY_BASE64" | base64 --decode > /tmp/appstore_key.p8 || echo "$APP_STORE_CONNECT_PUBLISHER_PRIVATE_KEY_BASE64" | base64 -d > /tmp/appstore_key.p8
+
       - name: Build IPA
         script: |
           xcode-project build-ipa \
@@ -36,7 +40,7 @@ workflows:
 
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        api_key: /tmp/appstore_key.p8
         key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
