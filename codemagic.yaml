@@ -26,7 +26,10 @@ workflows:
       - name: Create App Store Connect key
         script: |
           echo "$APP_STORE_CONNECT_PUBLISHER_PRIVATE_KEY_BASE64" | base64 --decode > /tmp/appstore_key.p8 || echo "$APP_STORE_CONNECT_PUBLISHER_PRIVATE_KEY_BASE64" | base64 -d > /tmp/appstore_key.p8
+          echo "----- debug first lines -----"
           head -n 2 /tmp/appstore_key.p8
+          echo "----- debug last line -----"
+          tail -n 1 /tmp/appstore_key.p8
 
       - name: Build IPA
         script: |
@@ -42,7 +45,7 @@ workflows:
             --path /Users/builder/clone/build/ios/ipa/likora.ipa \
             --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
             --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --private-key /tmp/appstore_key.p8 \
+            --private-key @file:/tmp/appstore_key.p8 \
             --testflight \
             --altool-additional-arguments "--use-old-altool"
 
