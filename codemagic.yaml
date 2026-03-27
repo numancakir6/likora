@@ -4,6 +4,8 @@ workflows:
     environment:
       flutter: stable
       xcode: 26.0
+      groups:
+        - likora
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.lexion.likora
