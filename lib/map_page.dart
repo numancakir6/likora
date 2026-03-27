@@ -11,7 +11,6 @@ import 'map_theme.dart';
 enum LevelDifficulty { easy, medium, hard, expert, legendary }
 
 extension LevelDifficultyExt on LevelDifficulty {
-  // Kaç nokta gösterilecek (1–5)
   int get dotCount {
     switch (this) {
       case LevelDifficulty.easy:
@@ -28,6 +27,46 @@ extension LevelDifficultyExt on LevelDifficulty {
   }
 }
 
+double _contrastRatio(Color a, Color b) {
+  final l1 = a.computeLuminance();
+  final l2 = b.computeLuminance();
+  final lighter = max(l1, l2);
+  final darker = min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+Color _adaptiveDifficultyRingColor({
+  required Color themeColor,
+  required Color topColor,
+  required Color bottomColor,
+  bool brighten = false,
+}) {
+  final bgColor = Color.lerp(topColor, bottomColor, 0.5) ?? topColor;
+  final bgLum = bgColor.computeLuminance();
+  final hsl = HSLColor.fromColor(themeColor);
+
+  Color candidate = HSLColor.fromAHSL(
+    1,
+    hsl.hue,
+    (hsl.saturation + 0.12).clamp(0.0, 1.0),
+    bgLum > 0.42 ? 0.18 : 0.84,
+  ).toColor();
+
+  if (_contrastRatio(candidate, bgColor) < 2.4) {
+    candidate = HSLColor.fromAHSL(
+      1,
+      (hsl.hue + 180) % 360,
+      (hsl.saturation + 0.08).clamp(0.0, 1.0),
+      bgLum > 0.42 ? 0.22 : 0.78,
+    ).toColor();
+  }
+
+  if (brighten) {
+    candidate = Color.lerp(candidate, Colors.white, 0.10) ?? candidate;
+  }
+
+  return candidate;
+}
 // ─────────────────────────────────────────────
 //  DATA MODEL
 // ─────────────────────────────────────────────
@@ -48,13 +87,102 @@ class LevelNodeData {
   });
 }
 
-LevelDifficulty _difficultyFor(int levelId, int totalLevels) {
-  final ratio = levelId / totalLevels;
-  if (ratio <= 0.20) return LevelDifficulty.easy;
-  if (ratio <= 0.45) return LevelDifficulty.medium;
-  if (ratio <= 0.68) return LevelDifficulty.hard;
-  if (ratio <= 0.88) return LevelDifficulty.expert;
-  return LevelDifficulty.legendary;
+LevelDifficulty _difficultyFor(int mapNumber, int levelId, int totalLevels) {
+  final progress = totalLevels <= 1 ? 1.0 : (levelId - 1) / (totalLevels - 1);
+
+  final int minScore;
+  final int maxScore;
+
+  if (mapNumber <= 2) {
+    minScore = 1;
+    maxScore = 3;
+  } else if (mapNumber <= 4) {
+    minScore = 1;
+    maxScore = 3;
+  } else if (mapNumber <= 6) {
+    minScore = 1;
+    maxScore = 4;
+  } else if (mapNumber <= 9) {
+    minScore = 2;
+    maxScore = 4;
+  } else if (mapNumber <= 12) {
+    minScore = 2;
+    maxScore = 5;
+  } else {
+    minScore = 3;
+    maxScore = 5;
+  }
+
+  int score;
+  if (mapNumber <= 2) {
+    if (progress < 0.34) {
+      score = 1;
+    } else if (progress < 0.75) {
+      score = 2;
+    } else {
+      score = 3;
+    }
+  } else if (mapNumber <= 4) {
+    if (progress < 0.22) {
+      score = 1;
+    } else if (progress < 0.60) {
+      score = 2;
+    } else {
+      score = 3;
+    }
+  } else if (mapNumber <= 6) {
+    if (progress < 0.12) {
+      score = 1;
+    } else if (progress < 0.36) {
+      score = 2;
+    } else if (progress < 0.78) {
+      score = 3;
+    } else {
+      score = 4;
+    }
+  } else if (mapNumber <= 9) {
+    if (progress < 0.28) {
+      score = 2;
+    } else if (progress < 0.72) {
+      score = 3;
+    } else {
+      score = 4;
+    }
+  } else if (mapNumber <= 12) {
+    if (progress < 0.18) {
+      score = 2;
+    } else if (progress < 0.56) {
+      score = 3;
+    } else if (progress < 0.88) {
+      score = 4;
+    } else {
+      score = 5;
+    }
+  } else {
+    if (progress < 0.20) {
+      score = 3;
+    } else if (progress < 0.64) {
+      score = 4;
+    } else {
+      score = 5;
+    }
+  }
+
+  score = score.clamp(minScore, maxScore);
+
+  switch (score) {
+    case 1:
+      return LevelDifficulty.easy;
+    case 2:
+      return LevelDifficulty.medium;
+    case 3:
+      return LevelDifficulty.hard;
+    case 4:
+      return LevelDifficulty.expert;
+    case 5:
+    default:
+      return LevelDifficulty.legendary;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -64,7 +192,7 @@ LevelDifficulty _difficultyFor(int levelId, int totalLevels) {
 class MapPage extends StatefulWidget {
   final int mapNumber;
 
-  const MapPage({super.key, this.mapNumber = 1});
+  const MapPage({super.key, this.mapNumber = 0});
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -72,22 +200,34 @@ class MapPage extends StatefulWidget {
 
 class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const int _maxMapCount = 15;
+  static const double _swipeVelocityThreshold = 250;
+  static const double _swipeDistanceThreshold = 24;
+
+  static final Map<int, Set<int>> _mapCompletedLevels = {
+    1: <int>{},
+  };
 
   late final AnimationController _bgController;
   late final AnimationController _entryController;
 
+  late final int _mapNumber;
   late final MapTheme _theme;
   late final MapLayoutData _layout;
 
-  Set<int> completedLevels = <int>{1};
+  late Set<int> completedLevels;
   late Set<int> _unlocked;
   late List<LevelNodeData> _levels;
 
   @override
   void initState() {
     super.initState();
-    _theme = getMapTheme(widget.mapNumber);
-    _layout = getMapLayout(widget.mapNumber);
+    _mapNumber =
+        widget.mapNumber == 0 ? _latestPlayableMapNumber() : widget.mapNumber;
+    _theme = getMapTheme(_mapNumber);
+    _layout = getMapLayout(_mapNumber);
+    completedLevels = Set<int>.from(
+      _mapCompletedLevels[_mapNumber] ?? <int>{},
+    );
     _rebuildLevels();
 
     _bgController = AnimationController(
@@ -109,18 +249,22 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   }
 
   void _rebuildLevels() {
+    final isPlayable = _isMapPlayable(_mapNumber);
     _unlocked = _computeUnlocked(
       completed: completedLevels,
       connections: _layout.connections,
     );
+    if (!isPlayable) {
+      _unlocked = <int>{};
+    }
     _levels = List.generate(_layout.totalLevels, (i) {
       final id = i + 1;
       return LevelNodeData(
         id: id,
         isCompleted: completedLevels.contains(id),
-        isUnlocked: _unlocked.contains(id),
+        isUnlocked: isPlayable && _unlocked.contains(id),
         starCount: completedLevels.contains(id) ? (1 + id % 3) : 0,
-        difficulty: _difficultyFor(id, _layout.totalLevels),
+        difficulty: _difficultyFor(_mapNumber, id, _layout.totalLevels),
       );
     });
   }
@@ -143,6 +287,37 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     return unlocked;
   }
 
+  static bool _isMapFullyCompleted(int mapNumber) {
+    final layout = getMapLayout(mapNumber);
+    final completed = _mapCompletedLevels[mapNumber] ?? <int>{};
+    return completed.length >= layout.totalLevels;
+  }
+
+  static bool _isMapPlayableStatic(int mapNumber) {
+    if (mapNumber <= 1) return true;
+    return _isMapFullyCompleted(mapNumber - 1);
+  }
+
+  static int _latestPlayableMapNumber() {
+    var latest = 1;
+    for (var map = 2; map <= _maxMapCount; map++) {
+      if (_isMapPlayableStatic(map)) {
+        latest = map;
+      } else {
+        break;
+      }
+    }
+    return latest;
+  }
+
+  bool _isMapPlayable(int mapNumber) {
+    if (mapNumber <= 1) return true;
+
+    final previousLayout = getMapLayout(mapNumber - 1);
+    final previousCompleted = _mapCompletedLevels[mapNumber - 1] ?? <int>{};
+    return previousCompleted.length >= previousLayout.totalLevels;
+  }
+
   Map<int, Offset> _levelPositions(double w, double h) => {
         for (final node in _layout.nodes)
           node.id: Offset(w * node.x, h * node.y),
@@ -155,28 +330,79 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         builder: (_) => GamePage(level: levelId, mapNumber: widget.mapNumber),
       ),
     );
+
     if (result == true && mounted) {
+      final updatedCompleted = {...completedLevels, levelId};
+
       setState(() {
-        completedLevels = {...completedLevels, levelId};
+        completedLevels = updatedCompleted;
         _rebuildLevels();
       });
+
+      final isMapFullyCompleted =
+          updatedCompleted.length >= _layout.totalLevels;
+
+      if (isMapFullyCompleted && widget.mapNumber < _maxMapCount) {
+        Future.delayed(const Duration(milliseconds: 250), () {
+          if (!mounted) return;
+          _goToNextMap();
+        });
+      }
     }
   }
 
+  void _switchToMap(int targetMapNumber) {
+    if (targetMapNumber == _mapNumber) return;
+    if (targetMapNumber < 1 || targetMapNumber > _maxMapCount) return;
+
+    final movingForward = targetMapNumber > _mapNumber;
+
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 320),
+        pageBuilder: (_, __, ___) => MapPage(mapNumber: targetMapNumber),
+        transitionsBuilder: (_, animation, secondaryAnimation, child) {
+          final begin = Offset(movingForward ? 1.0 : -1.0, 0.0);
+          final end = Offset.zero;
+          final curve = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+
+          return SlideTransition(
+            position: Tween<Offset>(begin: begin, end: end).animate(curve),
+            child: child,
+          );
+        },
+      ),
+    );
+  }
+
   void _goToPreviousMap() {
-    if (widget.mapNumber <= 1) return;
-    Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-            builder: (_) => MapPage(mapNumber: widget.mapNumber - 1)));
+    if (_mapNumber <= 1) return;
+    _switchToMap(_mapNumber - 1);
   }
 
   void _goToNextMap() {
-    if (widget.mapNumber >= _maxMapCount) return;
-    Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-            builder: (_) => MapPage(mapNumber: widget.mapNumber + 1)));
+    if (_mapNumber >= _maxMapCount) return;
+    _switchToMap(_mapNumber + 1);
+  }
+
+  void _handleHorizontalDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity.abs() < _swipeVelocityThreshold) return;
+
+    if (velocity < 0) {
+      _goToNextMap();
+    } else {
+      _goToPreviousMap();
+    }
+  }
+
+  void _handleHorizontalDragUpdate(DragUpdateDetails details) {
+    if (details.delta.dx <= -_swipeDistanceThreshold) return;
+    if (details.delta.dx >= _swipeDistanceThreshold) return;
   }
 
   @override
@@ -186,28 +412,22 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       body: Stack(children: [
         _ThemedFullBackground(controller: _bgController, theme: _theme),
         SafeArea(
-            child: Column(children: [
-          // ── 1. SATIR: Ana sayfa oku + harita adı ──
-          _buildTitleBar(),
-          // ── 2. SATIR: Haritalar arası geçiş (sayaçlı) ──
-          _buildMapSwitcher(),
-          const SizedBox(height: 6),
-          Expanded(child: _buildMapArea()),
-          const SizedBox(height: 10),
-        ])),
+          child: Column(children: [
+            _buildTitleBar(),
+            _buildMapSwitcher(),
+            const SizedBox(height: 6),
+            Expanded(child: _buildMapArea()),
+            const SizedBox(height: 10),
+          ]),
+        ),
       ]),
     );
   }
-
-  // ─────────────────────────────────────────────
-  // 1. Başlık satırı: geri ok + harita adı
-  // ─────────────────────────────────────────────
 
   Widget _buildTitleBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
       child: Row(children: [
-        // Ana sayfaya geri dönüş oku
         _GlassButton(
           accentColor: _theme.primaryColor,
           onTap: () => Navigator.of(context).pop(),
@@ -215,7 +435,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
               color: Colors.white, size: 18),
         ),
         const Spacer(),
-        // Harita adı — tek başına ortada
         Text(
           _theme.name,
           style: TextStyle(
@@ -225,162 +444,164 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             letterSpacing: 1.8,
             shadows: [
               Shadow(
-                  color: _theme.primaryColor.withOpacity(0.6), blurRadius: 12)
+                color: _theme.primaryColor.withOpacity(0.6),
+                blurRadius: 12,
+              )
             ],
           ),
         ),
         const Spacer(),
-        // Sağ taraf dengeleme için boş alan (ok kadar)
         const SizedBox(width: 46),
       ]),
     );
   }
 
-  // ─────────────────────────────────────────────
-  // 2. Haritalar arası geçiş — ortada, sayaç içinde
-  // ─────────────────────────────────────────────
-
   Widget _buildMapSwitcher() {
-    final canBack = widget.mapNumber > 1;
-    final canForward = widget.mapNumber < _maxMapCount;
+    final canBack = _mapNumber > 1;
+    final canForward = _mapNumber < _maxMapCount;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        // Sol ok
-        _GlassButton(
-          accentColor:
-              canBack ? _theme.primaryColor : Colors.white.withOpacity(0.12),
-          onTap: canBack ? _goToPreviousMap : null,
-          child: Icon(Icons.chevron_left_rounded,
-              color: canBack ? Colors.white : Colors.white38, size: 22),
-        ),
-        const SizedBox(width: 12),
-
-        // Sayaç kutusu
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: LinearGradient(
-              colors: [
-                Colors.white.withOpacity(0.10),
-                Colors.white.withOpacity(0.04),
-              ],
+      child: Column(
+        children: [
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            _GlassButton(
+              accentColor: canBack
+                  ? _theme.primaryColor
+                  : Colors.white.withOpacity(0.12),
+              onTap: canBack ? _goToPreviousMap : null,
+              child: Icon(Icons.chevron_left_rounded,
+                  color: canBack ? Colors.white : Colors.white38, size: 22),
             ),
-            border: Border.all(color: _theme.primaryColor.withOpacity(0.28)),
-          ),
-          child: Text(
-            '${widget.mapNumber} / $_maxMapCount',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.0,
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.10),
+                    Colors.white.withOpacity(0.04),
+                  ],
+                ),
+                border:
+                    Border.all(color: _theme.primaryColor.withOpacity(0.28)),
+              ),
+              child: Text(
+                '$_mapNumber / $_maxMapCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.0,
+                ),
+              ),
             ),
-          ),
-        ),
-
-        const SizedBox(width: 12),
-        // Sağ ok
-        _GlassButton(
-          accentColor:
-              canForward ? _theme.primaryColor : Colors.white.withOpacity(0.12),
-          onTap: canForward ? _goToNextMap : null,
-          child: Icon(Icons.chevron_right_rounded,
-              color: canForward ? Colors.white : Colors.white38, size: 22),
-        ),
-      ]),
+            const SizedBox(width: 12),
+            _GlassButton(
+              accentColor: canForward
+                  ? _theme.primaryColor
+                  : Colors.white.withOpacity(0.12),
+              onTap: canForward ? _goToNextMap : null,
+              child: Icon(Icons.chevron_right_rounded,
+                  color: canForward ? Colors.white : Colors.white38, size: 22),
+            ),
+          ]),
+        ],
+      ),
     );
   }
 
-  // ─────────────────────────────────────────────
-  // Harita alanı
-  // ─────────────────────────────────────────────
-
   Widget _buildMapArea() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(34),
-          gradient: LinearGradient(
-            colors: [
-              Colors.white.withOpacity(0.07),
-              Colors.white.withOpacity(0.025),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          border: Border.all(color: _theme.primaryColor.withOpacity(0.18)),
-          boxShadow: [
-            BoxShadow(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: _handleHorizontalDragEnd,
+      onHorizontalDragUpdate: _handleHorizontalDragUpdate,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(34),
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withOpacity(0.07),
+                Colors.white.withOpacity(0.025),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: _theme.primaryColor.withOpacity(0.18)),
+            boxShadow: [
+              BoxShadow(
                 color: _theme.primaryColor.withOpacity(0.12),
                 blurRadius: 32,
-                offset: const Offset(0, 10)),
-            BoxShadow(
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
                 color: Colors.black.withOpacity(0.40),
                 blurRadius: 24,
-                offset: const Offset(0, 18)),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(34),
-          child: LayoutBuilder(builder: (context, constraints) {
-            final w = constraints.maxWidth;
-            final h = constraints.maxHeight;
-            final positions = _levelPositions(w, h);
+                offset: const Offset(0, 18),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(34),
+            child: LayoutBuilder(builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final h = constraints.maxHeight;
+              final positions = _levelPositions(w, h);
 
-            return Stack(children: [
-              Positioned.fill(
-                child: AnimatedBuilder(
-                  animation: _bgController,
-                  builder: (_, __) => CustomPaint(
-                    painter: buildMapBgPainter(_theme, _bgController.value),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: AnimatedBuilder(
-                  animation: _bgController,
-                  builder: (_, __) => CustomPaint(
-                    painter: _MapStarsPainter(
-                        twinkle: _bgController.value,
-                        color: _theme.accentColor),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: _AnimatedPathLayer(
-                  positions: positions,
-                  connections: _layout.connections,
-                  completedLevels: completedLevels,
-                  unlockedLevels: _unlocked,
-                  theme: _theme,
-                ),
-              ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: _MapGlowDecor(positions: positions, theme: _theme),
-                ),
-              ),
-              for (final level in _levels)
-                Positioned(
-                  // Node merkezi etrafında 48x48 widget → 24px offset
-                  left: positions[level.id]!.dx - 42,
-                  top: positions[level.id]!.dy - 42,
-                  child: _StaggeredNodeEntry(
-                    index: level.id - 1,
-                    controller: _entryController,
-                    child: PremiumLevelNodeWidget(
-                      data: level,
-                      theme: _theme,
-                      onTap: () => _navigateToLevel(level.id),
+              return Stack(children: [
+                Positioned.fill(
+                  child: AnimatedBuilder(
+                    animation: _bgController,
+                    builder: (_, __) => CustomPaint(
+                      painter: buildMapBgPainter(_theme, _bgController.value),
                     ),
                   ),
                 ),
-            ]);
-          }),
+                Positioned.fill(
+                  child: AnimatedBuilder(
+                    animation: _bgController,
+                    builder: (_, __) => CustomPaint(
+                      painter: _MapStarsPainter(
+                        twinkle: _bgController.value,
+                        color: _theme.accentColor,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: _AnimatedPathLayer(
+                    positions: positions,
+                    connections: _layout.connections,
+                    completedLevels: completedLevels,
+                    unlockedLevels: _unlocked,
+                    theme: _theme,
+                  ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: _MapGlowDecor(positions: positions, theme: _theme),
+                  ),
+                ),
+                for (final level in _levels)
+                  Positioned(
+                    left: positions[level.id]!.dx - 42,
+                    top: positions[level.id]!.dy - 42,
+                    child: _StaggeredNodeEntry(
+                      index: level.id - 1,
+                      controller: _entryController,
+                      child: PremiumLevelNodeWidget(
+                        data: level,
+                        theme: _theme,
+                        onTap: () => _navigateToLevel(level.id),
+                      ),
+                    ),
+                  ),
+              ]);
+            }),
+          ),
         ),
       ),
     );
@@ -404,8 +625,9 @@ class _StaggeredNodeEntry extends StatelessWidget {
     final start = (index * 0.05).clamp(0.0, 0.82);
     final end = (start + 0.28).clamp(0.0, 1.0);
     final curved = CurvedAnimation(
-        parent: controller,
-        curve: Interval(start, end, curve: Curves.elasticOut));
+      parent: controller,
+      curve: Interval(start, end, curve: Curves.elasticOut),
+    );
     return AnimatedBuilder(
       animation: curved,
       builder: (_, child) => Transform.scale(
@@ -503,11 +725,15 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
   void initState() {
     super.initState();
     _pulseController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 2200));
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
     _rotateController =
         AnimationController(vsync: this, duration: const Duration(seconds: 6));
     _tapController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 160));
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+    );
 
     if (widget.data.isUnlocked && !widget.data.isCompleted) {
       _pulseController.repeat(reverse: true);
@@ -540,7 +766,7 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
   Widget build(BuildContext context) {
     final isLocked = !widget.data.isUnlocked;
     final isCompleted = widget.data.isCompleted;
-    final isCurrent = widget.data.isUnlocked && !widget.data.isCompleted;
+    final isPlayable = widget.data.isUnlocked && !widget.data.isCompleted;
 
     final Color topColor;
     final Color bottomColor;
@@ -552,7 +778,7 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
       bottomColor = widget.theme.nodeCompletedBottom;
       rimColor = widget.theme.nodeCompletedTop.withOpacity(0.50);
       glowColor = widget.theme.nodeCompletedTop;
-    } else if (isCurrent) {
+    } else if (isPlayable) {
       topColor = widget.theme.nodeActiveTop;
       bottomColor = widget.theme.nodeActiveBottom;
       rimColor = widget.theme.nodeActiveTop.withOpacity(0.40);
@@ -564,182 +790,94 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
       glowColor = const Color(0xFF433A52);
     }
 
-    // ── Node toplam boyutu: hex(84) + yıldız(14) + nokta satırı(14) = 112
-    // Tüm elemanlar sabit yükseklik bloğu içinde, üst-orta hizalı
     return GestureDetector(
       onTap: _handleTap,
       child: AnimatedBuilder(
         animation: Listenable.merge([_pulseController, _tapController]),
         builder: (_, child) {
-          final pulse = isCurrent ? (1.0 + _pulseController.value * 0.06) : 1.0;
+          final pulse =
+              isPlayable ? (1.0 + _pulseController.value * 0.06) : 1.0;
           final tapScale = 1.0 - _tapController.value * 0.08;
           return Transform.scale(scale: pulse * tapScale, child: child);
         },
         child: SizedBox(
           width: 84,
-          height: 112, // hex(84) + star(14) + dots(14)
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ── Altıgen + içerik ──
-              SizedBox(
-                width: 84,
-                height: 84,
-                child: Stack(alignment: Alignment.center, children: [
-                  // Glow halkası
-                  if (!isLocked)
-                    AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (_, __) {
-                        final sz = isCurrent
-                            ? 84 + _pulseController.value * 18.0
-                            : 80.0;
-                        return Container(
-                          width: sz,
-                          height: sz,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(colors: [
-                              glowColor.withOpacity(isCompleted ? 0.22 : 0.32),
-                              glowColor.withOpacity(0.0),
-                            ]),
-                          ),
-                        );
-                      },
+          height: 84,
+          child: Stack(alignment: Alignment.center, children: [
+            if (!isLocked)
+              AnimatedBuilder(
+                animation: _pulseController,
+                builder: (_, __) {
+                  final sz =
+                      isPlayable ? 84 + _pulseController.value * 18.0 : 80.0;
+                  return Container(
+                    width: sz,
+                    height: sz,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(colors: [
+                        glowColor.withOpacity(isCompleted ? 0.22 : 0.32),
+                        glowColor.withOpacity(0.0),
+                      ]),
                     ),
-                  // Dönen orbit
-                  if (isCurrent)
-                    AnimatedBuilder(
-                      animation: _rotateController,
-                      builder: (_, __) => Transform.rotate(
-                        angle: _rotateController.value * 2 * pi,
-                        child: CustomPaint(
-                          size: const Size(78, 78),
-                          painter: _OrbitRingPainter(color: glowColor),
-                        ),
-                      ),
-                    ),
-                  // Hex badge
-                  CustomPaint(
-                    size: const Size(72, 72),
-                    painter: _HexBadgePainter(
-                      topColor: topColor,
-                      bottomColor: bottomColor,
-                      rimColor: rimColor,
-                      isLocked: isLocked,
-                    ),
-                  ),
-                  // Kilit overlay
-                  if (isLocked)
-                    ClipPath(
-                      clipper: _HexClipper(),
-                      child: Container(
-                          width: 72,
-                          height: 72,
-                          color: Colors.black.withOpacity(0.38)),
-                    ),
-                  // İkon
-                  SizedBox(
-                    width: 72,
-                    height: 72,
-                    child: Center(
-                      child: isLocked
-                          ? const Icon(Icons.lock_rounded,
-                              color: Colors.white54, size: 22)
-                          : isCompleted
-                              ? const Icon(Icons.check_rounded,
-                                  color: Colors.white, size: 28)
-                              : const Icon(Icons.play_arrow_rounded,
-                                  color: Colors.white, size: 30),
-                    ),
-                  ),
-                ]),
+                  );
+                },
               ),
-
-              // ── Yıldız satırı (sabit 14 px) ──
-              SizedBox(
-                height: 14,
-                child: (isCompleted && widget.data.starCount > 0)
-                    ? _StarRow(count: widget.data.starCount)
-                    : null,
-              ),
-
-              // ── Zorluk nokta satırı (sabit 14 px) ──
-              // DÜZELTME: _theme.primaryColor → widget.theme.primaryColor
-              SizedBox(
-                height: 14,
-                child: _DotRow(
-                  count: widget.data.difficulty.dotCount,
-                  color: isLocked
-                      ? Colors.white.withOpacity(0.20)
-                      : widget.theme.primaryColor,
+            if (isPlayable)
+              AnimatedBuilder(
+                animation: _rotateController,
+                builder: (_, __) => Transform.rotate(
+                  angle: _rotateController.value * 2 * pi,
+                  child: CustomPaint(
+                    size: const Size(78, 78),
+                    painter: _OrbitRingPainter(color: glowColor),
+                  ),
                 ),
               ),
-            ],
-          ),
+            CustomPaint(
+              size: const Size(72, 72),
+              painter: _HexBadgePainter(
+                topColor: topColor,
+                bottomColor: bottomColor,
+                rimColor: rimColor,
+                isLocked: isLocked,
+                difficultyCount: widget.data.difficulty.dotCount,
+                difficultyColor: isLocked
+                    ? Colors.white.withOpacity(0.16)
+                    : _adaptiveDifficultyRingColor(
+                        themeColor: widget.theme.primaryColor,
+                        topColor: topColor,
+                        bottomColor: bottomColor,
+                        brighten: isCompleted,
+                      ),
+              ),
+            ),
+            if (isLocked)
+              ClipPath(
+                clipper: _HexClipper(),
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  color: Colors.black.withOpacity(0.38),
+                ),
+              ),
+            SizedBox(
+              width: 72,
+              height: 72,
+              child: Center(
+                child: isLocked
+                    ? const Icon(Icons.lock_rounded,
+                        color: Colors.white54, size: 22)
+                    : isCompleted
+                        ? const Icon(Icons.check_rounded,
+                            color: Colors.white, size: 28)
+                        : const Icon(Icons.play_arrow_rounded,
+                            color: Colors.white, size: 30),
+              ),
+            ),
+          ]),
         ),
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-//  STAR ROW
-// ─────────────────────────────────────────────
-
-class _StarRow extends StatelessWidget {
-  final int count;
-  const _StarRow({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (i) {
-        final filled = i < count;
-        return Icon(
-          filled ? Icons.star_rounded : Icons.star_outline_rounded,
-          size: 10,
-          color:
-              filled ? const Color(0xFFFFD740) : Colors.white.withOpacity(0.25),
-        );
-      }),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-//  ZORLUK NOKTA SATIRI  (şişelerin yerine)
-// ─────────────────────────────────────────────
-
-class _DotRow extends StatelessWidget {
-  final int count; // 1–5
-  final Color color;
-  const _DotRow({required this.count, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(
-          count,
-          (i) => Container(
-                width: 5,
-                height: 5,
-                margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: color.withOpacity(0.85),
-                  boxShadow: [
-                    BoxShadow(
-                        color: color.withOpacity(0.5),
-                        blurRadius: 4,
-                        spreadRadius: 0.5)
-                  ],
-                ),
-              )),
     );
   }
 }
@@ -767,7 +905,9 @@ class _ThemedBranchMapPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final c in connections) _drawConnection(canvas, size, c.from, c.to);
+    for (final c in connections) {
+      _drawConnection(canvas, size, c.from, c.to);
+    }
   }
 
   Path _buildPath(Offset p1, Offset p2) {
@@ -792,77 +932,87 @@ class _ThemedBranchMapPainter extends CustomPainter {
     final path = _buildPath(p1, p2);
 
     canvas.drawPath(
-        path,
-        Paint()
-          ..color = Colors.black.withOpacity(0.30)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = isActive ? 12 : 8
-          ..strokeCap = StrokeCap.round
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
+      path,
+      Paint()
+        ..color = Colors.black.withOpacity(0.30)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isActive ? 12 : 8
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
 
     if (!isActive) {
       _drawDashedPath(
-          canvas,
-          path,
-          Paint()
-            ..color = Colors.white.withOpacity(0.10)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2.5
-            ..strokeCap = StrokeCap.round,
-          dashLen: 6,
-          gapLen: 5,
-          offset: 0);
+        canvas,
+        path,
+        Paint()
+          ..color = Colors.white.withOpacity(0.10)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5
+          ..strokeCap = StrokeCap.round,
+        dashLen: 6,
+        gapLen: 5,
+        offset: 0,
+      );
       return;
     }
 
     canvas.drawPath(
-        path,
-        Paint()
-          ..color = theme.accentColor.withOpacity(0.20)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 18
-          ..strokeCap = StrokeCap.round
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10));
+      path,
+      Paint()
+        ..color = theme.accentColor.withOpacity(0.20)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 18
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+    );
 
     canvas.drawPath(
-        path,
-        Paint()
-          ..shader = LinearGradient(
-            colors: theme.pathGradient,
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-          ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 4.5
-          ..strokeCap = StrokeCap.round);
+      path,
+      Paint()
+        ..shader = LinearGradient(
+          colors: theme.pathGradient,
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4.5
+        ..strokeCap = StrokeCap.round,
+    );
 
     _drawDashedPath(
-        canvas,
-        path,
-        Paint()
-          ..color = Colors.white.withOpacity(0.28)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.8
-          ..strokeCap = StrokeCap.round,
-        dashLen: 8,
-        gapLen: 10,
-        offset: flowOffset);
+      canvas,
+      path,
+      Paint()
+        ..color = Colors.white.withOpacity(0.28)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8
+        ..strokeCap = StrokeCap.round,
+      dashLen: 8,
+      gapLen: 10,
+      offset: flowOffset,
+    );
 
     _drawDirectionDot(canvas, path, 0.5);
   }
 
-  void _drawDashedPath(Canvas canvas, Path path, Paint paint,
-      {required double dashLen,
-      required double gapLen,
-      required double offset}) {
+  void _drawDashedPath(
+    Canvas canvas,
+    Path path,
+    Paint paint, {
+    required double dashLen,
+    required double gapLen,
+    required double offset,
+  }) {
     for (final metric in path.computeMetrics()) {
       final total = metric.length;
       final period = dashLen + gapLen;
       var start = offset * period * -1;
       while (start < total) {
         final end = (start + dashLen).clamp(0.0, total);
-        if (start >= 0 && end > start)
+        if (start >= 0 && end > start) {
           canvas.drawPath(metric.extractPath(start, end), paint);
+        }
         start += period;
       }
     }
@@ -873,13 +1023,17 @@ class _ThemedBranchMapPainter extends CustomPainter {
     final tangent = metric.getTangentForOffset(metric.length * t);
     if (tangent == null) return;
     canvas.drawCircle(
-        tangent.position, 3.5, Paint()..color = Colors.white.withOpacity(0.45));
+      tangent.position,
+      3.5,
+      Paint()..color = Colors.white.withOpacity(0.45),
+    );
     canvas.drawCircle(
-        tangent.position,
-        6,
-        Paint()
-          ..color = Colors.white.withOpacity(0.10)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+      tangent.position,
+      6,
+      Paint()
+        ..color = Colors.white.withOpacity(0.10)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
   }
 
   @override
@@ -919,14 +1073,30 @@ class _ThemedFullBackground extends StatelessWidget {
           final w = MediaQuery.of(context).size.width;
           final h = MediaQuery.of(context).size.height;
           return Stack(children: [
-            _glow(-90 + sin(t * pi) * 20, -120 + cos(t * pi) * 15, 270,
-                theme.primaryColor.withOpacity(0.14)),
-            _glow(w - 170 + cos(t * pi) * 20, 120 + sin(t * pi) * 18, 250,
-                theme.secondaryColor.withOpacity(0.10)),
-            _glow(-80 + sin(t * pi * 1.3) * 16, h - 200 + cos(t * pi) * 20, 260,
-                theme.accentColor.withOpacity(0.08)),
-            _glow(w - 140 + cos(t * pi * 1.2) * 18, h - 180 + sin(t * pi) * 22,
-                230, theme.primaryColor.withOpacity(0.09)),
+            _glow(
+              -90 + sin(t * pi) * 20,
+              -120 + cos(t * pi) * 15,
+              270,
+              theme.primaryColor.withOpacity(0.14),
+            ),
+            _glow(
+              w - 170 + cos(t * pi) * 20,
+              120 + sin(t * pi) * 18,
+              250,
+              theme.secondaryColor.withOpacity(0.10),
+            ),
+            _glow(
+              -80 + sin(t * pi * 1.3) * 16,
+              h - 200 + cos(t * pi) * 20,
+              260,
+              theme.accentColor.withOpacity(0.08),
+            ),
+            _glow(
+              w - 140 + cos(t * pi * 1.2) * 18,
+              h - 180 + sin(t * pi) * 22,
+              230,
+              theme.primaryColor.withOpacity(0.09),
+            ),
           ]);
         },
       ),
@@ -981,13 +1151,17 @@ class _MapStarsPainter extends CustomPainter {
       final r = s[2] as double;
       final pos = Offset(size.width * s[0], size.height * s[1]);
       canvas.drawCircle(
-          pos, r, Paint()..color = color.withOpacity(opacity * 0.8));
+        pos,
+        r,
+        Paint()..color = color.withOpacity(opacity * 0.8),
+      );
       canvas.drawCircle(
-          pos,
-          r * 3.5,
-          Paint()
-            ..color = color.withOpacity(opacity * 0.12)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+        pos,
+        r * 3.5,
+        Paint()
+          ..color = color.withOpacity(opacity * 0.12)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+      );
     }
   }
 
@@ -1057,7 +1231,9 @@ class _OrbitRingPainter extends CustomPainter {
       final angle = (i / dotCount) * 2 * pi;
       canvas.drawCircle(
         Offset(
-            center.dx + cos(angle) * radius, center.dy + sin(angle) * radius),
+          center.dx + cos(angle) * radius,
+          center.dy + sin(angle) * radius,
+        ),
         i.isEven ? 2.5 : 1.5,
         Paint()..color = color.withOpacity((i / dotCount) * 0.9 + 0.1),
       );
@@ -1083,10 +1259,11 @@ class _HexClipper extends CustomClipper<Path> {
       final angle = (-90 + i * 60) * pi / 180;
       final x = cx + r * cos(angle);
       final y = cy + r * sin(angle);
-      if (i == 0)
+      if (i == 0) {
         path.moveTo(x, y);
-      else
+      } else {
         path.lineTo(x, y);
+      }
     }
     path.close();
     return path;
@@ -1105,12 +1282,16 @@ class _HexBadgePainter extends CustomPainter {
   final Color bottomColor;
   final Color rimColor;
   final bool isLocked;
+  final int difficultyCount;
+  final Color difficultyColor;
 
   const _HexBadgePainter({
     required this.topColor,
     required this.bottomColor,
     required this.rimColor,
     required this.isLocked,
+    required this.difficultyCount,
+    required this.difficultyColor,
   });
 
   Path _hexPath(Offset center, double radius) {
@@ -1119,13 +1300,56 @@ class _HexBadgePainter extends CustomPainter {
       final angle = (-90 + i * 60) * pi / 180;
       final x = center.dx + radius * cos(angle);
       final y = center.dy + radius * sin(angle);
-      if (i == 0)
+      if (i == 0) {
         path.moveTo(x, y);
-      else
+      } else {
         path.lineTo(x, y);
+      }
     }
     path.close();
     return path;
+  }
+
+  void _drawDifficultyRings(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final count = difficultyCount.clamp(1, 5);
+
+    const baseOuterInset = 8.0;
+    const ringGap = 4.2;
+    final maxRadius = (size.width / 2) - baseOuterInset;
+    final minRadius = maxRadius - ((count - 1) * ringGap);
+
+    for (int i = 0; i < count; i++) {
+      final radius = maxRadius - (i * ringGap);
+      final ring = _hexPath(center, radius);
+
+      final normalized = count == 1
+          ? 1.0
+          : 1.0 - ((radius - minRadius) / (maxRadius - minRadius));
+      final opacity =
+          isLocked ? 0.11 + (normalized * 0.07) : 0.58 + (normalized * 0.22);
+      final strokeWidth = count >= 4 ? 1.15 : 1.35;
+
+      canvas.drawPath(
+        ring,
+        Paint()
+          ..color = difficultyColor.withOpacity(opacity.clamp(0.0, 0.95))
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth,
+      );
+
+      if (!isLocked) {
+        canvas.drawPath(
+          ring,
+          Paint()
+            ..color =
+                difficultyColor.withOpacity((opacity * 0.18).clamp(0.0, 0.24))
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = strokeWidth + 1.1
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.2),
+        );
+      }
+    }
   }
 
   @override
@@ -1134,63 +1358,43 @@ class _HexBadgePainter extends CustomPainter {
     final radius = size.width / 2;
     final hex = _hexPath(center, radius * 0.92);
 
-    // Gölge
     canvas.drawPath(
-        _hexPath(center.translate(0, 5), radius * 0.92),
-        Paint()
-          ..color = Colors.black.withOpacity(0.45)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10));
+      _hexPath(center.translate(0, 5), radius * 0.92),
+      Paint()
+        ..color = Colors.black.withOpacity(0.45)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+    );
 
-    canvas.drawPath(_hexPath(center.translate(0, 6), radius * 0.92),
-        Paint()..color = bottomColor.withOpacity(0.55));
+    canvas.drawPath(
+      _hexPath(center.translate(0, 6), radius * 0.92),
+      Paint()..color = bottomColor.withOpacity(0.55),
+    );
 
-    // Ana dolgu
     canvas.drawPath(
-        hex,
-        Paint()
-          ..shader = LinearGradient(
-            colors: [topColor, bottomColor],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)));
-
-    // Dış kenar çizgileri
-    canvas.drawPath(
-        hex,
-        Paint()
-          ..color = Colors.black.withOpacity(0.18)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3.5);
-    canvas.drawPath(
-        hex,
-        Paint()
-          ..color = rimColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.8);
-    canvas.drawPath(
-        _hexPath(center, radius * 0.72),
-        Paint()
-          ..color = Colors.white.withOpacity(0.07)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0);
-
-    // Üst parlak bölge
-    canvas.drawPath(
-      Path()
-        ..moveTo(size.width * 0.22, size.height * 0.24)
-        ..lineTo(size.width * 0.78, size.height * 0.24)
-        ..lineTo(size.width * 0.66, size.height * 0.42)
-        ..lineTo(size.width * 0.34, size.height * 0.42)
-        ..close(),
+      hex,
       Paint()
         ..shader = LinearGradient(
-          colors: [
-            Colors.white.withOpacity(0.26),
-            Colors.white.withOpacity(0.02)
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height * 0.5)),
+          colors: [topColor, bottomColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
+    );
+
+    _drawDifficultyRings(canvas, size);
+
+    canvas.drawPath(
+      hex,
+      Paint()
+        ..color = Colors.black.withOpacity(0.18)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.5,
+    );
+    canvas.drawPath(
+      hex,
+      Paint()
+        ..color = rimColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.8,
     );
   }
 
@@ -1199,7 +1403,9 @@ class _HexBadgePainter extends CustomPainter {
       old.topColor != topColor ||
       old.bottomColor != bottomColor ||
       old.rimColor != rimColor ||
-      old.isLocked != isLocked;
+      old.isLocked != isLocked ||
+      old.difficultyCount != difficultyCount ||
+      old.difficultyColor != difficultyColor;
 }
 
 // ─────────────────────────────────────────────
@@ -1211,8 +1417,11 @@ class _GlassButton extends StatelessWidget {
   final VoidCallback? onTap;
   final Color accentColor;
 
-  const _GlassButton(
-      {required this.child, required this.onTap, required this.accentColor});
+  const _GlassButton({
+    required this.child,
+    required this.onTap,
+    required this.accentColor,
+  });
 
   @override
   Widget build(BuildContext context) {

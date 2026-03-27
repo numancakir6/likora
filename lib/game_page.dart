@@ -10,13 +10,12 @@ const int kCap = 4;
 const int kNColors = 5;
 const int kEmpty = 2;
 
-// Tüp çizim ölçüleri — Painter ile FlyingTube'da BİREBİR AYNI olmalı
-const double kTW = 48.0; // CustomPaint genişliği
-const double kTH = 140.0; // CustomPaint yüksekliği
-const double kTX = 6.0; // sol kenar boşluğu
-const double kTBW = 36.0; // iç boru genişliği
-const double kTTopY = 4.0; // ağız Y
-const double kTBodyH = 110.0; // gövde yüksekliği
+const double kTW = 48.0;
+const double kTH = 140.0;
+const double kTX = 6.0;
+const double kTBW = 36.0;
+const double kTTopY = 4.0;
+const double kTBodyH = 110.0;
 const double kTR = kTBW / 2;
 const double kTBotY = kTTopY + kTBodyH;
 const double kTSegH = kTBodyH / kCap;
@@ -61,6 +60,22 @@ bool canPour(List<List<int>> tubes, int from, int to) {
   return true;
 }
 
+/// Kaç adet döküleceğini hesapla (dökülmeyi simüle etmeden)
+int pourCount(List<List<int>> tubes, int from, int to) {
+  if (!canPour(tubes, from, to)) return 0;
+  final top = tubes[from].last;
+  int count = 0;
+  final available = kCap - tubes[to].length;
+  for (int i = tubes[from].length - 1; i >= 0; i--) {
+    if (tubes[from][i] == top) {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return count.clamp(0, available);
+}
+
 void doPour(List<List<int>> tubes, int from, int to) {
   final top = tubes[from].last;
   while (tubes[from].isNotEmpty &&
@@ -98,10 +113,20 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   // Oyun state
   late List<List<int>> _tubes;
+  // _displayTubes: animasyon süresince görüntülenen state.
+  // Döküm BAŞLAMADAN önce from tüpü boşaltılmış, to tüpü dolmuş hali.
+  // Bu sayede hedef tüp animasyon başından itibaren doğru görünür.
+  late List<List<int>> _displayTubes;
+
   int? _selected;
   bool _animating = false;
   int? _flyFrom;
   int? _flyTo;
+  // Uçuş animasyonu için: from tüpünün DÖKÜM ÖNCESİ içeriği
+  List<int>? _flyFromSnapshot;
+  // Hedef tüpe dökülen renk ve adet (canlı akış için)
+  int? _pourColor;
+  int _pourCount = 0;
   bool _gameWon = false;
 
   @override
@@ -125,18 +150,24 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   void _reset() => setState(() {
         _tubes = generateTubes();
+        _displayTubes = _tubes.map((t) => List<int>.from(t)).toList();
         _selected = null;
         _animating = false;
         _flyFrom = null;
         _flyTo = null;
+        _flyFromSnapshot = null;
+        _pourColor = null;
+        _pourCount = 0;
         _gameWon = false;
       });
 
-  // Animasyon toplam: 1700 ms
-  // 0-300ms  : kalk + yatay git
-  // 300-700ms: eğil  (600ms'de fiziksel dökme yapılır)
-  // 700-1000ms: dik gel
-  // 1000-1700ms: geri dön + in
+  // Animasyon toplam: 1600 ms
+  // 0–250ms  : kalk
+  // 250–500ms: yatay git
+  // 500–750ms: eğil (döküm bu süreçte başlar)
+  // 750–1100ms: eğik kal + sıvı akar
+  // 1100–1350ms: dik gel
+  // 1350–1600ms: geri dön + in
   Future<void> _handleTap(int idx) async {
     if (_animating) return;
 
@@ -156,23 +187,35 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     final from = _selected!, to = idx;
+    final fromSnapshot = List<int>.from(_tubes[from]);
+    final topColor = _tubes[from].last;
+    final count = pourCount(_tubes, from, to);
+
+    // Hemen fiziksel dökmeyi yap → _displayTubes'u güncelle
+    // Bu sayede hedef tüp animasyon BAŞINDAN itibaren doğru görünür
+    doPour(_tubes, from, to);
+    final displayTubes = _tubes.map((t) => List<int>.from(t)).toList();
+
     setState(() {
       _selected = null;
       _animating = true;
       _flyFrom = from;
       _flyTo = to;
+      _flyFromSnapshot = fromSnapshot;
+      _pourColor = topColor;
+      _pourCount = count;
+      _displayTubes = displayTubes;
     });
     HapticFeedback.mediumImpact();
 
-    // Eğilme pik noktasinda fiziksel dökme — hedef tüp anlık güncellenir
-    await Future.delayed(const Duration(milliseconds: 600));
-    setState(() => doPour(_tubes, from, to));
-
-    await Future.delayed(const Duration(milliseconds: 1100));
+    await Future.delayed(const Duration(milliseconds: 1600));
     setState(() {
       _animating = false;
       _flyFrom = null;
       _flyTo = null;
+      _flyFromSnapshot = null;
+      _pourColor = null;
+      _pourCount = 0;
       _gameWon = isGameDone(_tubes);
     });
   }
@@ -215,8 +258,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── APP BAR ─────────────────────────────────
-
   Widget _buildAppBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -251,8 +292,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       ]),
     );
   }
-
-  // ── HERO CARD ────────────────────────────────
 
   Widget _buildHeroCard() {
     return Container(
@@ -325,8 +364,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
   }
 
-  // ── OYUN ALANI ───────────────────────────────
-
   Widget _buildGameArea() {
     return Container(
       width: double.infinity,
@@ -344,7 +381,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         border: Border.all(color: Colors.white.withOpacity(0.09)),
       ),
       child: Column(children: [
-        // Başlık + yenile
         Row(children: [
           Expanded(
               child: Column(
@@ -393,12 +429,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
         // SAHNE — uçuş için ekstra yükseklik payı
         SizedBox(
-          height: kWidgetH + 80,
+          height: kWidgetH + 100,
           child: _TubeStage(
-            tubes: _tubes,
+            // displayTubes: animasyon süresince gösterilen state
+            // from tüpü gizli (opacity 0), to tüpü doğru içerikle
+            tubes: _displayTubes,
             selected: _selected,
             flyFrom: _flyFrom,
             flyTo: _flyTo,
+            flyFromSnapshot: _flyFromSnapshot,
+            pourColor: _pourColor,
+            pourCount: _pourCount,
             onTap: _handleTap,
           ),
         ),
@@ -414,8 +455,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       ]),
     );
   }
-
-  // ── TEST PANELİ ──────────────────────────────
 
   Widget _buildTestPanel() {
     return Container(
@@ -511,7 +550,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 }
 
 // ─────────────────────────────────────────────
-// TÜPLER SAHNESİ  (GlobalKey ile gerçek pozisyon)
+// TÜPLER SAHNESİ
 // ─────────────────────────────────────────────
 
 class _TubeStage extends StatefulWidget {
@@ -519,6 +558,9 @@ class _TubeStage extends StatefulWidget {
   final int? selected;
   final int? flyFrom;
   final int? flyTo;
+  final List<int>? flyFromSnapshot;
+  final int? pourColor;
+  final int pourCount;
   final void Function(int) onTap;
 
   const _TubeStage({
@@ -526,6 +568,9 @@ class _TubeStage extends StatefulWidget {
     required this.selected,
     required this.flyFrom,
     required this.flyTo,
+    required this.flyFromSnapshot,
+    required this.pourColor,
+    required this.pourCount,
     required this.onTap,
   });
 
@@ -552,7 +597,6 @@ class _TubeStageState extends State<_TubeStage> {
     _keys = List.generate(widget.tubes.length, (_) => GlobalKey());
   }
 
-  /// Tüpün bu Stack içindeki yerel sol-üst köşesi
   Offset? _localPos(int idx) {
     final box = _keys[idx].currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return null;
@@ -566,7 +610,7 @@ class _TubeStageState extends State<_TubeStage> {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // Statik tüpler — alta hizali
+        // Statik tüpler
         Positioned.fill(
           child: Align(
             alignment: Alignment.bottomCenter,
@@ -580,6 +624,7 @@ class _TubeStageState extends State<_TubeStage> {
                   child: GestureDetector(
                     onTap: () => widget.onTap(idx),
                     child: Opacity(
+                      // Uçan tüp varken from tüpü gizli
                       opacity: idx == widget.flyFrom ? 0.0 : 1.0,
                       child: _TubeWidget(
                         tube: widget.tubes[idx],
@@ -595,9 +640,14 @@ class _TubeStageState extends State<_TubeStage> {
         ),
 
         // Uçan tüp
-        if (widget.flyFrom != null && widget.flyTo != null)
+        if (widget.flyFrom != null &&
+            widget.flyTo != null &&
+            widget.flyFromSnapshot != null)
           _FlyingTube(
-            tubes: widget.tubes,
+            fromSnapshot: widget.flyFromSnapshot!,
+            toTube: widget.tubes[widget.flyTo!],
+            pourColorIdx: widget.pourColor,
+            pourCount: widget.pourCount,
             fromIdx: widget.flyFrom!,
             toIdx: widget.flyTo!,
             getPos: _localPos,
@@ -608,17 +658,31 @@ class _TubeStageState extends State<_TubeStage> {
 }
 
 // ─────────────────────────────────────────────
-// UÇAN TÜP — 4 fazlı animasyon + sıvı damlası
+// UÇAN TÜP — Düzeltilmiş fizik + canlı sıvı akışı
 // ─────────────────────────────────────────────
+//
+// Animasyon fazları (0.0 – 1.0):
+//   0.00–0.15 : Kalk (from pozisyonundan yukarı)
+//   0.15–0.38 : Yatay git (to tüpünün üstüne)
+//   0.38–0.58 : Eğil (~115°)
+//   0.58–0.82 : Eğik kal → sıvı bu fazda canlı akar
+//   0.82–0.92 : Dik gel
+//   0.92–1.00 : Geri dön + in
 
 class _FlyingTube extends StatefulWidget {
-  final List<List<int>> tubes;
+  final List<int> fromSnapshot; // from tüpünün DÖKÜM ÖNCESİ içeriği
+  final List<int> toTube; // to tüpünün DÖKÜM SONRASI içeriği
+  final int? pourColorIdx;
+  final int pourCount;
   final int fromIdx;
   final int toIdx;
   final Offset? Function(int) getPos;
 
   const _FlyingTube({
-    required this.tubes,
+    required this.fromSnapshot,
+    required this.toTube,
+    required this.pourColorIdx,
+    required this.pourCount,
     required this.fromIdx,
     required this.toIdx,
     required this.getPos,
@@ -632,18 +696,18 @@ class _FlyingTubeState extends State<_FlyingTube>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
-  // Faz sinirlari (0.0–1.0 icinde)
-  static const double _p1 = 0.18; // kalk+git biter
-  static const double _p2 = 0.45; // egilme biter
-  static const double _p3 = 0.62; // egik kalma biter
-  static const double _p4 = 0.80; // dikilme biter
+  static const double _pLiftEnd = 0.15;
+  static const double _pMoveEnd = 0.38;
+  static const double _pTiltEnd = 0.58;
+  static const double _pPourEnd = 0.82;
+  static const double _pUprightEnd = 0.92;
 
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1700),
+      duration: const Duration(milliseconds: 1600),
     )..forward();
   }
 
@@ -653,7 +717,8 @@ class _FlyingTubeState extends State<_FlyingTube>
     super.dispose();
   }
 
-  static double _ease(double t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+  static double _easeInOut(double t) =>
+      t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 
   static double _phase(double v, double start, double end) =>
       ((v - start) / (end - start)).clamp(0.0, 1.0);
@@ -666,90 +731,133 @@ class _FlyingTubeState extends State<_FlyingTube>
 
     final goRight = (toPos.dx + kWidgetW / 2) > (fromPos.dx + kWidgetW / 2);
     final tiltSign = goRight ? -1.0 : 1.0;
+    final maxTilt = 115.0 * pi / 180.0;
 
-    // Y referansları: checkmark payini (18px) hesaba kat
-    final fromBotY = fromPos.dy + kWidgetH; // tup alti
-    final liftY = fromPos.dy - 55.0; // ucus yuksekligi
-    // Hizalama: ucan tupun alti, hedef tupun agziyla ayni seviyede olmali
-    final toTubeTopY = toPos.dy + 18.0 + kTTopY; // hedef boru agzi
+    // Uçuş yüksekliği: her iki tüpün de üstünden yeterince yukarda
+    final liftY = min(fromPos.dy, toPos.dy) - 70.0;
 
-    // Dokulen renk
-    final pourColor = widget.tubes[widget.fromIdx].isNotEmpty
-        ? (kColors[widget.tubes[widget.fromIdx].last]['fill'] as Color)
-        : Colors.transparent;
+    // Hedef tüpün ağız pozisyonu (widget koordinatında)
+    // Widget: checkmark(18) + kTTopY(4) = 22px'den sonra boru başlar
+    final toMouthY = toPos.dy + 18.0 + kTTopY; // hedef boru ağzının Y'si
+    final toMidX = toPos.dx + kWidgetW / 2; // hedef boru merkez X'i
+
+    // Eğik haldeyken from tüpünün boru ağzı tam hedef boru ağzı üstünde olmalı.
+    // Transform.bottomCenter dönme merkezi kullanıyoruz.
+    // Tüp widget yüksekliği = kWidgetH, dönme merkezi alt-orta.
+    // Eğik durumda tüpün ağzının global pozisyonu hesaplaması karmaşık —
+    // basit yaklaşım: tüpün sol üst köşesini toMidX - kWidgetW/2, toMouthY - kWidgetH olarak konumlandır
+    // ki dönme merkezi (alt-orta) tam toMidX, toMouthY+kWidgetH...
+    // Aslında dönme merkezi (alt-orta) = (cx + kWidgetW/2, cy + kWidgetH)
+    // Bunu toMidX, toMouthY'ye eşitlersek:
+    //   cx = toMidX - kWidgetW/2
+    //   cy = toMouthY - kWidgetH  (= toPos.dy + 18 + kTTopY - kWidgetH)
+    final tiltedCX = toMidX - kWidgetW / 2;
+    final tiltedCY = toMouthY - kWidgetH;
 
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) {
         final v = _ctrl.value;
 
-        // ── X ──────────────────────────────────────
+        // ── X pozisyonu ──────────────────────────────
         double cx;
-        if (v < _p1) {
-          cx = fromPos.dx + (toPos.dx - fromPos.dx) * _ease(_phase(v, 0, _p1));
-        } else if (v < _p4) {
-          cx = toPos.dx;
+        if (v < _pLiftEnd) {
+          cx = fromPos.dx;
+        } else if (v < _pMoveEnd) {
+          cx = fromPos.dx +
+              (tiltedCX - fromPos.dx) *
+                  _easeInOut(_phase(v, _pLiftEnd, _pMoveEnd));
+        } else if (v < _pUprightEnd) {
+          cx = tiltedCX;
         } else {
-          cx = toPos.dx + (fromPos.dx - toPos.dx) * _ease(_phase(v, _p4, 1.0));
+          cx = tiltedCX +
+              (fromPos.dx - tiltedCX) *
+                  _easeInOut(_phase(v, _pUprightEnd, 1.0));
         }
 
-        // ── Y ──────────────────────────────────────
-        // Tup tam egildikten sonra boru agzi hedef agzina denk gelmeli.
-        // Egilmeden once yukarida (liftY), egilince asagi iner.
+        // ── Y pozisyonu ──────────────────────────────
         double cy;
-        if (v < _p1) {
-          // Kalk
-          cy = fromPos.dy + (liftY - fromPos.dy) * _ease(_phase(v, 0, _p1));
-        } else if (v < _p2) {
-          // Egilirken asagi in (boru agzi = hedef agzi)
-          // Egik haldeyken dönme merkezi alt-merkez.
-          // Basit yaklasim: tup ust kenarini hedef boru agziyla esitle
-          final targetY = toTubeTopY -
-              kTTopY -
-              18.0; // widget top = boru agi - kTTopY - checkmark
-          cy = liftY + (targetY - liftY) * _ease(_phase(v, _p1, _p2));
-        } else if (v < _p4) {
-          final targetY = toTubeTopY - kTTopY - 18.0;
-          cy = targetY;
+        if (v < _pLiftEnd) {
+          // Kalk: from pozisyonundan liftY'ye
+          cy = fromPos.dy +
+              (liftY - fromPos.dy) * _easeInOut(_phase(v, 0, _pLiftEnd));
+        } else if (v < _pMoveEnd) {
+          // Yatay hareket: yüksekliği koru
+          cy = liftY +
+              (tiltedCY - liftY) * _easeInOut(_phase(v, _pLiftEnd, _pMoveEnd));
+        } else if (v < _pUprightEnd) {
+          cy = tiltedCY;
         } else {
-          final targetY = toTubeTopY - kTTopY - 18.0;
-          cy = targetY + (fromPos.dy - targetY) * _ease(_phase(v, _p4, 1.0));
+          // Geri in
+          cy = tiltedCY +
+              (fromPos.dy - tiltedCY) *
+                  _easeInOut(_phase(v, _pUprightEnd, 1.0));
         }
 
-        // ── EGİM ───────────────────────────────────
+        // ── Eğim açısı ───────────────────────────────
         double angle = 0;
-        if (v >= _p1 && v < _p2) {
-          angle = tiltSign * 118 * pi / 180 * _ease(_phase(v, _p1, _p2));
-        } else if (v >= _p2 && v < _p3) {
-          angle = tiltSign * 118 * pi / 180;
-        } else if (v >= _p3 && v < _p4) {
-          angle = tiltSign * 118 * pi / 180 * (1 - _ease(_phase(v, _p3, _p4)));
+        if (v >= _pMoveEnd && v < _pTiltEnd) {
+          angle =
+              tiltSign * maxTilt * _easeInOut(_phase(v, _pMoveEnd, _pTiltEnd));
+        } else if (v >= _pTiltEnd && v < _pPourEnd) {
+          angle = tiltSign * maxTilt;
+        } else if (v >= _pPourEnd && v < _pUprightEnd) {
+          angle = tiltSign *
+              maxTilt *
+              (1 - _easeInOut(_phase(v, _pPourEnd, _pUprightEnd)));
         }
 
-        // ── SIYI DAMLASI ───────────────────────────
-        // Egik duruyorken (p1–p3) bir damla animasyonu goster
-        final dropActive = v >= _p1 && v < _p3;
-        final dropProgress = dropActive ? _phase(v, _p1, _p3) : 0.0;
+        // ── Uçan tüpün içeriği ───────────────────────
+        // Eğilme başladıktan sonra sıvı yavaş yavaş "boşalıyor" efekti:
+        // pourProgress 0→1 iken from'daki dökülen renkleri sırayla kaldır
+        final pourProgress = v >= _pTiltEnd && v < _pPourEnd
+            ? _phase(v, _pTiltEnd, _pPourEnd)
+            : (v >= _pPourEnd ? 1.0 : 0.0);
 
-        // Damlanin cikis noktasi: ucan tupun boru agzi
-        // Egik haldeyken agiz biraz sola/saga kayar ama basit yaklas: to tupunun merkezi
-        final toMidX = toPos.dx + kWidgetW / 2;
-        final dropStartY = toTubeTopY - 20;
-        final dropEndY = toTubeTopY + 10;
-        final dropY = dropStartY + (dropEndY - dropStartY) * dropProgress;
+        // Kaç segment görünür kalsın (yukarıdan dökülüyor)
+        final removedCount = (pourProgress * widget.pourCount).round();
+        final flyTube = widget.fromSnapshot.sublist(
+            0,
+            (widget.fromSnapshot.length - removedCount)
+                .clamp(0, widget.fromSnapshot.length));
+
+        // ── Canlı sıvı akışı ─────────────────────────
+        // Eğilme + dökme fazında sıvı damlacıkları göster
+        final isPouring = v >= _pTiltEnd && v < _pPourEnd;
+        final streamProgress =
+            isPouring ? _phase(v, _pTiltEnd, _pPourEnd) : 0.0;
+
+        // Sıvı akışının hedef noktası: hedef boru ağzı
+        // Akışın başlangıç noktası: uçan tüpün (eğik haldeki) boru ağzı
+        // Basit yaklaşım: akış toMidX etrafında, toMouthY'den boru içine iner
+        final streamX = toMidX;
+        final streamStartY = toMouthY - 8;
+        // Akış ne kadar aşağı gitti (pourCount kadar segment dolduruyor)
+        final filledHeight = widget.pourCount * kTSegH;
+        final streamEndY =
+            toMouthY + filledHeight * streamProgress.clamp(0.0, 1.0);
+
+        final pourColor = widget.pourColorIdx != null
+            ? (kColors[widget.pourColorIdx!]['fill'] as Color)
+            : Colors.transparent;
 
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            // Siyi damlasi
-            if (dropActive)
-              Positioned(
-                left: toMidX - 5,
-                top: dropY,
-                child: _LiquidDrop(color: pourColor, progress: dropProgress),
+            // Canlı sıvı akış çizgisi
+            if (isPouring && widget.pourColorIdx != null)
+              CustomPaint(
+                painter: _LiquidStreamPainter(
+                  color: pourColor,
+                  startX: streamX,
+                  startY: streamStartY,
+                  endY: streamEndY,
+                  progress: streamProgress,
+                ),
+                size: Size(MediaQuery.of(context).size.width, kWidgetH + 200),
               ),
 
-            // Ucan tup
+            // Uçan tüp
             Positioned(
               left: cx,
               top: cy,
@@ -757,7 +865,7 @@ class _FlyingTubeState extends State<_FlyingTube>
                 alignment: Alignment.bottomCenter,
                 transform: Matrix4.rotationZ(angle),
                 child: _TubeWidget(
-                  tube: widget.tubes[widget.fromIdx],
+                  tube: flyTube,
                   isSelected: false,
                   isDone: false,
                 ),
@@ -771,31 +879,87 @@ class _FlyingTubeState extends State<_FlyingTube>
 }
 
 // ─────────────────────────────────────────────
-// SIYI DAMLASI
+// SIYI AKIŞ ÇİZİCİ — Damlacıklar + akış çizgisi
 // ─────────────────────────────────────────────
 
-class _LiquidDrop extends StatelessWidget {
+class _LiquidStreamPainter extends CustomPainter {
   final Color color;
+  final double startX;
+  final double startY;
+  final double endY;
   final double progress;
 
-  const _LiquidDrop({required this.color, required this.progress});
+  const _LiquidStreamPainter({
+    required this.color,
+    required this.startX,
+    required this.startY,
+    required this.endY,
+    required this.progress,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    final size = 7.0 + progress * 5;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color.withOpacity(0.90),
-        boxShadow: [
-          BoxShadow(
-              color: color.withOpacity(0.55), blurRadius: 8, spreadRadius: 2)
-        ],
-      ),
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+
+    final paint = Paint()
+      ..color = color.withOpacity(0.85)
+      ..strokeWidth = 5.0 + progress * 3
+      ..strokeCap = StrokeCap.round;
+
+    final glowPaint = Paint()
+      ..color = color.withOpacity(0.30)
+      ..strokeWidth = 12.0
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+
+    // Akış çizgisi
+    final path = Path();
+    path.moveTo(startX, startY);
+
+    // Hafif dalgalı akış efekti
+    final midY = (startY + endY) / 2;
+    final wobble = sin(progress * pi * 3) * 2.0;
+    path.cubicTo(
+      startX + wobble,
+      startY + (midY - startY) * 0.3,
+      startX - wobble,
+      startY + (midY - startY) * 0.7,
+      startX,
+      endY,
     );
+
+    // Önce glow
+    canvas.drawPath(path, glowPaint);
+    // Sonra asıl çizgi
+    canvas.drawPath(path, paint);
+
+    // Akış ucunda damlacık
+    final dropR = 4.0 + progress * 4;
+    canvas.drawCircle(
+        Offset(startX, endY),
+        dropR,
+        Paint()
+          ..color = color
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, dropR * 0.5));
+
+    // Küçük ek damlacıklar (fiziksel his)
+    if (progress > 0.3) {
+      for (int i = 0; i < 3; i++) {
+        final t = (progress * 3 + i * 0.7) % 1.0;
+        final y = startY + (endY - startY) * t;
+        final r = 2.0 + t * 2;
+        canvas.drawCircle(
+          Offset(startX + sin(t * pi * 4 + i) * 3, y),
+          r,
+          Paint()..color = color.withOpacity(0.7 - t * 0.3),
+        );
+      }
+    }
   }
+
+  @override
+  bool shouldRepaint(_LiquidStreamPainter old) =>
+      old.progress != progress || old.endY != endY;
 }
 
 // ─────────────────────────────────────────────
@@ -816,7 +980,7 @@ class _TubeWidget extends StatelessWidget {
       SizedBox(
         height: 18,
         child: (isDone && tube.isNotEmpty)
-            ? Text('v',
+            ? Text('✓',
                 style: TextStyle(
                     fontSize: 13,
                     color: kColors[tube[0]]['dark'] as Color,
@@ -843,7 +1007,7 @@ class _TubeWidget extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// TÜP PAINTER
+// TÜP PAINTER — Sıvı yüzeyi + renk geçişleri
 // ─────────────────────────────────────────────
 
 class _TubePainter extends CustomPainter {
@@ -857,7 +1021,7 @@ class _TubePainter extends CustomPainter {
     final borderColor =
         isSelected ? const Color(0xFF378ADD) : Colors.white.withOpacity(0.30);
 
-    // Clip path
+    // Clip path — tüpün iç alanı
     final clip = Path()
       ..moveTo(kTX, kTTopY)
       ..lineTo(kTX, kTBotY)
@@ -866,34 +1030,65 @@ class _TubePainter extends CustomPainter {
       ..lineTo(kTX + kTBW, kTTopY)
       ..close();
 
-    // Renk segmentleri
     canvas.save();
     canvas.clipPath(clip);
+
+    // Renk segmentleri — alt kısımdan yukarı doğru
     for (int i = 0; i < tube.length; i++) {
       final c = kColors[tube[i]]['fill'] as Color;
+      final darkC = kColors[tube[i]]['dark'] as Color;
       final slotFromTop = kCap - 1 - i;
       final segY = kTTopY + slotFromTop * kTSegH;
-      final h = (i == 0) ? kTSegH + kTR + 2 : kTSegH + 1;
+      final h = (i == 0) ? kTSegH + kTR + 4 : kTSegH + 2;
+
+      // Sıvı gradyan efekti (alt biraz koyu, üst biraz açık)
+      final rect = Rect.fromLTWH(kTX, segY, kTBW, h);
       canvas.drawRect(
-        Rect.fromLTWH(kTX, segY, kTBW, h),
-        Paint()..color = c,
-      );
+          rect,
+          Paint()
+            ..shader = LinearGradient(
+              colors: [c, darkC.withOpacity(0.85)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ).createShader(rect));
+
+      // Renk sınırlarında ince karanlık çizgi (sıvı katman ayrımı)
+      if (i < tube.length - 1 && tube[i] != tube[i + 1]) {
+        canvas.drawLine(
+          Offset(kTX, segY),
+          Offset(kTX + kTBW, segY),
+          Paint()
+            ..color = Colors.black.withOpacity(0.25)
+            ..strokeWidth = 1.0,
+        );
+      }
     }
+
     canvas.restore();
 
-    // Yuzey parlakligı
+    // Sıvı yüzeyi parlaklığı
     if (tube.isNotEmpty) {
-      final surfY = kTTopY + (kCap - tube.length) * kTSegH + 3;
-      canvas.drawLine(
-          Offset(kTX + 4, surfY),
-          Offset(kTX + kTBW - 4, surfY),
+      final surfY = kTTopY + (kCap - tube.length) * kTSegH;
+
+      // Sıvı yüzeyi — hafif konveks görünüm için oval highlight
+      final surfaceRect = Rect.fromLTWH(kTX + 2, surfY - 1, kTBW - 4, 5);
+      canvas.drawOval(
+          surfaceRect,
           Paint()
-            ..color = Colors.white.withOpacity(0.45)
+            ..color = Colors.white.withOpacity(0.35)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5));
+
+      // Ana yüzey çizgisi
+      canvas.drawLine(
+          Offset(kTX + 3, surfY + 1.5),
+          Offset(kTX + kTBW - 3, surfY + 1.5),
+          Paint()
+            ..color = Colors.white.withOpacity(0.50)
             ..strokeWidth = 1.5
             ..strokeCap = StrokeCap.round);
     }
 
-    // Secim glow
+    // Seçim glow
     if (isSelected) {
       final glow = Path()
         ..moveTo(kTX - 4, kTTopY)
@@ -910,7 +1105,7 @@ class _TubePainter extends CustomPainter {
             ..strokeCap = StrokeCap.round);
     }
 
-    // Dis cizgi
+    // Dış çizgi
     final outline = Path()
       ..moveTo(kTX, kTTopY)
       ..lineTo(kTX, kTBotY)
@@ -925,7 +1120,7 @@ class _TubePainter extends CustomPainter {
           ..strokeWidth = isSelected ? 2.2 : 1.5
           ..strokeCap = StrokeCap.round);
 
-    // Yansima
+    // Sol kenar yansıması
     canvas.drawLine(
         Offset(kTX + 5, kTTopY + 8),
         Offset(kTX + 5, kTBotY - 10),
@@ -934,7 +1129,7 @@ class _TubePainter extends CustomPainter {
           ..strokeWidth = 2.0
           ..strokeCap = StrokeCap.round);
 
-    // Agiz kenari
+    // Ağız kenarı
     canvas.drawLine(
         Offset(kTX, kTTopY),
         Offset(kTX + kTBW, kTTopY),
