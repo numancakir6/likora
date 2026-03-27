@@ -1,0 +1,25 @@
+workflows:
+  ios-workflow:
+    name: iOS Build
+    environment:
+      flutter: stable
+      xcode: 26.0
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.lexion.likora
+
+    scripts:
+      - name: Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Build iOS
+        script: |
+          flutter build ios --release --no-codesign
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        submit_to_testflight: true
