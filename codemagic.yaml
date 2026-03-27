@@ -47,7 +47,6 @@ workflows:
             --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
             --private-key @file:/tmp/appstore_key.p8 \
             --testflight \
-            --altool-additional-arguments "--use-old-altool"
 
     artifacts:
       - build/ios/ipa/*.ipa
