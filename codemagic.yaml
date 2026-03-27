@@ -13,14 +13,18 @@ workflows:
         script: |
           flutter pub get
 
-      - name: Build iOS
+      - name: Set up code signing
         script: |
-          flutter build ios --release --no-codesign
+          xcode-project use-profiles
+
+      - name: Build IPA
+        script: |
+          flutter build ipa --release
 
     artifacts:
       - build/ios/ipa/*.ipa
 
-publishing:
-  app_store_connect:
-    auth: integration
-    submit_to_testflight: true
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
