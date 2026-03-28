@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:math';
 import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
@@ -9,7 +10,7 @@ import 'map_theme.dart';
 // ─────────────────────────────────────────────
 
 const int kCap = 4;
-const int kNColors = 6;
+const int kNColors = 8;
 const int kEmpty = 2;
 
 // Widget boyutları – SVG oranına göre ayarlandı (84.4 x 182 mm → 60 x 130 px)
@@ -83,98 +84,23 @@ double get kLiquidBotY => kBodyBotY + kTR; // tam daire alt noktasına kadar
 double get kWidgetH => kTH;
 double get kWidgetW => kTW;
 
-const double kTubeGap = 18.0;
+const double kTubeGap = 26.0;
 double get kStageW => (kWidgetW * 4) + (kTubeGap * 3) + 24.0;
 double get kStageH => (kWidgetH * 3) + (kTubeGap * 2) + 28.0;
 const Duration kPourDuration = Duration(milliseconds: 2200);
 
 const List<Map<String, dynamic>> kColors = [
-  {'name': 'Kirmizi', 'fill': Color(0xFFFF1744)},
-  {'name': 'Mavi', 'fill': Color(0xFF2196F3)},
-  {'name': 'Yesil', 'fill': Color(0xFF17C63A)},
-  {'name': 'Pembe', 'fill': Color(0xFFFF4FD8)},
-  {'name': 'Turuncu', 'fill': Color(0xFFFF9800)},
-  {'name': 'Sari', 'fill': Color(0xFFFFD21F)},
+  {'name': 'Gül Kırmızısı', 'fill': Color(0xFFE83060)},
+  {'name': 'Elektrik Mavisi', 'fill': Color(0xFF2E7FFF)},
+  {'name': 'Zümrüt Yeşili', 'fill': Color(0xFF26C26A)},
+  {'name': 'Mor', 'fill': Color(0xFFAB47FF)},
+  {'name': 'Ateş Turuncusu', 'fill': Color(0xFFFF6B1A)},
+  {'name': 'Altın Sarısı', 'fill': Color(0xFFFFCC00)},
+  {'name': 'Turkuaz', 'fill': Color(0xFF00C8D7)},
+  {'name': 'Şeker Pembesi', 'fill': Color(0xFFFF4FA8)},
 ];
 
-// ─────────────────────────────────────────────
-// HARİTA TEMASI
-// ─────────────────────────────────────────────
-
-class _MapTheme {
-  final Color bgTop;
-  final Color bgBottom;
-  final Color glowA;
-  final Color glowB;
-  final Color panel;
-  final Color panelBorder;
-  final Color accent;
-
-  const _MapTheme({
-    required this.bgTop,
-    required this.bgBottom,
-    required this.glowA,
-    required this.glowB,
-    required this.panel,
-    required this.panelBorder,
-    required this.accent,
-  });
-}
-
-_MapTheme _themeForMap(int mapNumber) {
-  switch ((mapNumber - 1) % 5) {
-    case 0:
-      return const _MapTheme(
-        bgTop: Color(0xFF201A32),
-        bgBottom: Color(0xFF151124),
-        glowA: Color(0xFF5E5BFF),
-        glowB: Color(0xFF9B5BFF),
-        panel: Color(0x12000000),
-        panelBorder: Color(0x22FFFFFF),
-        accent: Color(0xFFC1B4FF),
-      );
-    case 1:
-      return const _MapTheme(
-        bgTop: Color(0xFF102317),
-        bgBottom: Color(0xFF0A1711),
-        glowA: Color(0xFF19C37D),
-        glowB: Color(0xFF7ED957),
-        panel: Color(0x12000000),
-        panelBorder: Color(0x22FFFFFF),
-        accent: Color(0xFF7ED957),
-      );
-    case 2:
-      return const _MapTheme(
-        bgTop: Color(0xFF25150E),
-        bgBottom: Color(0xFF140D0A),
-        glowA: Color(0xFFFFA726),
-        glowB: Color(0xFFFF7043),
-        panel: Color(0x12000000),
-        panelBorder: Color(0x22FFFFFF),
-        accent: Color(0xFFFFB74D),
-      );
-    case 3:
-      return const _MapTheme(
-        bgTop: Color(0xFF1A1026),
-        bgBottom: Color(0xFF0E0A16),
-        glowA: Color(0xFF9C6BFF),
-        glowB: Color(0xFFFF4FC3),
-        panel: Color(0x12000000),
-        panelBorder: Color(0x22FFFFFF),
-        accent: Color(0xFFD1A6FF),
-      );
-    default:
-      return const _MapTheme(
-        bgTop: Color(0xFF0D1E21),
-        bgBottom: Color(0xFF091214),
-        glowA: Color(0xFF00BCD4),
-        glowB: Color(0xFF26A69A),
-        panel: Color(0x12000000),
-        panelBorder: Color(0x22FFFFFF),
-        accent: Color(0xFF7BE7F3),
-      );
-  }
-}
+// _MapTheme ve _themeForMap kaldırıldı — MapTheme artık map_theme.dart'tan geliyor.
 
 // ─────────────────────────────────────────────
 // OYUN MANTIĞI
@@ -184,100 +110,77 @@ List<List<int>> generateTubes({
   required int level,
   required int difficulty,
 }) {
-  final patterns = <int, List<List<List<int>>>>{
-    1: [
-      [
-        [0, 1, 2, 3],
-        [1, 2, 0, 3],
-        [2, 0, 1, 3],
-        [3, 0, 1, 2],
-        [0, 1, 2, 3],
-        [1, 2, 0, 3],
-        [2, 0, 1, 3],
-        [3, 2, 1, 0],
-        [],
-        [],
-        [],
-      ],
-      [
-        [0, 1, 2, 3],
-        [1, 0, 3, 2],
-        [2, 3, 0, 1],
-        [3, 2, 1, 0],
-        [0, 2, 1, 3],
-        [1, 3, 2, 0],
-        [2, 1, 3, 0],
-        [3, 0, 2, 1],
-        [],
-        [],
-        [],
-      ],
+  final patterns = <List<List<int>>>[
+    [
+      [0, 1, 2, 3],
+      [4, 5, 6, 7],
+      [1, 2, 3, 4],
+      [5, 6, 7, 0],
+      [2, 3, 4, 5],
+      [6, 7, 0, 1],
+      [3, 4, 5, 6],
+      [7, 0, 1, 2],
+      [],
+      [],
+      [],
     ],
-    2: [
-      [
-        [0, 1, 2, 3],
-        [1, 2, 3, 4],
-        [2, 3, 4, 0],
-        [3, 4, 0, 1],
-        [4, 0, 1, 2],
-        [0, 2, 4, 1],
-        [1, 3, 0, 2],
-        [4, 3, 2, 1],
-        [],
-        [],
-        [],
-      ],
+    [
+      [0, 4, 1, 5],
+      [2, 6, 3, 7],
+      [1, 5, 2, 6],
+      [3, 7, 4, 0],
+      [2, 6, 5, 1],
+      [4, 0, 7, 3],
+      [5, 1, 6, 2],
+      [7, 3, 0, 4],
+      [],
+      [],
+      [],
     ],
-    3: [
-      [
-        [0, 1, 2, 3],
-        [1, 2, 3, 4],
-        [2, 3, 4, 5],
-        [3, 4, 5, 0],
-        [4, 5, 0, 1],
-        [5, 0, 1, 2],
-        [0, 2, 4, 1],
-        [3, 5, 2, 4],
-        [],
-        [],
-        [],
-      ],
+    [
+      [0, 2, 4, 6],
+      [1, 3, 5, 7],
+      [2, 4, 6, 1],
+      [3, 5, 7, 0],
+      [4, 6, 1, 3],
+      [5, 7, 0, 2],
+      [6, 1, 3, 5],
+      [7, 0, 2, 4],
+      [],
+      [],
+      [],
     ],
-    4: [
-      [
-        [0, 1, 2, 3],
-        [1, 2, 3, 4],
-        [2, 3, 4, 5],
-        [3, 4, 5, 0],
-        [4, 5, 0, 1],
-        [5, 0, 1, 2],
-        [0, 4, 2, 5],
-        [3, 1, 4, 2],
-        [],
-        [],
-        [],
-      ],
+    [
+      [0, 3, 1, 4],
+      [2, 5, 6, 7],
+      [1, 4, 2, 5],
+      [6, 7, 0, 3],
+      [2, 5, 3, 6],
+      [7, 0, 4, 1],
+      [3, 6, 5, 2],
+      [4, 1, 7, 0],
+      [],
+      [],
+      [],
     ],
-    5: [
-      [
-        [0, 1, 2, 3],
-        [1, 3, 4, 5],
-        [2, 4, 5, 0],
-        [3, 5, 0, 1],
-        [4, 0, 1, 2],
-        [5, 2, 3, 4],
-        [0, 4, 2, 5],
-        [1, 3, 4, 2],
-        [],
-        [],
-        [],
-      ],
+    [
+      [0, 5, 2, 7],
+      [1, 6, 3, 4],
+      [2, 7, 4, 1],
+      [3, 0, 5, 6],
+      [4, 1, 6, 3],
+      [5, 2, 7, 0],
+      [6, 3, 0, 5],
+      [7, 4, 1, 2],
+      [],
+      [],
+      [],
     ],
-  };
+  ];
 
   final safeDifficulty = difficulty.clamp(1, 5);
-  final bucket = patterns[safeDifficulty] ?? patterns[1]!;
-  final chosen = bucket[(level - 1) % bucket.length];
+  final patternIndex = (level + safeDifficulty - 2) % patterns.length;
+  final chosen = patterns[patternIndex];
   return chosen
       .map((tube) => List<int>.of(tube, growable: true))
       .toList(growable: true);
@@ -385,7 +288,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _animating = false;
   _TransferPlan? _transferPlan;
   bool _gameWon = false;
-  final Set<int> _celebratingDoneTubes = <int>{};
+  final Map<int, int> _celebratingDoneTubes = <int, int>{};
+  final Queue<int> _queuedTapIndices = Queue<int>();
+  bool _drainingQueuedTaps = false;
 
   @override
   void initState() {
@@ -421,11 +326,31 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _transferPlan = null;
     _gameWon = false;
     _celebratingDoneTubes.clear();
+    _queuedTapIndices.clear();
+    _drainingQueuedTaps = false;
     setState(() {});
   }
 
   Future<void> _handleTap(int idx) async {
-    if (_animating) return;
+    // Eğer aktif animasyon bu tüpü kullanıyorsa sıraya al, değilse anında işle
+    if (_animating && _transferPlan != null) {
+      final busyTubes = {_transferPlan!.fromIdx, _transferPlan!.toIdx};
+      if (busyTubes.contains(idx) ||
+          (_selected != null && busyTubes.contains(_selected))) {
+        _queuedTapIndices.addLast(idx);
+        return;
+      }
+      // Busy tubes ile ilgisi yok — direkt işle ama önce seçim durumunu kontrol et
+      // Şu anki seçimiyle çakışıyor mu?
+      if (_selected != null && busyTubes.contains(_selected)) {
+        _queuedTapIndices.addLast(idx);
+        return;
+      }
+    } else if (_animating) {
+      _queuedTapIndices.addLast(idx);
+      return;
+    }
+
     if (_isLockedAdTubeIndex(idx)) return;
 
     if (_selected == null) {
@@ -471,7 +396,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
 
     setState(() {
-      _selected = from; // null yapma, seçili kalsın
+      _selected = from;
       _animating = true;
       _transferPlan = plan;
       _displayTubes = _tubes.map((t) => List<int>.from(t)).toList();
@@ -483,10 +408,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (!mounted) return;
     doPour(_tubes, from, to);
 
-    final newlyDone = <int>{};
+    final newlyDone = <int, int>{};
     for (final idx in [from, to]) {
       if (!_isLockedAdTubeIndex(idx) && isTubeDone(_tubes[idx])) {
-        newlyDone.add(idx);
+        newlyDone[idx] = _tubes[idx].first;
       }
     }
     final didWin = isGameDone(_tubes);
@@ -502,6 +427,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     });
 
     _triggerDoneCelebration(newlyDone);
+    await _drainQueuedTaps();
     if (didWin) {
       await Future.delayed(const Duration(milliseconds: 220));
       if (mounted) {
@@ -510,17 +436,32 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
   }
 
-  void _triggerDoneCelebration(Set<int> indices) {
-    if (indices.isEmpty || !mounted) return;
+  void _triggerDoneCelebration(Map<int, int> bursts) {
+    if (bursts.isEmpty || !mounted) return;
     setState(() {
-      _celebratingDoneTubes.addAll(indices);
+      _celebratingDoneTubes.addAll(bursts);
     });
     Future.delayed(const Duration(milliseconds: 900), () {
       if (!mounted) return;
       setState(() {
-        _celebratingDoneTubes.removeAll(indices);
+        for (final idx in bursts.keys) {
+          _celebratingDoneTubes.remove(idx);
+        }
       });
     });
+  }
+
+  Future<void> _drainQueuedTaps() async {
+    if (_drainingQueuedTaps || _animating || !mounted) return;
+    _drainingQueuedTaps = true;
+    try {
+      while (mounted && !_animating && _queuedTapIndices.isNotEmpty) {
+        final next = _queuedTapIndices.removeFirst();
+        await _handleTap(next);
+      }
+    } finally {
+      _drainingQueuedTaps = false;
+    }
   }
 
   Future<void> _showWinDialog() async {
@@ -574,7 +515,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     color: _theme.accentColor.withOpacity(0.18),
                     borderColor: _theme.accentColor.withOpacity(0.45),
                     textColor: _theme.accentColor,
-                    onTap: _completeLevel,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      Future.microtask(_completeLevel);
+                    },
                   ),
                 ),
               ],
@@ -611,22 +555,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   child: Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Container(
+                      child: SizedBox(
                         width: double.infinity,
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(28),
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.12)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.22),
-                              blurRadius: 24,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
                         child: Column(
                           children: [
                             Expanded(
@@ -743,10 +673,16 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _theme.accentColor,
+                  color: _theme.primaryColor,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
+                  letterSpacing: 1.8,
+                  shadows: [
+                    Shadow(
+                      color: _theme.primaryColor.withOpacity(0.6),
+                      blurRadius: 12,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -758,7 +694,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 }
 
 // ─────────────────────────────────────────────
-// ARKA PLAN
+// ARKA PLAN — map_theme.dart ile aynı stil
 // ─────────────────────────────────────────────
 
 class _AnimatedThemeBg extends StatelessWidget {
@@ -769,73 +705,63 @@ class _AnimatedThemeBg extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (_, __) {
-        final t = controller.value;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [theme.bgDark, theme.bgMid, theme.bgLight],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-              ),
+    return Stack(children: [
+      // Gradyan taban
+      Positioned.fill(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [theme.bgDark, theme.bgMid, theme.bgLight, theme.bgDark],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
             ),
-            Positioned(
-              top: -80 + t * 40,
-              left: -50,
-              child: _GlowBlob(
-                  size: 220, color: theme.primaryColor.withOpacity(0.20)),
-            ),
-            Positioned(
-              top: 120,
-              right: -70 + t * 50,
-              child: _GlowBlob(
-                  size: 260, color: theme.secondaryColor.withOpacity(0.16)),
-            ),
-            Positioned(
-              bottom: -80,
-              left: 40 - t * 30,
-              child: _GlowBlob(
-                  size: 240, color: theme.accentColor.withOpacity(0.10)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _GlowBlob extends StatelessWidget {
-  final double size;
-  final Color color;
-
-  const _GlowBlob({required this.size, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: color,
-              blurRadius: size * 0.6,
-              spreadRadius: size * 0.15,
-            ),
-          ],
+          ),
         ),
       ),
-    );
+      // Tema'ya özgü painter efekti
+      Positioned.fill(
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (_, __) => CustomPaint(
+            painter: buildMapBgPainter(theme, controller.value),
+          ),
+        ),
+      ),
+      // Glow blob'lar
+      AnimatedBuilder(
+        animation: controller,
+        builder: (ctx, __) {
+          final t = controller.value;
+          final size = MediaQuery.of(ctx).size;
+          final w = size.width;
+          final h = size.height;
+          return Stack(children: [
+            _glow(-90 + sin(t * pi) * 20, -120 + cos(t * pi) * 15, 270,
+                theme.primaryColor.withOpacity(0.18)),
+            _glow(w - 170 + cos(t * pi) * 20, 120 + sin(t * pi) * 18, 250,
+                theme.secondaryColor.withOpacity(0.14)),
+            _glow(-80 + sin(t * pi * 1.3) * 16, h - 200 + cos(t * pi) * 20, 260,
+                theme.accentColor.withOpacity(0.12)),
+            _glow(w - 140 + cos(t * pi * 1.2) * 18, h - 180 + sin(t * pi) * 22,
+                230, theme.primaryColor.withOpacity(0.12)),
+          ]);
+        },
+      ),
+    ]);
   }
+
+  Widget _glow(double l, double t, double sz, Color c) => Positioned(
+        left: l,
+        top: t,
+        child: Container(
+          width: sz,
+          height: sz,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(colors: [c, c.withOpacity(0)]),
+          ),
+        ),
+      );
 }
 
 // ─────────────────────────────────────────────
@@ -898,7 +824,7 @@ class _TubeStage extends StatefulWidget {
   final void Function(int) onTap;
   final int lockedAdTubeIndex;
   final bool showLockedAdTube;
-  final Set<int> celebratingDoneTubes;
+  final Map<int, int> celebratingDoneTubes;
 
   const _TubeStage({
     required this.tubes,
@@ -981,10 +907,12 @@ class _TubeStageState extends State<_TubeStage> {
                           _AdUnlockBadge(color: Colors.white.withOpacity(0.90)),
                     ),
                   ),
-                if (widget.celebratingDoneTubes.contains(idx))
-                  const Positioned.fill(
+                if (widget.celebratingDoneTubes.containsKey(idx))
+                  Positioned.fill(
                     child: IgnorePointer(
-                      child: _TubeDoneBurst(),
+                      child: _TubeDoneBurst(
+                        colorIdx: widget.celebratingDoneTubes[idx]!,
+                      ),
                     ),
                   ),
               ],
@@ -1062,7 +990,9 @@ class _AdUnlockBadge extends StatelessWidget {
 }
 
 class _TubeDoneBurst extends StatelessWidget {
-  const _TubeDoneBurst();
+  final int colorIdx;
+
+  const _TubeDoneBurst({required this.colorIdx});
 
   @override
   Widget build(BuildContext context) {
@@ -1086,14 +1016,16 @@ class _TubeDoneBurst extends StatelessWidget {
       },
       child: CustomPaint(
         size: const Size(26, 26),
-        painter: const _BurstHexPainter(),
+        painter: _BurstHexPainter(color: kColors[colorIdx]['fill'] as Color),
       ),
     );
   }
 }
 
 class _BurstHexPainter extends CustomPainter {
-  const _BurstHexPainter();
+  final Color color;
+
+  const _BurstHexPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1111,18 +1043,13 @@ class _BurstHexPainter extends CustomPainter {
     }
     path.close();
 
-    final paint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0xFFFF4FD8), Color(0xFF7C4DFF)],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ).createShader(Offset.zero & size);
+    final paint = Paint()..color = color.withOpacity(0.95);
     canvas.drawPath(path, paint);
 
     canvas.drawPath(
       path,
       Paint()
-        ..color = Colors.white.withOpacity(0.30)
+        ..color = Colors.white.withOpacity(0.18)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2,
     );
@@ -2029,9 +1956,9 @@ class _LiquidPainter extends CustomPainter {
         Paint()
           ..shader = LinearGradient(
             colors: [
-              Colors.white.withOpacity(0.10),
+              Colors.white.withOpacity(0.05),
               Colors.transparent,
-              Colors.black.withOpacity(0.08),
+              Colors.black.withOpacity(0.05),
             ],
             stops: const [0.0, 0.35, 1.0],
             begin: Alignment.topCenter,
@@ -2066,7 +1993,7 @@ class _LiquidPainter extends CustomPainter {
       canvas.drawPath(
         _surfaceLine(totalVol, tilt, slosh),
         Paint()
-          ..color = Colors.white.withOpacity(0.28)
+          ..color = Colors.white.withOpacity(0.18)
           ..strokeWidth = 1.0
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round,
@@ -2143,7 +2070,7 @@ class _LiquidPainter extends CustomPainter {
         Rect.fromLTWH(_il + 2, _it + 3, 4.0, max(0, _ib - _it - 12)),
         const Radius.circular(2.5),
       ),
-      Paint()..color = Colors.white.withOpacity(0.07),
+      Paint()..color = Colors.white.withOpacity(0.04),
     );
 
     canvas.restore();

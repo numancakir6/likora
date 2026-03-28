@@ -2,7 +2,7 @@
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <!-- Creator: CorelDRAW 2026 -->
 <svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="84.4266mm" height="181.978mm" version="1.1" style="shape-rendering:geometricPrecision; text-rendering:geometricPrecision; image-rendering:optimizeQuality; fill-rule:evenodd; clip-rule:evenodd"
-viewBox="0 0 8442.66 18197.8"
+viewBox="0 0 8442.66 18197.78"
  xmlns:xlink="http://www.w3.org/1999/xlink"
  xmlns:xodm="http://www.corel.com/coreldraw/odm/2003">
  <defs>
@@ -10,37 +10,33 @@ viewBox="0 0 8442.66 18197.8"
    <![CDATA[
     .str1 {stroke:white;stroke-width:78.62;stroke-linecap:round;stroke-miterlimit:22.9256;stroke-opacity:0.129412}
     .str0 {stroke:#9A9EBC;stroke-width:56.78;stroke-miterlimit:22.9256}
+    .fil3 {fill:none;fill-rule:nonzero}
     .fil6 {fill:none;fill-rule:nonzero}
-    .fil7 {fill:none;fill-rule:nonzero}
     .fil1 {fill:#3E4258;fill-rule:nonzero}
     .fil0 {fill:#5A5E7A;fill-rule:nonzero}
-    .fil8 {fill:white;fill-rule:nonzero;fill-opacity:0.031373}
+    .fil7 {fill:white;fill-rule:nonzero;fill-opacity:0.031373}
     .fil5 {fill:white;fill-rule:nonzero;fill-opacity:0.058824}
     .fil4 {fill:white;fill-rule:nonzero;fill-opacity:0.219608}
     .fil2 {fill:url(#id0);fill-rule:nonzero}
-    .fil3 {fill:url(#id1);fill-rule:nonzero}
    ]]>
   </style>
-  <linearGradient id="id0" gradientUnits="userSpaceOnUse" x1="814.04" y1="15583.02" x2="814.04" y2="18203.6">
+  <linearGradient id="id0" gradientUnits="userSpaceOnUse" x1="811.34" y1="15579.94" x2="811.34" y2="18199.94">
    <stop offset="0" style="stop-opacity:1; stop-color:#7A7E9A"/>
    <stop offset="1" style="stop-opacity:1; stop-color:#3A3E58"/>
-  </linearGradient>
-  <linearGradient id="id1" gradientUnits="userSpaceOnUse" x1="27.86" y1="34.19" x2="27.86" y2="1257.13">
-   <stop offset="0" style="stop-opacity:1; stop-color:#A0A4C0"/>
-   <stop offset="0.6" style="stop-opacity:1; stop-color:#6E728E"/>
-   <stop offset="1" style="stop-opacity:1; stop-color:#4E5270"/>
   </linearGradient>
  </defs>
  <g id="Katman_x0020_1">
   <metadata id="CorelCorpID_0Corel-Layer"/>
-  <rect class="fil0" x="814.03" y="995.08" width="611.47" height="14850"/>
-  <rect class="fil1" x="7016.09" y="995.08" width="611.47" height="14850"/>
-  <path class="fil2" d="M814.04 15583.02c0,1747.06 1135.58,2620.58 3406.76,2620.58 2271.18,0 3406.76,-873.52 3406.76,-2620.58l-611.47 0c0,1281.17 -931.76,1921.76 -2795.29,1921.76 -1863.53,0 -2795.29,-640.59 -2795.29,-1921.76l-611.47 0z"/>
-  <path class="fil3 str0" d="M639.33 34.19c-407.65,0 -611.47,203.83 -611.47,611.47l0 349.42c0,174.7 116.47,262.05 349.41,262.05l436.77 0 0 -262.05 6813.52 0 0 262.05 436.77 0c232.94,0 349.41,-87.35 349.41,-262.05l0 -349.42c0,-407.64 -203.82,-611.47 -611.47,-611.47l-7162.94 0z"/>
-  <path class="fil4" d="M486.46 121.55l1965.44 0c60.3,0.01 109.2,48.91 109.2,109.2l-0.01 -0.01c0.01,60.3 -48.89,109.2 -109.18,109.2l-1965.45 -0.01c-60.28,0.01 -109.18,-48.89 -109.18,-109.18l-0.01 -0.01c0.01,-60.28 48.91,-109.18 109.2,-109.18z"/>
-  <path class="fil5" d="M1905.95 1169.78l43.67 0c168.84,0.01 305.75,136.92 305.75,305.75l-0.01 13452.34c0.01,168.81 -136.9,305.72 -305.73,305.72l-43.68 0.01c-168.82,-0.01 -305.73,-136.92 -305.73,-305.75l-0.01 -13452.33c0.01,-168.82 136.92,-305.73 305.75,-305.73z"/>
-  <line class="fil6" x1="945.06" y1="1169.78" x2="945.06" y2= "15495.66" />
-  <line class="fil7 str1" x1="945.06" y1="1169.78" x2="945.06" y2= "15495.66" />
-  <path class="fil8" d="M6710.36 1169.78l0 0c72.34,0.01 131.02,58.69 131.02,131.04l0.01 13801.76c-0.01,72.33 -58.69,131.01 -131.04,131.01l0.01 0.01c-72.36,-0.01 -131.04,-58.69 -131.04,-131.04l0.01 -13801.75c-0.01,-72.34 58.67,-131.02 131.02,-131.02z"/>
+  <g id="_2129328396192">
+   <rect class="fil0" x="811.36" y="992.04" width="611.47" height="14849.99"/>
+   <rect class="fil1" x="7013.41" y="992.04" width="611.47" height="14849.99"/>
+   <path class="fil2" d="M811.37 15579.97c0,1747.06 1135.58,2620.58 3406.76,2620.58 2271.18,0 3406.76,-873.52 3406.76,-2620.58l-611.47 0c0,1281.17 -931.76,1921.76 -2795.29,1921.76 -1863.53,0 -2795.29,-640.59 -2795.29,-1921.76l-611.47 0z"/>
+   <path class="fil3 str0" d="M636.66 31.15c-407.65,0 -611.47,203.83 -611.47,611.47l0 349.42c0,174.7 116.47,262.05 349.41,262.05l436.77 0 0 -262.05 6813.52 0 0 262.05 436.77 0c232.94,0 349.41,-87.35 349.41,-262.05l0 -349.42c0,-407.64 -203.82,-611.47 -611.47,-611.47l-7162.94 0z"/>
+   <path class="fil4" d="M483.79 118.51l1965.44 0c60.3,0.01 109.2,48.91 109.2,109.2l-0.01 -0.01c0.01,60.3 -48.89,109.2 -109.18,109.2l-1965.45 -0.01c-60.28,0.01 -109.18,-48.89 -109.18,-109.18l-0.01 -0.01c0.01,-60.28 48.91,-109.18 109.2,-109.18l-0.01 -0.01z"/>
+   <path class="fil5" d="M1903.28 1166.74l43.67 0c168.84,0.01 305.75,136.92 305.75,305.75l-0.01 13452.33c0.01,168.81 -136.9,305.72 -305.73,305.72l-43.68 0.01c-168.82,-0.01 -305.73,-136.92 -305.73,-305.75l-0.01 -13452.32c0.01,-168.82 136.92,-305.73 305.75,-305.73l-0.01 -0.01z"/>
+   <line class="fil3" x1="942.39" y1="1166.74" x2="942.39" y2= "15492.61" />
+   <line class="fil6 str1" x1="942.39" y1="1166.74" x2="942.39" y2= "15492.61" />
+   <path class="fil7" d="M6707.69 1166.74l0 0c72.34,0.01 131.02,58.69 131.02,131.04l0.01 13801.75c-0.01,72.33 -58.69,131.01 -131.04,131.01l0.01 0.01c-72.36,-0.01 -131.04,-58.69 -131.04,-131.04l0.01 -13801.74c-0.01,-72.34 58.67,-131.02 131.02,-131.02l0.01 -0.01z"/>
+  </g>
  </g>
 </svg>

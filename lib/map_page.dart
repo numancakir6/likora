@@ -207,7 +207,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const double _minNodeDistance = 78;
 
   static final Map<int, Set<int>> _mapCompletedLevels = {
-    1: <int>{},
+    for (var i = 1; i <= _maxMapCount; i++) i: <int>{},
   };
 
   late final AnimationController _bgController;
@@ -372,6 +372,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
     if (result == true && mounted) {
       final updatedCompleted = {...completedLevels, levelId};
+
+      // Static map'i de güncelle — map değişince de veri korunsun
+      _mapCompletedLevels[_mapNumber] = updatedCompleted;
 
       setState(() {
         completedLevels = updatedCompleted;
