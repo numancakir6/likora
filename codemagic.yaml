@@ -25,7 +25,9 @@ workflows:
 
       - name: Create App Store Connect key
         script: |
-          echo "$APP_STORE_CONNECT_PUBLISHER_PRIVATE_KEY_BASE64" | base64 --decode > /tmp/appstore_key.p8 || echo "$APP_STORE_CONNECT_PUBLISHER_PRIVATE_KEY_BASE64" | base64 -d > /tmp/appstore_key.p8
+          cat <<'EOF' > /tmp/appstore_key.p8
+          $APP_STORE_CONNECT_PRIVATE_KEY
+          EOF
           echo "----- debug first lines -----"
           head -n 2 /tmp/appstore_key.p8
           echo "----- debug last line -----"
@@ -46,7 +48,7 @@ workflows:
             --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
             --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
             --private-key @file:/tmp/appstore_key.p8 \
-            --testflight \
+            --testflight
 
     artifacts:
       - build/ios/ipa/*.ipa
