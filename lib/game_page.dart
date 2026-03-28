@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'map_theme.dart';
 
 // ─────────────────────────────────────────────
 // OYUN SABİTLERİ
@@ -11,25 +12,80 @@ const int kCap = 4;
 const int kNColors = 6;
 const int kEmpty = 2;
 
-// Tüp boyutları – resme yakın: geniş gövde, dar boyun, yuvarlak alt
-const double kTW = 62.0; // widget genişliği
-const double kTH = 160.0; // widget yüksekliği (boyun dahil)
-const double kTX = 6.0; // gövde sol kenar X
-const double kTBW = 50.0; // gövde genişliği
-const double kNeckW = 22.0; // boyun genişliği
-const double kNeckH = 22.0; // boyun yüksekliği
-const double kTTopY = kNeckH; // gövde başlangıç Y (boyun altı)
-const double kTBodyH = 112.0; // gövde yüksekliği (düz kısım)
-const double kTR = kTBW / 2; // alt yuvarlak yarıçapı
-const double kTBotY = kTTopY + kTBodyH;
+// Widget boyutları – SVG oranına göre ayarlandı (84.4 x 182 mm → 60 x 130 px)
+const double kTW = 60.0;
+const double kTH = 130.0;
 
-const double kLiquidTopInset = 4.0;
-const double kLiquidTopY = kTTopY + kLiquidTopInset;
+// ── SVG oranları (viewBox: 8442.66 x 18197.8) ──────────────────────────────
+// Normalize faktör:
+//   scaleX = kTW / 8442.66 = 60 / 8442.66 ≈ 0.007109
+//   scaleY = kTH / 18197.8 = 130 / 18197.8 ≈ 0.007144
+//
+// SVG bileşenleri:
+//  [Kapak/Tıpa] fil3: y=34.19..y=34.19+995.08+262.05 ≈ 0..1257
+//               normalized → 0..8.98 px  (kapak yüksekliği ≈ 9 px)
+//  [Sol gövde]  fil0: x=814.03, y=995.08, w=611.47, h=14850
+//               normalized → x=5.78, y=7.11, w=4.34, h=106.1
+//  [Sağ gövde]  fil1: x=7016.09, y=995.08, w=611.47, h=14850
+//               normalized → x=49.88, y=7.11, w=4.34, h=106.1
+//  [Alt U]      fil2: y=15583..18203  normalized → y=111.3..130.0
+//  [Kapak]      fil3 üst bölüm: y=34.19..1257  normalized → y=0.24..8.98
+//  [Sol parlama] fil5: x=1905, w=349  normalized → x=13.5, w=2.48
+//  [Sol çizgi]  str1: x=945  normalized → x=6.72
+//  [Sağ gölge]  fil8: x=6710, w=262  normalized → x=47.7, w=1.86
 
-const double kWidgetH = 18.0 + kTH + 4.0 + 14.0;
-const double kWidgetW = kTW;
-const double kTubeGap = 12.0;
+// ── Türetilmiş sabitler ──────────────────────────────────────────────────────
+const double _svgW = 8442.66;
+const double _svgH = 18197.8;
+double get _sx => kTW / _svgW;
+double get _sy => kTH / _svgH;
 
+// Kapak (tıpa) – SVG fil3 üst bölümü
+// SVG'de kapak y=34.19'dan başlar, yüksekliği 995.08+262.05 ≈ 1257 svgpx
+const double _capTopSvg = 34.19;
+const double _capBotSvg = 1257.13; // linearGradient id1 bitiş Y'si
+// Flutter:
+double get kCapTopY => _capTopSvg * _sy; //  ≈ 0.24
+double get kCapBotY => _capBotSvg * _sy; //  ≈ 8.98
+
+// Gövde başlangıcı (kapak altı + biraz boşluk)
+// SVG sol rect y=995.08
+double get kBodyTopSvg => 995.08;
+double get kBodyTopY => kBodyTopSvg * _sy; // ≈ 7.11
+
+// Gövde sol & sağ (SVG rect'ler)
+double get kBodyLeftX => 814.03 * _sx; //  ≈ 5.78
+double get kBodyRightX => (7016.09 + 611.47) * _sx; // ≈ 54.22
+double get kBodyInnerLeft => (814.03 + 611.47) * _sx; // ≈ 10.12
+double get kBodyInnerRight => 7016.09 * _sx; //  ≈ 49.88
+double get kBodyInnerW => kBodyInnerRight - kBodyInnerLeft; // ≈ 39.76
+
+// Gövde alt (yükseklik)
+double get kBodyBotSvg => 995.08 + 14850.0; // = 15845.08
+double get kBodyBotY => kBodyBotSvg * _sy; // ≈ 113.1
+
+// Alt U yarıçapı (iç alan genişliğinin yarısı)
+double get kTR => kBodyInnerW / 2; // ≈ 19.88
+
+// Alt U merkezi Y
+double get kUCenterY => kBodyBotY; // daire merkezi tam gövde altında
+
+// Sıvı için iç alan – duvarlara tam yapışık, üstte küçük boşluk
+double get kLiquidLeft => kBodyInnerLeft; // duvar iç kenarına tam
+double get kLiquidRight => kBodyInnerRight; // duvar iç kenarına tam
+double get kLiquidW => kLiquidRight - kLiquidLeft;
+double get kLiquidTopY =>
+    kBodyTopY + 10.0; // kapaktan 5px boşluk (ağzına kadar dolmasın)
+double get kLiquidBotY => kBodyBotY + kTR; // tam daire alt noktasına kadar
+
+// Widget toplam yüksekliği
+// Alt U'nun en altı: SVG'de y=18197.8 → kTH
+double get kWidgetH => kTH;
+double get kWidgetW => kTW;
+
+const double kTubeGap = 18.0;
+double get kStageW => (kWidgetW * 4) + (kTubeGap * 3) + 24.0;
+double get kStageH => (kWidgetH * 3) + (kTubeGap * 2) + 28.0;
 const Duration kPourDuration = Duration(milliseconds: 2200);
 
 const List<Map<String, dynamic>> kColors = [
@@ -124,17 +180,107 @@ _MapTheme _themeForMap(int mapNumber) {
 // OYUN MANTIĞI
 // ─────────────────────────────────────────────
 
-List<List<int>> generateTubes() {
-  return [
-    [3, 4, 1, 2],
-    [5, 0, 1, 4],
-    [4, 5, 3, 0],
-    [1, 2, 4, 5],
-    [0, 2, 1, 2],
-    [3],
-    [],
-    [],
-  ].map((e) => List<int>.from(e)).toList();
+List<List<int>> generateTubes({
+  required int level,
+  required int difficulty,
+}) {
+  final patterns = <int, List<List<List<int>>>>{
+    1: [
+      [
+        [0, 1, 2, 3],
+        [1, 2, 0, 3],
+        [2, 0, 1, 3],
+        [3, 0, 1, 2],
+        [0, 1, 2, 3],
+        [1, 2, 0, 3],
+        [2, 0, 1, 3],
+        [3, 2, 1, 0],
+        [],
+        [],
+        [],
+      ],
+      [
+        [0, 1, 2, 3],
+        [1, 0, 3, 2],
+        [2, 3, 0, 1],
+        [3, 2, 1, 0],
+        [0, 2, 1, 3],
+        [1, 3, 2, 0],
+        [2, 1, 3, 0],
+        [3, 0, 2, 1],
+        [],
+        [],
+        [],
+      ],
+    ],
+    2: [
+      [
+        [0, 1, 2, 3],
+        [1, 2, 3, 4],
+        [2, 3, 4, 0],
+        [3, 4, 0, 1],
+        [4, 0, 1, 2],
+        [0, 2, 4, 1],
+        [1, 3, 0, 2],
+        [4, 3, 2, 1],
+        [],
+        [],
+        [],
+      ],
+    ],
+    3: [
+      [
+        [0, 1, 2, 3],
+        [1, 2, 3, 4],
+        [2, 3, 4, 5],
+        [3, 4, 5, 0],
+        [4, 5, 0, 1],
+        [5, 0, 1, 2],
+        [0, 2, 4, 1],
+        [3, 5, 2, 4],
+        [],
+        [],
+        [],
+      ],
+    ],
+    4: [
+      [
+        [0, 1, 2, 3],
+        [1, 2, 3, 4],
+        [2, 3, 4, 5],
+        [3, 4, 5, 0],
+        [4, 5, 0, 1],
+        [5, 0, 1, 2],
+        [0, 4, 2, 5],
+        [3, 1, 4, 2],
+        [],
+        [],
+        [],
+      ],
+    ],
+    5: [
+      [
+        [0, 1, 2, 3],
+        [1, 3, 4, 5],
+        [2, 4, 5, 0],
+        [3, 5, 0, 1],
+        [4, 0, 1, 2],
+        [5, 2, 3, 4],
+        [0, 4, 2, 5],
+        [1, 3, 4, 2],
+        [],
+        [],
+        [],
+      ],
+    ],
+  };
+
+  final safeDifficulty = difficulty.clamp(1, 5);
+  final bucket = patterns[safeDifficulty] ?? patterns[1]!;
+  final chosen = bucket[(level - 1) % bucket.length];
+  return chosen
+      .map((tube) => List<int>.of(tube, growable: true))
+      .toList(growable: true);
 }
 
 bool canPour(List<List<int>> tubes, int from, int to) {
@@ -147,19 +293,15 @@ bool canPour(List<List<int>> tubes, int from, int to) {
 
 int pourCount(List<List<int>> tubes, int from, int to) {
   if (!canPour(tubes, from, to)) return 0;
-
   final top = tubes[from].last;
   int count = 0;
   final available = kCap - tubes[to].length;
-
   for (int i = tubes[from].length - 1; i >= 0; i--) {
-    if (tubes[from][i] == top) {
+    if (tubes[from][i] == top)
       count++;
-    } else {
+    else
       break;
-    }
   }
-
   return count.clamp(0, available);
 }
 
@@ -173,7 +315,6 @@ void doPour(List<List<int>> tubes, int from, int to) {
 }
 
 bool isTubeDone(List<int> t) => t.length == kCap && t.every((c) => c == t[0]);
-
 bool isGameDone(List<List<int>> tubes) =>
     tubes.every((t) => t.isEmpty || isTubeDone(t));
 
@@ -203,20 +344,12 @@ class _VisualLayer {
   final int colorIdx;
   final double volume;
 
-  const _VisualLayer({
-    required this.colorIdx,
-    required this.volume,
-  });
+  const _VisualLayer({required this.colorIdx, required this.volume});
 
-  _VisualLayer copyWith({
-    int? colorIdx,
-    double? volume,
-  }) {
-    return _VisualLayer(
-      colorIdx: colorIdx ?? this.colorIdx,
-      volume: volume ?? this.volume,
-    );
-  }
+  _VisualLayer copyWith({int? colorIdx, double? volume}) => _VisualLayer(
+        colorIdx: colorIdx ?? this.colorIdx,
+        volume: volume ?? this.volume,
+      );
 }
 
 // ─────────────────────────────────────────────
@@ -226,11 +359,13 @@ class _VisualLayer {
 class GamePage extends StatefulWidget {
   final int level;
   final int mapNumber;
+  final int difficulty;
 
   const GamePage({
     super.key,
     required this.level,
     required this.mapNumber,
+    this.difficulty = 1,
   });
 
   @override
@@ -239,7 +374,9 @@ class GamePage extends StatefulWidget {
 
 class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   late final AnimationController _bgCtrl;
-  late final _MapTheme _theme;
+  late final MapTheme _theme;
+
+  static const int _lockedAdTubeIndex = 10;
 
   late List<List<int>> _tubes;
   late List<List<int>> _displayTubes;
@@ -248,11 +385,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _animating = false;
   _TransferPlan? _transferPlan;
   bool _gameWon = false;
+  final Set<int> _celebratingDoneTubes = <int>{};
 
   @override
   void initState() {
     super.initState();
-    _theme = _themeForMap(widget.mapNumber);
+    _theme = getMapTheme(widget.mapNumber);
     _bgCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
@@ -266,18 +404,29 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  bool get _showLockedAdTube => widget.level <= 2;
+
+  bool _isLockedAdTubeIndex(int idx) =>
+      _showLockedAdTube && idx == _lockedAdTubeIndex;
+
   void _reset() {
-    _tubes = generateTubes();
-    _displayTubes = _tubes.map((t) => List<int>.from(t)).toList();
+    _tubes = generateTubes(level: widget.level, difficulty: widget.difficulty)
+        .map((t) => List<int>.of(t, growable: true))
+        .toList(growable: true);
+    _displayTubes = _tubes
+        .map((t) => List<int>.of(t, growable: true))
+        .toList(growable: true);
     _selected = null;
     _animating = false;
     _transferPlan = null;
     _gameWon = false;
+    _celebratingDoneTubes.clear();
     setState(() {});
   }
 
   Future<void> _handleTap(int idx) async {
     if (_animating) return;
+    if (_isLockedAdTubeIndex(idx)) return;
 
     if (_selected == null) {
       if (_tubes[idx].isEmpty) return;
@@ -292,6 +441,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     final from = _selected!;
     final to = idx;
+
+    if (_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) {
+      HapticFeedback.lightImpact();
+      setState(() => _selected = null);
+      return;
+    }
 
     if (!canPour(_tubes, from, to)) {
       HapticFeedback.lightImpact();
@@ -316,26 +471,118 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
 
     setState(() {
-      _selected = null;
+      _selected = from; // null yapma, seçili kalsın
       _animating = true;
       _transferPlan = plan;
       _displayTubes = _tubes.map((t) => List<int>.from(t)).toList();
     });
 
     HapticFeedback.mediumImpact();
-
     await Future.delayed(kPourDuration);
 
     if (!mounted) return;
-
     doPour(_tubes, from, to);
 
+    final newlyDone = <int>{};
+    for (final idx in [from, to]) {
+      if (!_isLockedAdTubeIndex(idx) && isTubeDone(_tubes[idx])) {
+        newlyDone.add(idx);
+      }
+    }
+    final didWin = isGameDone(_tubes);
+
     setState(() {
-      _displayTubes = _tubes.map((t) => List<int>.from(t)).toList();
+      _displayTubes = _tubes
+          .map((t) => List<int>.of(t, growable: true))
+          .toList(growable: true);
+      _selected = null;
       _animating = false;
       _transferPlan = null;
-      _gameWon = isGameDone(_tubes);
+      _gameWon = didWin;
     });
+
+    _triggerDoneCelebration(newlyDone);
+    if (didWin) {
+      await Future.delayed(const Duration(milliseconds: 220));
+      if (mounted) {
+        await _showWinDialog();
+      }
+    }
+  }
+
+  void _triggerDoneCelebration(Set<int> indices) {
+    if (indices.isEmpty || !mounted) return;
+    setState(() {
+      _celebratingDoneTubes.addAll(indices);
+    });
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (!mounted) return;
+      setState(() {
+        _celebratingDoneTubes.removeAll(indices);
+      });
+    });
+  }
+
+  Future<void> _showWinDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            decoration: BoxDecoration(
+              color: Color.lerp(_theme.bgMid, Colors.black, 0.18),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: _theme.accentColor.withOpacity(0.28)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.28),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Tebrikler!',
+                  style: TextStyle(
+                    color: _theme.accentColor,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Seviyeyi geçtiniz.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.92),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: _BottomActionBtn(
+                    label: 'Harika',
+                    color: _theme.accentColor.withOpacity(0.18),
+                    borderColor: _theme.accentColor.withOpacity(0.45),
+                    textColor: _theme.accentColor,
+                    onTap: _completeLevel,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _completeLevel() {
@@ -351,7 +598,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _theme.bgBottom,
+      backgroundColor: _theme.bgDark,
       body: Stack(
         children: [
           _AnimatedThemeBg(controller: _bgCtrl, theme: _theme),
@@ -368,9 +615,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                         width: double.infinity,
                         padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
                         decoration: BoxDecoration(
-                          color: _theme.panel,
+                          color: Colors.white.withOpacity(0.06),
                           borderRadius: BorderRadius.circular(28),
-                          border: Border.all(color: _theme.panelBorder),
+                          border:
+                              Border.all(color: Colors.white.withOpacity(0.12)),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.22),
@@ -383,13 +631,21 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                           children: [
                             Expanded(
                               child: Center(
-                                child: SizedBox(
-                                  height: kWidgetH + 110,
-                                  child: _TubeStage(
-                                    tubes: _displayTubes,
-                                    selected: _selected,
-                                    transferPlan: _transferPlan,
-                                    onTap: _handleTap,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: SizedBox(
+                                    width: kStageW,
+                                    height: kStageH,
+                                    child: _TubeStage(
+                                      tubes: _displayTubes,
+                                      selected: _selected,
+                                      transferPlan: _transferPlan,
+                                      onTap: _handleTap,
+                                      lockedAdTubeIndex: _lockedAdTubeIndex,
+                                      showLockedAdTube: _showLockedAdTube,
+                                      celebratingDoneTubes:
+                                          _celebratingDoneTubes,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -410,10 +666,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                 Expanded(
                                   child: _BottomActionBtn(
                                     label: 'Seviyeyi Geç',
-                                    color: _theme.accent.withOpacity(0.18),
+                                    color: _theme.accentColor.withOpacity(0.18),
                                     borderColor:
-                                        _theme.accent.withOpacity(0.45),
-                                    textColor: _theme.accent,
+                                        _theme.accentColor.withOpacity(0.45),
+                                    textColor: _theme.accentColor,
                                     onTap: _completeLevel,
                                   ),
                                 ),
@@ -447,19 +703,54 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   Widget _buildTopBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 0),
       child: SizedBox(
-        height: 46,
-        child: Center(
-          child: Text(
-            'HARITA ${widget.mapNumber}',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.96),
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.2,
+        height: 52,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => Navigator.pop(context),
+                  child: Ink(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.14),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 56),
+              child: Text(
+                _theme.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _theme.accentColor,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -472,12 +763,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
 class _AnimatedThemeBg extends StatelessWidget {
   final Animation<double> controller;
-  final _MapTheme theme;
+  final MapTheme theme;
 
-  const _AnimatedThemeBg({
-    required this.controller,
-    required this.theme,
-  });
+  const _AnimatedThemeBg({required this.controller, required this.theme});
 
   @override
   Widget build(BuildContext context) {
@@ -491,7 +779,7 @@ class _AnimatedThemeBg extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [theme.bgTop, theme.bgBottom],
+                    colors: [theme.bgDark, theme.bgMid, theme.bgLight],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                   ),
@@ -502,25 +790,19 @@ class _AnimatedThemeBg extends StatelessWidget {
               top: -80 + t * 40,
               left: -50,
               child: _GlowBlob(
-                size: 220,
-                color: theme.glowA.withOpacity(0.20),
-              ),
+                  size: 220, color: theme.primaryColor.withOpacity(0.20)),
             ),
             Positioned(
               top: 120,
               right: -70 + t * 50,
               child: _GlowBlob(
-                size: 260,
-                color: theme.glowB.withOpacity(0.16),
-              ),
+                  size: 260, color: theme.secondaryColor.withOpacity(0.16)),
             ),
             Positioned(
               bottom: -80,
               left: 40 - t * 30,
               child: _GlowBlob(
-                size: 240,
-                color: theme.glowA.withOpacity(0.10),
-              ),
+                  size: 240, color: theme.accentColor.withOpacity(0.10)),
             ),
           ],
         );
@@ -533,10 +815,7 @@ class _GlowBlob extends StatelessWidget {
   final double size;
   final Color color;
 
-  const _GlowBlob({
-    required this.size,
-    required this.color,
-  });
+  const _GlowBlob({required this.size, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -617,12 +896,18 @@ class _TubeStage extends StatefulWidget {
   final int? selected;
   final _TransferPlan? transferPlan;
   final void Function(int) onTap;
+  final int lockedAdTubeIndex;
+  final bool showLockedAdTube;
+  final Set<int> celebratingDoneTubes;
 
   const _TubeStage({
     required this.tubes,
     required this.selected,
     required this.transferPlan,
     required this.onTap,
+    required this.lockedAdTubeIndex,
+    required this.showLockedAdTube,
+    required this.celebratingDoneTubes,
   });
 
   @override
@@ -641,9 +926,7 @@ class _TubeStageState extends State<_TubeStage> {
   @override
   void didUpdateWidget(_TubeStage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.tubes.length != widget.tubes.length) {
-      _rebuildKeys();
-    }
+    if (oldWidget.tubes.length != widget.tubes.length) _rebuildKeys();
   }
 
   void _rebuildKeys() {
@@ -654,38 +937,93 @@ class _TubeStageState extends State<_TubeStage> {
     final box = _keys[idx].currentContext?.findRenderObject() as RenderBox?;
     final stageBox = context.findRenderObject() as RenderBox?;
     if (box == null || stageBox == null) return null;
-    return box.localToGlobal(Offset.zero) - stageBox.localToGlobal(Offset.zero);
+
+    Offset pos =
+        box.localToGlobal(Offset.zero) - stageBox.localToGlobal(Offset.zero);
+
+    if (widget.selected == idx) {
+      pos = pos.translate(0, -15.0);
+    }
+
+    return pos;
+  }
+
+  Widget _tubeItem(int idx, {double topPadding = 0}) {
+    final hiddenSource = widget.transferPlan?.fromIdx;
+    final isLockedAdTube =
+        widget.showLockedAdTube && idx == widget.lockedAdTubeIndex;
+
+    return Padding(
+      padding: EdgeInsets.only(top: topPadding),
+      child: KeyedSubtree(
+        key: _keys[idx],
+        child: GestureDetector(
+          onTap: () => widget.onTap(idx),
+          child: Opacity(
+            opacity: idx == hiddenSource ? 0.0 : 1.0,
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                Opacity(
+                  opacity: isLockedAdTube ? 0.30 : 1.0,
+                  child: _TubeWidget(
+                    tube: widget.tubes[idx],
+                    isSelected: widget.selected == idx,
+                  ),
+                ),
+                if (isLockedAdTube)
+                  Positioned(
+                    right: -2,
+                    bottom: 6,
+                    child: IgnorePointer(
+                      child:
+                          _AdUnlockBadge(color: Colors.white.withOpacity(0.90)),
+                    ),
+                  ),
+                if (widget.celebratingDoneTubes.contains(idx))
+                  const Positioned.fill(
+                    child: IgnorePointer(
+                      child: _TubeDoneBurst(),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _row(List<int> indices, {double topPadding = 0}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (final idx in indices) ...[
+          _tubeItem(idx, topPadding: topPadding),
+          if (idx != indices.last) const SizedBox(width: kTubeGap),
+        ],
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final hiddenSource = widget.transferPlan?.fromIdx;
-
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Positioned.fill(
           child: Align(
             alignment: Alignment.bottomCenter,
-            child: Wrap(
-              spacing: kTubeGap,
-              runSpacing: kTubeGap,
-              alignment: WrapAlignment.center,
-              children: List.generate(widget.tubes.length, (idx) {
-                return KeyedSubtree(
-                  key: _keys[idx],
-                  child: GestureDetector(
-                    onTap: () => widget.onTap(idx),
-                    child: Opacity(
-                      opacity: idx == hiddenSource ? 0.0 : 1.0,
-                      child: _TubeWidget(
-                        tube: widget.tubes[idx],
-                        isSelected: widget.selected == idx,
-                      ),
-                    ),
-                  ),
-                );
-              }),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _row(const [0, 1, 2, 3]),
+                const SizedBox(height: kTubeGap),
+                _row(const [4, 5, 6, 7]),
+                const SizedBox(height: kTubeGap),
+                _row(const [8, 9, 10], topPadding: 4),
+              ],
             ),
           ),
         ),
@@ -699,18 +1037,111 @@ class _TubeStageState extends State<_TubeStage> {
   }
 }
 
+class _AdUnlockBadge extends StatelessWidget {
+  final Color color;
+
+  const _AdUnlockBadge({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Icon(
+        Icons.play_arrow_rounded,
+        size: 15,
+        color: color,
+      ),
+    );
+  }
+}
+
+class _TubeDoneBurst extends StatelessWidget {
+  const _TubeDoneBurst();
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 850),
+      builder: (context, value, child) {
+        final eased = Curves.easeOutCubic.transform(value);
+        final dy = lerpDouble(18.0, -58.0, eased)!;
+        final opacity = (1.0 - eased).clamp(0.0, 1.0);
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, dy),
+            child: Align(
+              alignment: Alignment.center,
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: CustomPaint(
+        size: const Size(26, 26),
+        painter: const _BurstHexPainter(),
+      ),
+    );
+  }
+}
+
+class _BurstHexPainter extends CustomPainter {
+  const _BurstHexPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    final r = size.width / 2;
+    final c = Offset(size.width / 2, size.height / 2);
+    for (int i = 0; i < 6; i++) {
+      final a = -pi / 2 + (pi / 3) * i;
+      final p = Offset(c.dx + cos(a) * r, c.dy + sin(a) * r);
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    path.close();
+
+    final paint = Paint()
+      ..shader = const LinearGradient(
+        colors: [Color(0xFFFF4FD8), Color(0xFF7C4DFF)],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(Offset.zero & size);
+    canvas.drawPath(path, paint);
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.white.withOpacity(0.30)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 // ─────────────────────────────────────────────
 // UÇAN TÜP
+
 // ─────────────────────────────────────────────
 
 class _FlyingTube extends StatefulWidget {
   final _TransferPlan plan;
   final Offset? Function(int) getPos;
 
-  const _FlyingTube({
-    required this.plan,
-    required this.getPos,
-  });
+  const _FlyingTube({required this.plan, required this.getPos});
 
   @override
   State<_FlyingTube> createState() => _FlyingTubeState();
@@ -731,10 +1162,8 @@ class _FlyingTubeState extends State<_FlyingTube>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: kPourDuration,
-    )..forward();
+    _ctrl = AnimationController(vsync: this, duration: kPourDuration)
+      ..forward();
   }
 
   @override
@@ -743,25 +1172,13 @@ class _FlyingTubeState extends State<_FlyingTube>
     super.dispose();
   }
 
-  static double _easeHeavy(double t) {
-    return Curves.easeInOutCubic.transform(t.clamp(0.0, 1.0));
-  }
-
-  static double _easeOutHeavy(double t) {
-    return Curves.easeOutCubic.transform(t.clamp(0.0, 1.0));
-  }
-
+  static double _easeHeavy(double t) =>
+      Curves.easeInOutCubic.transform(t.clamp(0.0, 1.0));
+  static double _easeOutHeavy(double t) =>
+      Curves.easeOutCubic.transform(t.clamp(0.0, 1.0));
   static double _phase(double v, double start, double end) =>
       ((v - start) / (end - start)).clamp(0.0, 1.0);
 
-  /// Şişenin yerel koordinat sisteminde ağız merkezi (pivot = anchorLocal)
-  Offset _tubeMouthLocal() => const Offset(kTW / 2, 18.0 + kTTopY + 3.0);
-
-  Offset _anchorLocal() => const Offset(kTW / 2, kWidgetH);
-
-  /// Şişe döndürülmüş haldeyken ağız kenarından çıkan sıvı noktası.
-  /// Bu nokta _tubeOutline() içindeki gerçek ağız kenarına tam eşleşmeli.
-  /// Eğim yönüne (goRight) göre sol/sağ ağız kenarını döndürerek global konum.
   Offset _rotateAroundAnchor(Offset point, Offset anchor, double angle) {
     final dx = point.dx - anchor.dx;
     final dy = point.dy - anchor.dy;
@@ -793,41 +1210,13 @@ class _FlyingTubeState extends State<_FlyingTube>
     return deg * pi / 180.0;
   }
 
-  List<_VisualLayer> _layersFromTube(List<int> tube) {
-    final layers = <_VisualLayer>[];
-    for (final color in tube) {
-      if (layers.isNotEmpty && layers.last.colorIdx == color) {
-        final last = layers.removeLast();
-        layers.add(last.copyWith(volume: last.volume + 1.0));
-      } else {
-        layers.add(_VisualLayer(colorIdx: color, volume: 1.0));
-      }
-    }
-    return layers;
-  }
+  Offset _mouthEdgeLocal({required double bottleAngle}) {
+    final poursFromRight = bottleAngle < 0;
 
-  // ── Şişe ağzının canvas üzerindeki global konumunu hesapla ──────────────
-  // _TubePainter içindeki _tubeOutline() ile birebir eşleşmeli.
-  // _tubeOutline ağız kenarını şu noktadan çiziyor:
-  //   sol:  (kTX - _mouthLipOut, lipY)  →  right: (kTX + kTBW + _mouthLipOut, lipY)
-  // topPad = 18, lipY = topPad + kTTopY + 2.0 - mouthLipDown = 18+8+2-4.5 = 23.5
-  static const double _topPad = 18.0;
-  static const double _mouthLipDown = 3.0;
-  static const double _mouthLipOut = 2.0;
-  // lipY: boyun üst kenarı (akış çıkış noktası)
-  // neckTopY = _topPad + 2.0, capY = neckTopY - 3.0 = _topPad - 1.0
-  static const double _lipYLocal = _topPad + 2.0;
-
-  /// Şişenin yerel koordinat sisteminde, eğim yönüne göre sıvının döküldüğü
-  /// gerçek ağız kenarı noktası.  Bu noktayı döndürerek global stream başlangıcını
-  /// hesaplayacağız.
-  Offset _mouthEdgeLocal({required bool goRight}) {
-    // tilt<0 (goRight) → sağ kenar alçak → sağ ağızdan akar
-    // tilt>0 (!goRight) → sol kenar alçak → sol ağızdan akar
-    if (goRight) {
-      return const Offset(kTX + kTBW + _mouthLipOut, _lipYLocal); // sağ ağız
+    if (poursFromRight) {
+      return Offset(kBodyRightX + 2.0, kCapBotY - 0.5);
     } else {
-      return const Offset(kTX - _mouthLipOut, _lipYLocal); // sol ağız
+      return Offset(kBodyLeftX - 2.0, kCapBotY - 0.5);
     }
   }
 
@@ -840,12 +1229,11 @@ class _FlyingTubeState extends State<_FlyingTube>
     final fromMidX = fromPos.dx + kWidgetW / 2;
     final toMidX = toPos.dx + kWidgetW / 2;
     final goRight = toMidX > fromMidX;
-
     final tiltSign = goRight ? -1.0 : 1.0;
-    final liftY = min(fromPos.dy, toPos.dy) - 96.0;
+    final liftY = min(fromPos.dy, toPos.dy) - 60.0;
 
-    final mouthLocal = _tubeMouthLocal();
-    final anchorLocal = _anchorLocal();
+    final mouthLocal = Offset(kWidgetW / 2, kCapBotY + 1.0);
+    final anchorLocal = Offset(kWidgetW / 2, kBodyBotY + kTR);
 
     return AnimatedBuilder(
       animation: _ctrl,
@@ -861,18 +1249,14 @@ class _FlyingTubeState extends State<_FlyingTube>
 
         final sourceDrainVolume = widget.plan.count * transferProgress;
         final targetIncomingVolume = widget.plan.count * transferProgress;
-
         final remainingUnits =
             (widget.plan.fromSnapshot.length - sourceDrainVolume)
                 .clamp(0.0, kCap.toDouble());
 
         final dynamicMaxTilt = _targetTiltForRemaining(remainingUnits);
 
-        // Hedef tüpün boyun alt kenarı (gövde başlangıcı) civarı
-        final targetMouth = Offset(
-          toMidX,
-          toPos.dy + _topPad + kNeckH + 6.0,
-        );
+        const double kPourGapY = 18.0;
+        final targetMouth = Offset(toMidX, toPos.dy + kCapBotY - kPourGapY);
 
         final pourTopLeft = _tubeTopLeftToMatchMouth(
           targetMouth: targetMouth,
@@ -928,43 +1312,26 @@ class _FlyingTubeState extends State<_FlyingTube>
         const inertiaFactor = 0.07;
         _liquidTilt += (bottleAngle - _liquidTilt) * inertiaFactor;
 
-        final streamOpen = Curves.easeInOut.transform(
-          _phase(v, _pMoveEnd, _pPourEnd),
-        );
-
-        final easedFlow = Curves.easeInOutSine.transform(
-          streamOpen.clamp(0.0, 1.0),
-        );
+        final streamOpen =
+            Curves.easeInOut.transform(_phase(v, _pMoveEnd, _pPourEnd));
+        final easedFlow =
+            Curves.easeInOutSine.transform(streamOpen.clamp(0.0, 1.0));
 
         final isPouring = widget.plan.count > 0 &&
             v >= _pMoveEnd &&
             v < _pPourEnd &&
-            streamOpen > 0.02;
+            streamOpen > 0.005;
 
-        final internalFlowBias = Curves.easeInOut.transform(
-          (streamOpen * (_liquidTilt.abs() / 1.02)).clamp(0.0, 1.0),
-        );
-
-        // ── Gerçek ağız noktasını hesapla (tube koordinatlarından global'e) ──
-        // Şişenin yerel koordinat sistemindeki ağız kenarı
-        final mouthEdgeLocal = _mouthEdgeLocal(goRight: goRight);
-        // Anchor (pivot) yerel koordinatı
-        // Döndürme işlemi _TubePainter içindeki pivot ile aynı:
-        //   canvas.translate(pivotX, pivotY); rotate(tilt); translate(-pivotX,-pivotY)
-        // Burada tube widget (cx,cy)'e yerleştirilmiş. Pivot tube içinde (_pivotX,_pivotY).
-        final pivotInWidget = Offset(kTW / 2, _topPad + kTH - 18.0);
-
-        // Ağız kenarını pivot etrafında döndür
+        final mouthEdgeLocal = _mouthEdgeLocal(bottleAngle: bottleAngle);
+        final pivotInWidget = Offset(kWidgetW / 2, kBodyBotY + kTR);
         final rotatedMouthEdge =
             _rotateAroundAnchor(mouthEdgeLocal, pivotInWidget, bottleAngle);
 
-        // Global canvas koordinatına çevir
         final globalStreamStart = Offset(
           cx + rotatedMouthEdge.dx,
           cy + rotatedMouthEdge.dy,
         );
 
-        // Hedef şişenin ağız girişi (sıvının düştüğü nokta)
         final targetFillRatio =
             ((widget.plan.toSnapshot.length + targetIncomingVolume) / kCap)
                 .clamp(0.0, 1.0);
@@ -980,11 +1347,20 @@ class _FlyingTubeState extends State<_FlyingTube>
             easedFlow * 0.06 +
             targetIncomingVolume * 0.02;
         final targetSplash = isPouring ? easedFlow * 0.32 : 0.0;
+        final sourceBubbleBurst = isPouring
+            ? lerpDouble(0.85, 1.0, easedFlow)!
+            : (v >= _pPourEnd && v < _pUprightEnd
+                ? lerpDouble(0.55, 0.0, _phase(v, _pPourEnd, _pUprightEnd))!
+                : 0.0);
+        final targetBubbleBurst = isPouring
+            ? lerpDouble(0.75, 0.95, easedFlow)!
+            : (v >= _pPourEnd && v < _pUprightEnd
+                ? lerpDouble(0.45, 0.0, _phase(v, _pPourEnd, _pUprightEnd))!
+                : 0.0);
 
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            // Hedef şişe (arkada)
             Positioned(
               left: toPos.dx,
               top: toPos.dy,
@@ -997,10 +1373,10 @@ class _FlyingTubeState extends State<_FlyingTube>
                   slosh: targetSlosh,
                   splash: targetSplash,
                   pourProgress: streamOpen,
+                  bubbleBurst: targetBubbleBurst,
                 ),
               ),
             ),
-            // Kaynak şişe (akış ile birlikte çizilecek)
             Positioned(
               left: cx,
               top: cy,
@@ -1011,13 +1387,11 @@ class _FlyingTubeState extends State<_FlyingTube>
                 tilt: _liquidTilt,
                 slosh: sourceSlosh,
                 pourProgress: streamOpen,
-                // Sıvı stream'in başladığı global noktayı tube painter'a ilet
-                // böylece tongue ile stream arasında boşluk kalmaz
+                bubbleBurst: sourceBubbleBurst,
                 streamStartGlobal: isPouring ? globalStreamStart : null,
                 tubeCanvasOffset: isPouring ? Offset(cx, cy) : null,
               ),
             ),
-            // Kesintisiz akış çizgisi
             if (isPouring)
               Positioned.fill(
                 child: IgnorePointer(
@@ -1039,9 +1413,8 @@ class _FlyingTubeState extends State<_FlyingTube>
   }
 
   double _surfaceCenterYForFillRatio(double fillRatio) {
-    final innerBottom = kTBotY + kTR;
-    final innerTop = kLiquidTopY;
-    return innerBottom - (innerBottom - innerTop) * fillRatio;
+    final innerBottom = kBodyBotY + kTR;
+    return innerBottom - (innerBottom - kLiquidTopY) * fillRatio;
   }
 
   double _motionEnergy(double v) {
@@ -1060,13 +1433,13 @@ class _FlyingTubeState extends State<_FlyingTube>
 }
 
 // ─────────────────────────────────────────────
-// SIVI AKIŞI  –  Kesintisiz versiyon
+// SIVI AKIŞI
 // ─────────────────────────────────────────────
 
 class _LiquidStreamPainter extends CustomPainter {
   final Color color;
-  final Offset start; // global (kaynak ağız kenarı)
-  final Offset end; // global (hedef sıvı yüzeyi)
+  final Offset start;
+  final Offset end;
   final double progress;
   final double flowRate;
 
@@ -1087,68 +1460,61 @@ class _LiquidStreamPainter extends CustomPainter {
     final dy = end.dy - start.dy;
     final distance = (end - start).distance;
 
-    // Akışın kalınlığı
-    final thickness = lerpDouble(2.2, 5.0, flowRate)!;
+    final thickness = lerpDouble(3.6, 7.0, flowRate)!;
+    final arc = max(10.0, dy.abs() * 0.10 + distance * 0.05);
 
-    // Bézier kontrol noktaları: başlangıç ve bitiş noktalarına teğet
-    // böylece hem tube ağzından hem de hedef yüzeyden pürüzsüz giriş olur.
-    final arc = max(6.0, dy.abs() * 0.08 + distance * 0.04);
-
+// Başlangıçta şişe ağzına daha yapışık,
+// sonda hedef kaba daha düz giren eğri
     final c1 = Offset(
-      start.dx + dx * 0.12,
-      start.dy + arc,
+      start.dx + dx * 0.10,
+      start.dy + max(4.0, arc * 0.85),
     );
+
     final c2 = Offset(
-      end.dx - dx * 0.10,
-      end.dy - arc * 0.30,
+      end.dx - dx * 0.08,
+      end.dy - max(3.0, arc * 0.18),
     );
 
     final path = Path()
       ..moveTo(start.dx, start.dy)
       ..cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, end.dx, end.dy);
 
-    // Glow (dış parlaklık)
     canvas.drawPath(
       path,
       Paint()
-        ..color = color.withOpacity(0.18 * progress)
+        ..color = color.withOpacity(0.24 * progress)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = thickness + 3.0
+        ..strokeWidth = thickness + 4.2
         ..strokeCap = StrokeCap.round
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.5),
     );
 
-    // Ana akış
     canvas.drawPath(
       path,
       Paint()
-        ..color = color.withOpacity(0.92)
+        ..color = color.withOpacity(0.98)
         ..style = PaintingStyle.stroke
         ..strokeWidth = thickness
         ..strokeCap = StrokeCap.round,
     );
 
-    // Beyaz öz (parlaklık)
     canvas.drawPath(
       path,
       Paint()
-        ..color = Colors.white.withOpacity(0.20 * flowRate)
+        ..color = Colors.white.withOpacity(0.24 * flowRate)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = max(0.8, thickness * 0.22)
+        ..strokeWidth = max(1.0, thickness * 0.24)
         ..strokeCap = StrokeCap.round,
     );
-
-    // (damlalar kaldırıldı)
   }
 
   @override
-  bool shouldRepaint(_LiquidStreamPainter oldDelegate) {
-    return oldDelegate.start != start ||
-        oldDelegate.end != end ||
-        oldDelegate.progress != progress ||
-        oldDelegate.flowRate != flowRate ||
-        oldDelegate.color != color;
-  }
+  bool shouldRepaint(_LiquidStreamPainter old) =>
+      old.start != start ||
+      old.end != end ||
+      old.progress != progress ||
+      old.flowRate != flowRate ||
+      old.color != color;
 }
 
 // ─────────────────────────────────────────────
@@ -1165,7 +1531,7 @@ class _TubeWidget extends StatelessWidget {
   final double incomingVolume;
   final double splash;
   final double pourProgress;
-  // Yeni: stream'in başladığı global nokta (sadece kaynak tüpte kullanılır)
+  final double bubbleBurst;
   final Offset? streamStartGlobal;
   final Offset? tubeCanvasOffset;
 
@@ -1179,242 +1545,258 @@ class _TubeWidget extends StatelessWidget {
     this.incomingVolume = 0.0,
     this.splash = 0.0,
     this.pourProgress = 0.0,
+    this.bubbleBurst = 0.0,
     this.streamStartGlobal,
     this.tubeCanvasOffset,
   });
 
+  Alignment _pivotAlignment() {
+    const pivotX = kTW / 2;
+    final pivotY = kBodyBotY + kTR;
+    return Alignment(
+      (pivotX / (kTW / 2)) - 1,
+      (pivotY / (kWidgetH / 2)) - 1,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(kTW, kWidgetH),
-      painter: _TubePainter(
-        tube: tube,
-        isSelected: isSelected,
-        tilt: tilt,
-        slosh: slosh,
-        drainedVolume: drainedVolume,
-        incomingColorIdx: incomingColorIdx,
-        incomingVolume: incomingVolume,
-        splash: splash,
-        pourProgress: pourProgress,
-        streamStartGlobal: streamStartGlobal,
-        tubeCanvasOffset: tubeCanvasOffset,
+    final frame = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        CustomPaint(
+          size: Size(kWidgetW, kWidgetH),
+          painter: _LiquidPainter(
+            tube: tube,
+            tilt: tilt,
+            slosh: slosh,
+            drainedVolume: drainedVolume,
+            incomingColorIdx: incomingColorIdx,
+            incomingVolume: incomingVolume,
+            splash: splash,
+            pourProgress: pourProgress,
+            bubbleBurst: bubbleBurst,
+          ),
+        ),
+        CustomPaint(
+          size: Size(kWidgetW, kWidgetH),
+          painter: const _TubeBodyPainter(),
+        ),
+      ],
+    );
+
+    final liftY = isSelected ? -15.0 : 0.0;
+
+    if (tilt.abs() < 0.0001) {
+      return SizedBox(
+        width: kWidgetW,
+        height: kWidgetH,
+        child: Transform.translate(
+          offset: Offset(0, liftY),
+          child: frame,
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: kWidgetW,
+      height: kWidgetH,
+      child: Transform.translate(
+        offset: Offset(0, liftY),
+        child: Transform.rotate(
+          angle: tilt,
+          alignment: _pivotAlignment(),
+          child: frame,
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────
-// HACİM / YÜZEY
-// ─────────────────────────────────────────────
-
-double _volumeUnitsForSurfaceY(double surfaceY) {
-  if (surfaceY >= kTBotY + kTR) return 0.0;
-  if (surfaceY <= kLiquidTopY) return kCap.toDouble();
-
-  const r = kTR;
-  double filledArea;
-
-  if (surfaceY >= kTBotY) {
-    final dy = kTBotY - surfaceY;
-    final ratio = (dy / r).clamp(-1.0, 1.0);
-    final aCap = r * r * acos(ratio) - dy * sqrt(max(0.0, r * r - dy * dy));
-    filledArea = pi * r * r / 2.0 - aCap;
-  } else {
-    final straightFilled = kTBW * (kTBotY - surfaceY);
-    filledArea = straightFilled + pi * r * r / 2.0;
-  }
-
-  final totalArea = kTBW * (kTBotY - kLiquidTopY) + pi * r * r / 2.0;
-  return (filledArea / totalArea * kCap).clamp(0.0, kCap.toDouble());
-}
-
-double _surfaceYForVolumeUnits(double volumeUnits) {
-  final clamped = volumeUnits.clamp(0.0, kCap.toDouble());
-  if (clamped <= 0.0) return kTBotY + kTR;
-  if (clamped >= kCap) return kLiquidTopY;
-
-  double lo = kLiquidTopY;
-  double hi = kTBotY + kTR;
-
-  for (int i = 0; i < 48; i++) {
-    final mid = (lo + hi) / 2;
-    if (_volumeUnitsForSurfaceY(mid) < clamped) {
-      hi = mid;
-    } else {
-      lo = mid;
-    }
-  }
-  return (lo + hi) / 2;
-}
-
-// ─────────────────────────────────────────────
-// TÜP İÇİ SIVI GEOMETRİSİ  –  Gerçek yerçekimi fiziği
+// TÜP GÖVDE PAINTER  –  SVG birebir replika
 // ─────────────────────────────────────────────
 //
-// Tüp eğilince sıvı ALÇAK KENARA yığılır (gerçek fizik).
-//   tilt < 0  → sola eğim  → sol kenar alçak (canvas'ta büyük Y) → sıvı sola yığılır
-//   tilt > 0  → sağa eğim  → sağ kenar alçak (canvas'ta büyük Y) → sıvı sağa yığılır
-//
-// slope = tan(tilt) * halfW  → canvas'ta Y aşağı artar.
-//   tilt<0 → tan<0 → slope<0
-//   leftY  = midY - slope  = midY + |slope|  → büyük Y → alçak kenar  ✓
-//   rightY = midY + slope  = midY - |slope|  → küçük Y → yüksek kenar ✓
+// SVG yapısı (yukarıdan aşağı):
+//  1. [Kapak / tıpa] fil3+str0:  üst yuvarlak köşeli dikdörtgen, degrade gri
+//  2. [Sol duvar]    fil0:       koyu gri dikey şerit (sol)
+//  3. [Sağ duvar]    fil1:       daha koyu gri dikey şerit (sağ)
+//  4. [Alt U]        fil2:       degrade yarım daire
+//  5. [Sol parlama]  fil5:       şeffaf beyaz dikey oval (sol içinde)
+//  6. [Sol çizgi]    str1:       yarı şeffaf beyaz dikey çizgi (sol kenar)
+//  7. [Sağ gölge]    fil8:       çok şeffaf beyaz oval (sağ içinde)
+//  8. [Kapak parlaması] fil4:    sol üstte parlak oval
 
-double _surfaceSlope(double tilt, double slosh) {
-  final raw = tan(tilt) * (kTBW / 2) + slosh * 5.0;
-  return raw.clamp(-kTBodyH * 0.55, kTBodyH * 0.55);
-}
+class _TubeBodyPainter extends CustomPainter {
+  const _TubeBodyPainter();
 
-({double leftY, double centerY, double rightY}) _surfacePoints({
-  required double volume,
-  required double tilt,
-  required double slosh,
-}) {
-  final midY = _surfaceYForVolumeUnits(volume);
-  final slope = _surfaceSlope(tilt, slosh);
-  // tilt<0 → sola eğim (canvas sola döner) → sağ kenar alçak (büyük Y)
-  // slope<0 → rightY = midY - slope = midY + |slope| → büyük = alçak ✓
-  // leftY  = midY + slope = midY - |slope| → küçük = yüksek ✓
-  final leftY = (midY + slope).clamp(kLiquidTopY, kTBotY + kTR);
-  final rightY = (midY - slope).clamp(kLiquidTopY, kTBotY + kTR);
-  return (leftY: leftY, centerY: (leftY + rightY) / 2.0, rightY: rightY);
-}
+  // ── Renk sabitleri (SVG'den) ──────────────────────────────────────────────
+  static const Color _clrWallLeft = Color(0xFF5A5E7A); // fil0
+  static const Color _clrWallRight = Color(0xFF3E4258); // fil1
+  static const Color _clrCapTop = Color(0xFFA0A4C0); // id1 stop 0
+  static const Color _clrCapMid = Color(0xFF6E728E); // id1 stop 0.6
+  static const Color _clrCapBot = Color(0xFF4E5270); // id1 stop 1
+  static const Color _clrCapBorder = Color(0xFF9A9EBC); // str0
+  static const Color _clrUBot = Color(0xFF3A3E58); // id0 stop 1
+  static const Color _clrUTop = Color(0xFF7A7E9A); // id0 stop 0
 
-Path _buildCompactLiquidBand({
-  required double volumeBottom,
-  required double volumeTop,
-  required double tilt,
-  required double slosh,
-  required double flowBias,
-}) {
-  if (volumeTop <= volumeBottom + 0.001) return Path();
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Koordinatlar – kWidgetW x kWidgetH canvas'ına ölçeklendi
+    // Tüm değerler SVG'den türetildi (getter'lar kullanılıyor)
 
-  final top = _surfacePoints(volume: volumeTop, tilt: tilt, slosh: slosh);
-  final bot =
-      _surfacePoints(volume: volumeBottom, tilt: tilt, slosh: slosh * 0.4);
+    final lx = kBodyLeftX; // sol duvar sol X  ≈ 5.78
+    final rx = kBodyRightX; // sağ duvar sağ X  ≈ 54.22
+    final il = kBodyInnerLeft; // iç alan sol X  ≈ 10.12
+    final ir = kBodyInnerRight; // iç alan sağ X  ≈ 49.88
+    final topY = kBodyTopY; // gövde üst Y    ≈ 7.11
+    final botY = kBodyBotY; // gövde alt Y    ≈ 113.1
+    final r = kTR; // alt daire r    ≈ 19.88
+    final capTop = kCapTopY; // kapak üst Y    ≈ 0.24
+    final capBot = kCapBotY; // kapak alt Y    ≈ 8.98
+    final capH = capBot - capTop;
 
-  return Path()
-    ..moveTo(kTX, top.leftY)
-    ..quadraticBezierTo(kTX + kTBW / 2, top.centerY, kTX + kTBW, top.rightY)
-    ..lineTo(kTX + kTBW, bot.rightY)
-    ..quadraticBezierTo(kTX + kTBW / 2, bot.centerY, kTX, bot.leftY)
-    ..close();
-}
+    // ── 1. Sol duvar ──────────────────────────────────────────────────────
+    canvas.drawRect(
+      Rect.fromLTWH(lx, topY, il - lx, botY - topY),
+      Paint()..color = _clrWallLeft,
+    );
 
-Path _buildCompactSurfaceLine({
-  required double totalVolume,
-  required double tilt,
-  required double slosh,
-  required double flowBias,
-}) {
-  final s = _surfacePoints(volume: totalVolume, tilt: tilt, slosh: slosh);
-  return Path()
-    ..moveTo(kTX, s.leftY)
-    ..quadraticBezierTo(kTX + kTBW / 2, s.centerY, kTX + kTBW, s.rightY);
-}
+    // ── 2. Sağ duvar ──────────────────────────────────────────────────────
+    canvas.drawRect(
+      Rect.fromLTWH(ir, topY, rx - ir, botY - topY),
+      Paint()..color = _clrWallRight,
+    );
 
-Offset _internalFlowTipLocal({
-  required double tilt,
-  required double totalVolume,
-  required double flowBias,
-}) {
-  const mouthY = kTTopY + 0.6;
-  final s = _surfacePoints(volume: totalVolume, tilt: tilt, slosh: 0.0);
+    // ── 3. Alt U (dış duvar halkası – iç boşluk sıvıya açık) ────────────────
+    // SVG fil2: tüpün alt yuvarlak kısmı, dış duvarlar degrade gri
+    final outerR = (rx - lx) / 2;
+    final innerR = kBodyInnerW / 2; // iç boşluk yarıçapı
+    final uCx = (lx + rx) / 2; // merkez X
+    final uOuterRect = Rect.fromLTWH(lx, botY - outerR, rx - lx, outerR * 2);
+    final uInnerRect = Rect.fromLTWH(
+      uCx - innerR,
+      botY - innerR,
+      innerR * 2,
+      innerR * 2,
+    );
+    final uGrad = LinearGradient(
+      colors: [_clrUTop, _clrUBot],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    ).createShader(uOuterRect);
 
-  // tilt < 0 → sola eğim → sol kenar alçak → sol ağızdan akar
-  // tilt > 0 → sağa eğim → sağ kenar alçak → sağ ağızdan akar
-  // tilt<0 → sağ kenar alçak → sağ ağızdan akar
-  // tilt>0 → sol kenar alçak → sol ağızdan akar
-  if (tilt < 0) {
-    return Offset(kTX + kTBW + 3.2, lerpDouble(s.rightY, mouthY, flowBias)!);
-  } else {
-    return Offset(kTX - 3.2, lerpDouble(s.leftY, mouthY, flowBias)!);
+    // saveLayer ile BlendMode.clear çalışsın (transparan arka plan gerekir)
+    canvas.saveLayer(null, Paint());
+    canvas.clipRect(Rect.fromLTWH(0, botY - 1, size.width, outerR + 4));
+    canvas.drawOval(uOuterRect, Paint()..shader = uGrad);
+    canvas.drawOval(uInnerRect, Paint()..blendMode = BlendMode.clear);
+    canvas.restore();
+
+    // ── 4. Kapak (tıpa) ──────────────────────────────────────────────────
+    // SVG fil3: yuvarlak köşeli dikdörtgen + kenarlık (str0)
+    final capW = rx - lx;
+    final capRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(lx, capTop, capW, capH),
+      Radius.circular(capH * 0.52),
+    );
+
+    final capGrad = LinearGradient(
+      colors: [_clrCapTop, _clrCapMid, _clrCapBot],
+      stops: const [0.0, 0.6, 1.0],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    ).createShader(Rect.fromLTWH(lx, capTop, capW, capH));
+
+    canvas.drawRRect(capRect, Paint()..shader = capGrad);
+
+    // Kapak kenarlığı (str0: #9A9EBC, thin)
+    canvas.drawRRect(
+      capRect,
+      Paint()
+        ..color = _clrCapBorder
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.45,
+    );
+
+    // ── 5. Kapak parlama oval (fil4: sol üst, %22 beyaz) ─────────────────
+    // SVG'de: x=486.46..2451.9, y=121.55..340.95 (sol kapakta)
+    // Normalize: x≈3.45..17.44, y≈0.87..2.43 → kapak içi sol üst oval
+    final capGlowLeft = kBodyLeftX + capW * 0.059; // ≈ 3.45
+    final capGlowRight = kBodyLeftX + capW * 0.30; // ≈ 17.4
+    final capGlowTop = capTop + capH * 0.14;
+    final capGlowBot = capTop + capH * 0.62;
+
+    canvas.drawOval(
+      Rect.fromLTWH(
+        capGlowLeft,
+        capGlowTop,
+        capGlowRight - capGlowLeft,
+        capGlowBot - capGlowTop,
+      ),
+      Paint()..color = Colors.white.withOpacity(0.22),
+    );
+
+    // ── 6. Sol içi parlama dikey oval (fil5: %5.9 beyaz) ─────────────────
+    // SVG: x=1905.95, y=1169.78, w=349.42, h=14063.28
+    // Normalize: x≈13.55, y≈8.35, w≈2.48, h≈100.4
+    final shineLeft = 1905.95 * _sx;
+    final shineTop = 1169.78 * _sy;
+    final shineW = (1949.62 + 305.75 - 1905.95) * _sx; // ≈ center+halfW
+    final shineH = (1169.78 + 13452.34 + 305.72) * _sy - shineTop;
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(shineLeft, shineTop, shineW.clamp(1.5, 3.5),
+            shineH.clamp(1, kWidgetH - shineTop - 2)),
+        const Radius.circular(6),
+      ),
+      Paint()..color = Colors.white.withOpacity(0.059),
+    );
+
+    // ── 7. Sol kenar çizgisi (str1: beyaz, %13 opaklık) ──────────────────
+    // SVG: x=945.06, y=1169.78..15495.66
+    // Normalize: x≈6.72, y≈8.35..110.6
+    final lineX = 945.06 * _sx;
+    final lineTopY = 1169.78 * _sy;
+    final lineBotY = 15495.66 * _sy;
+
+    canvas.drawLine(
+      Offset(lineX, lineTopY),
+      Offset(lineX, lineBotY),
+      Paint()
+        ..color = Colors.white.withOpacity(0.129)
+        ..strokeWidth = 78.62 * _sx
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // ── 8. Sağ içi gölge oval (fil8: %3.1 beyaz) ─────────────────────────
+    // SVG: x=6710.36, w=262.04, y=1169.78..14933.54
+    final shadowX = 6710.36 * _sx;
+    final shadowW = 262.04 * _sx;
+    final shadowTopY = 1169.78 * _sy;
+    final shadowH = (13801.76 + 131.01 + 131.04) * _sy;
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(shadowX, shadowTopY, shadowW.clamp(1, 2.5),
+            shadowH.clamp(1, kWidgetH - shadowTopY - 2)),
+        const Radius.circular(4),
+      ),
+      Paint()..color = Colors.white.withOpacity(0.031),
+    );
   }
-}
 
-Path _buildInternalFlowTongue({
-  required double tilt,
-  required double totalVolume,
-  required double flowBias,
-}) {
-  if (flowBias <= 0.001 || totalVolume <= 0.001) return Path();
-
-  final s = _surfacePoints(volume: totalVolume, tilt: tilt, slosh: 0.0);
-  final thickness = lerpDouble(2.0, 5.0, flowBias)!;
-  const neckInset = 3.2;
-  const mouthY = kTTopY + 0.6;
-
-  final path = Path();
-
-  // tilt<0 → sağ kenar alçak → sağ ağızdan akar
-  // tilt>0 → sol kenar alçak → sol ağızdan akar
-  if (tilt < 0) {
-    // Sağ ağızdan akar
-    final rootX = kTX + kTBW - 7.0;
-    final rootY = s.rightY;
-    final tipX = kTX + kTBW + neckInset;
-    final tipY = mouthY;
-
-    path
-      ..moveTo(rootX, rootY - thickness * 0.45)
-      ..cubicTo(
-        kTX + kTBW - 2.0,
-        rootY - 2.0,
-        kTX + kTBW + 0.5,
-        tipY - 1.5,
-        tipX,
-        tipY - thickness * 0.45,
-      )
-      ..lineTo(tipX, tipY + thickness * 0.45)
-      ..cubicTo(
-        kTX + kTBW + 0.5,
-        tipY + 1.5,
-        kTX + kTBW - 2.0,
-        rootY + 2.0,
-        rootX,
-        rootY + thickness * 0.45,
-      )
-      ..close();
-  } else {
-    // Sol ağızdan akar
-    final rootX = kTX + 7.0;
-    final rootY = s.leftY;
-    final tipX = kTX - neckInset;
-    final tipY = mouthY;
-
-    path
-      ..moveTo(rootX, rootY - thickness * 0.45)
-      ..cubicTo(
-        kTX + 2.0,
-        rootY - 2.0,
-        kTX - 0.5,
-        tipY - 1.5,
-        tipX,
-        tipY - thickness * 0.45,
-      )
-      ..lineTo(tipX, tipY + thickness * 0.45)
-      ..cubicTo(
-        kTX - 0.5,
-        tipY + 1.5,
-        kTX + 2.0,
-        rootY + 2.0,
-        rootX,
-        rootY + thickness * 0.45,
-      )
-      ..close();
-  }
-
-  return path;
+  @override
+  bool shouldRepaint(covariant _TubeBodyPainter oldDelegate) => false;
 }
 
 // ─────────────────────────────────────────────
-// TÜP PAINTER
+// SIVI PAINTER  –  Tüp içi renkli katmanlar
 // ─────────────────────────────────────────────
 
-class _TubePainter extends CustomPainter {
+class _LiquidPainter extends CustomPainter {
   final List<int> tube;
-  final bool isSelected;
   final double tilt;
   final double slosh;
   final double drainedVolume;
@@ -1422,12 +1804,10 @@ class _TubePainter extends CustomPainter {
   final double incomingVolume;
   final double splash;
   final double pourProgress;
-  final Offset? streamStartGlobal;
-  final Offset? tubeCanvasOffset;
+  final double bubbleBurst;
 
-  const _TubePainter({
+  const _LiquidPainter({
     required this.tube,
-    required this.isSelected,
     required this.tilt,
     required this.slosh,
     required this.drainedVolume,
@@ -1435,383 +1815,185 @@ class _TubePainter extends CustomPainter {
     required this.incomingVolume,
     required this.splash,
     required this.pourProgress,
-    this.streamStartGlobal,
-    this.tubeCanvasOffset,
+    required this.bubbleBurst,
   });
 
-  static const double _topPad = 18.0;
-  static const double _botPad = 18.0;
-  static const double _pivotX = kTW / 2;
-  static const double _pivotY = _topPad + kTH - _botPad;
+  // İç alan sınırları
+  double get _il => kLiquidLeft;
+  double get _ir => kLiquidRight;
+  double get _iw => kLiquidW;
+  double get _it => kLiquidTopY;
+  double get _ib => kLiquidBotY;
 
-  static const double _mouthLipOut = 3.6;
-  static const double _mouthLipDown = 4.5;
-
-  // Tüpün iç alanı: boyun + geniş gövde + yuvarlak alt
-  // Boyun: dar, merkeze hizalı
-  // Gövde: geniş, boyundan trapez geçişle açılıyor
-  static const double _neckLeft = (kTW - kNeckW) / 2;
-  static const double _neckRight = (kTW + kNeckW) / 2;
-
-  Path _tubeClip() {
-    final topPadY = _topPad;
-    // Boyun üst kenarı
-    final neckTopY = topPadY + 2.0;
-    // Boyun alt = gövde başlangıcı
-    final neckBotY = topPadY + kNeckH;
-    // Gövde alt (düz kısım biter)
-    final bodyBotY = topPadY + kTTopY + kTBodyH;
-    final left = kTX;
-    final right = kTX + kTBW;
-
+  // Clip path: iç gövde + alt TAM yarım daire (sıvı buraya dolacak)
+  Path _clipPath() {
+    final r = _iw / 2;
+    final centerY = _ib - r;
     return Path()
-      // Boyun sol üst → boyun sağ üst
-      ..moveTo(_neckLeft, neckTopY)
-      ..lineTo(_neckRight, neckTopY)
-      // Boyun sağ → gövde sağ (trapez geçiş)
-      ..lineTo(right, neckBotY)
-      // Gövde sağ kenar düz
-      ..lineTo(right, bodyBotY)
-      // Yuvarlak alt
-      ..arcToPoint(
-        Offset(left, bodyBotY),
-        radius: const Radius.circular(kTR),
-        clockwise: false,
+      ..moveTo(_il, _it)
+      ..lineTo(_il, centerY)
+      ..arcTo(
+        Rect.fromCircle(
+          center: Offset((_il + _ir) / 2, centerY),
+          radius: r,
+        ),
+        pi,
+        -pi,
+        false,
       )
-      // Gövde sol kenar düz
-      ..lineTo(left, neckBotY)
-      // Sol trapez geçiş → boyun sol
-      ..lineTo(_neckLeft, neckTopY)
+      ..lineTo(_ir, _it)
       ..close();
   }
 
-  Path _tubeOutline() {
-    final topPadY = _topPad;
-    final neckTopY = topPadY + 2.0;
-    final neckBotY = topPadY + kNeckH;
-    final bodyBotY = topPadY + kTTopY + kTBodyH;
-    final left = kTX;
-    final right = kTX + kTBW;
-    // Kapak dudağı: boyun üstündeki küçük çıkıntı
-    final capY = neckTopY - 3.0;
-    final capLeft = _neckLeft - 3.0;
-    final capRight = _neckRight + 3.0;
+  double _volumeForY(double y) {
+    final r = _iw / 2;
+    final bowlTop = _ib - r; // daire merkezi
+    if (y >= _ib) return 0.0;
+    if (y <= _it) return kCap.toDouble();
 
+    double area;
+    if (y >= bowlTop) {
+      final dy = bowlTop - y;
+      final ratio = (dy / r).clamp(-1.0, 1.0);
+      final cap = r * r * acos(ratio) - dy * sqrt(max(0.0, r * r - dy * dy));
+      area = pi * r * r / 2.0 - cap;
+    } else {
+      area = _iw * (bowlTop - y) + pi * r * r / 2.0;
+    }
+    final total = _iw * (bowlTop - _it) + pi * r * r / 2.0;
+    return (area / total * kCap).clamp(0.0, kCap.toDouble());
+  }
+
+  double _yForVolume(double vol) {
+    if (vol <= 0) return _ib;
+    if (vol >= kCap) return _it;
+    double lo = _it, hi = _ib;
+    for (int i = 0; i < 48; i++) {
+      final mid = (lo + hi) / 2;
+      if (_volumeForY(mid) < vol)
+        hi = mid;
+      else
+        lo = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  double _slope(double tilt, double slosh) {
+    final raw = tan(tilt) * (_iw / 2) + slosh * 4.0;
+    return raw.clamp(-(_ib - _it) * 0.42, (_ib - _it) * 0.42);
+  }
+
+  ({double lY, double cY, double rY}) _surface(
+      double vol, double tilt, double slosh) {
+    final mid = _yForVolume(vol);
+    final sl = _slope(tilt, slosh);
+    final lY = (mid + sl).clamp(_it, _ib);
+    final rY = (mid - sl).clamp(_it, _ib);
+    return (lY: lY, cY: (lY + rY) / 2, rY: rY);
+  }
+
+  Path _band(double vBot, double vTop, double tilt, double slosh) {
+    if (vTop <= vBot + 0.001) return Path();
+
+    final top = _surface(vTop, tilt, slosh);
+
+    // En alttaki katman: alt kapanışı düz eğriyle değil,
+    // tüpün yuvarlak dibiyle yap.
+    if (vBot <= 0.001) {
+      final r = _iw / 2;
+      final centerY = _ib - r;
+
+      return Path()
+        ..moveTo(_il, top.lY)
+        ..quadraticBezierTo(_il + _iw / 2, top.cY, _ir, top.rY)
+        ..lineTo(_ir, centerY)
+        ..arcTo(
+          Rect.fromCircle(
+            center: Offset((_il + _ir) / 2, centerY),
+            radius: r,
+          ),
+          0,
+          pi,
+          false,
+        )
+        ..close();
+    }
+
+    final bot = _surface(vBot, tilt, slosh * 0.35);
     return Path()
-      // Kapak çizgisi (üstteki küçük dikdörtgen dudak)
-      ..moveTo(_neckLeft, neckTopY)
-      ..lineTo(capLeft, neckTopY)
-      ..lineTo(capLeft, capY)
-      ..lineTo(capRight, capY)
-      ..lineTo(capRight, neckTopY)
-      ..lineTo(_neckRight, neckTopY)
-      // Boyun + gövde dış hattı
-      ..moveTo(_neckLeft, neckTopY)
-      ..lineTo(left, neckBotY)
-      ..lineTo(left, bodyBotY)
-      ..arcToPoint(
-        Offset(right, bodyBotY),
-        radius: const Radius.circular(kTR),
-        clockwise: false,
-      )
-      ..lineTo(right, neckBotY)
-      ..lineTo(_neckRight, neckTopY);
+      ..moveTo(_il, top.lY)
+      ..quadraticBezierTo(_il + _iw / 2, top.cY, _ir, top.rY)
+      ..lineTo(_ir, bot.rY)
+      ..quadraticBezierTo(_il + _iw / 2, bot.cY, _il, bot.lY)
+      ..close();
   }
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final borderColor =
-        isSelected ? const Color(0xFFD7D3FF) : Colors.white.withOpacity(0.74);
-
-    final innerRect = Rect.fromLTWH(
-      kTX,
-      _topPad + kNeckH,
-      kTBW,
-      kTBodyH + kTR,
-    );
-
-    canvas.save();
-    canvas.translate(_pivotX, _pivotY);
-    canvas.rotate(tilt);
-    canvas.translate(-_pivotX, -_pivotY);
-
-    final clip = _tubeClip();
-
-    canvas.save();
-    canvas.clipPath(clip);
-
-    // Tüp iç arka planı: koyu cam rengi (clip zaten uygulandı)
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, kTW + 20, kWidgetH + 20),
-      Paint()..color = const Color(0xFF1A1A2E).withOpacity(0.72),
-    );
-    // İnce sol yansıma
-    canvas.drawRect(
-      innerRect,
-      Paint()
-        ..shader = LinearGradient(
-          colors: [
-            Colors.white.withOpacity(0.07),
-            Colors.transparent,
-            Colors.black.withOpacity(0.10),
-          ],
-          stops: const [0.0, 0.35, 1.0],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ).createShader(innerRect),
-    );
-
-    canvas.translate(0, _topPad);
-
-    final visualLayers = _buildVisualLayers(
-      tube: tube,
-      drainedVolume: drainedVolume,
-      incomingColorIdx: incomingColorIdx,
-      incomingVolume: incomingVolume,
-    );
-
-    double accum = 0.0;
-    final totalVolume =
-        visualLayers.fold<double>(0.0, (sum, e) => sum + e.volume);
-
-    final topFlowBias = Curves.easeInOut.transform(
-      (pourProgress.clamp(0.0, 1.0) * (tilt.abs() / 1.02)).clamp(0.0, 1.0),
-    );
-
-    for (int i = 0; i < visualLayers.length; i++) {
-      final layer = visualLayers[i];
-      final volumeBottom = accum;
-      final volumeTop = accum + layer.volume;
-      final fill = kColors[layer.colorIdx]['fill'] as Color;
-
-      final isTopLayer = i == visualLayers.length - 1;
-
-      final band = _buildCompactLiquidBand(
-        volumeBottom: volumeBottom,
-        volumeTop: volumeTop,
-        tilt: tilt,
-        slosh: isTopLayer ? slosh : slosh * 0.55,
-        flowBias: 0.0,
-      );
-
-      canvas.drawPath(
-        band,
-        Paint()..color = fill,
-      );
-
-      canvas.drawPath(
-        band,
-        Paint()
-          ..shader = LinearGradient(
-            colors: [
-              Colors.white.withOpacity(0.06),
-              Colors.transparent,
-              Colors.black.withOpacity(0.08),
-            ],
-            stops: const [0.0, 0.45, 1.0],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ).createShader(
-            Rect.fromLTWH(kTX, kLiquidTopY, kTBW, kTBodyH + kTR),
-          ),
-      );
-
-      if (!isTopLayer) {
-        final separator = _buildCompactSurfaceLine(
-          totalVolume: volumeTop,
-          tilt: tilt,
-          slosh: slosh * 0.12,
-          flowBias: 0.0,
-        );
-
-        canvas.drawPath(
-          separator,
-          Paint()
-            ..color = Colors.black.withOpacity(0.12)
-            ..strokeWidth = 0.9
-            ..style = PaintingStyle.stroke,
-        );
-      }
-
-      accum = volumeTop;
-    }
-
-    // Tongue (internal flow) – tam ağız kenarına ulaştırılmış
-    if (totalVolume > 0.0001 &&
-        topFlowBias > 0.001 &&
-        visualLayers.isNotEmpty) {
-      final topColor = kColors[visualLayers.last.colorIdx]['fill'] as Color;
-      final tongue = _buildInternalFlowTongue(
-        tilt: tilt,
-        totalVolume: totalVolume,
-        flowBias: topFlowBias,
-      );
-
-      canvas.drawPath(
-        tongue,
-        Paint()..color = topColor,
-      );
-
-      canvas.drawPath(
-        tongue,
-        Paint()
-          ..shader = LinearGradient(
-            colors: [
-              Colors.white.withOpacity(0.08),
-              Colors.transparent,
-              Colors.black.withOpacity(0.05),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ).createShader(
-            Rect.fromLTWH(kTX - 10, kLiquidTopY, kTBW + 20, kTBodyH + kTR),
-          ),
-      );
-    }
-
-    if (totalVolume > 0.0001) {
-      final topSurface = _buildCompactSurfaceLine(
-        totalVolume: totalVolume,
-        tilt: tilt,
-        slosh: slosh,
-        flowBias: topFlowBias,
-      );
-
-      canvas.drawPath(
-        topSurface,
-        Paint()
-          ..color = Colors.white.withOpacity(0.26)
-          ..strokeWidth = 1.2
-          ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round,
-      );
-
-      canvas.drawPath(
-        topSurface,
-        Paint()
-          ..color = Colors.white.withOpacity(0.10)
-          ..strokeWidth = 3.2
-          ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
-      );
-
-      if (splash > 0.02) {
-        final tip = _internalFlowTipLocal(
-          tilt: tilt,
-          totalVolume: totalVolume,
-          flowBias: topFlowBias,
-        );
-
-        canvas.drawOval(
-          Rect.fromCenter(
-            center: Offset(tip.dx, tip.dy - 0.4),
-            width: lerpDouble(4.0, 8.0, splash)!,
-            height: lerpDouble(0.8, 1.7, splash)!,
-          ),
-          Paint()..color = Colors.white.withOpacity(0.08 * splash),
-        );
-      }
-    }
-
-    canvas.restore(); // clip restore
-
-    // (stream bağlantı damlası kaldırıldı)
-
-    if (isSelected) {
-      canvas.drawPath(
-        _tubeOutline(),
-        Paint()
-          ..color = const Color(0xFFB8B0FF).withOpacity(0.22)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3.0
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4),
-      );
-    }
-
-    canvas.drawPath(
-      _tubeOutline(),
-      Paint()
-        ..color = borderColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = isSelected ? 2.1 : 1.55
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
-
-    // Sol kenar parlak çizgi (cam yansıması)
-    final neckBotY2 = _topPad + kNeckH;
-    final bodyBotY2 = _topPad + kTTopY + kTBodyH;
-    canvas.drawLine(
-      Offset(kTX + 4.0, neckBotY2 + 6),
-      Offset(kTX + 4.0, bodyBotY2 - 14),
-      Paint()
-        ..color = Colors.white.withOpacity(0.18)
-        ..strokeWidth = 2.2
-        ..strokeCap = StrokeCap.round,
-    );
-
-    // Sağ kenar ince yansıma
-    canvas.drawLine(
-      Offset(kTX + kTBW - 4.0, neckBotY2 + 8),
-      Offset(kTX + kTBW - 4.0, bodyBotY2 - 16),
-      Paint()
-        ..color = Colors.white.withOpacity(0.06)
-        ..strokeWidth = 1.4
-        ..strokeCap = StrokeCap.round,
-    );
-
-    // Kapak üstüne küçük highlight
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(_neckLeft + 2, _topPad - 1.0, kNeckW - 4, 3.0),
-        const Radius.circular(1.5),
-      ),
-      Paint()..color = Colors.white.withOpacity(0.22),
-    );
-
-    canvas.restore(); // tilt restore
+  Path _surfaceLine(double vol, double tilt, double slosh) {
+    final s = _surface(vol, tilt, slosh);
+    return Path()
+      ..moveTo(_il, s.lY)
+      ..quadraticBezierTo(_il + _iw / 2, s.cY, _ir, s.rY);
   }
 
-  List<_VisualLayer> _buildVisualLayers({
-    required List<int> tube,
-    required double drainedVolume,
-    required int? incomingColorIdx,
-    required double incomingVolume,
-  }) {
+  Path _tongue(double tilt, double vol, double bias) {
+    if (bias <= 0.001 || vol <= 0.001) return Path();
+    final s = _surface(vol, tilt, 0);
+    final thick = lerpDouble(1.8, 4.3, bias)!;
+    const ni = 1.8;
+    final mY = _it + 1.2;
+    final path = Path();
+
+    if (tilt < 0) {
+      final rX = _ir - 6, rY = s.rY, tX = _ir + ni, tY = mY;
+      path
+        ..moveTo(rX, rY - thick * 0.45)
+        ..cubicTo(_ir - 2, rY - 2, _ir + 0.4, tY - 1.3, tX, tY - thick * 0.45)
+        ..lineTo(tX, tY + thick * 0.45)
+        ..cubicTo(_ir + 0.4, tY + 1.3, _ir - 2, rY + 2, rX, rY + thick * 0.45)
+        ..close();
+    } else {
+      final rX = _il + 6, rY = s.lY, tX = _il - ni, tY = mY;
+      path
+        ..moveTo(rX, rY - thick * 0.45)
+        ..cubicTo(_il + 2, rY - 2, _il - 0.4, tY - 1.3, tX, tY - thick * 0.45)
+        ..lineTo(tX, tY + thick * 0.45)
+        ..cubicTo(_il - 0.4, tY + 1.3, _il + 2, rY + 2, rX, rY + thick * 0.45)
+        ..close();
+    }
+    return path;
+  }
+
+  List<_VisualLayer> _buildLayers() {
     final layers = <_VisualLayer>[];
-
-    for (final color in tube) {
-      if (layers.isNotEmpty && layers.last.colorIdx == color) {
-        final last = layers.removeLast();
-        layers.add(last.copyWith(volume: last.volume + 1.0));
+    for (final c in tube) {
+      if (layers.isNotEmpty && layers.last.colorIdx == c) {
+        final l = layers.removeLast();
+        layers.add(l.copyWith(volume: l.volume + 1));
       } else {
-        layers.add(_VisualLayer(colorIdx: color, volume: 1.0));
+        layers.add(_VisualLayer(colorIdx: c, volume: 1));
       }
     }
 
     double drainLeft = drainedVolume.clamp(0.0, kCap.toDouble());
-
     while (drainLeft > 0.0001 && layers.isNotEmpty) {
-      final last = layers.removeLast();
-      if (last.volume > drainLeft) {
-        layers.add(last.copyWith(volume: last.volume - drainLeft));
-        drainLeft = 0.0;
+      final l = layers.removeLast();
+      if (l.volume > drainLeft) {
+        layers.add(l.copyWith(volume: l.volume - drainLeft));
+        drainLeft = 0;
       } else {
-        drainLeft -= last.volume;
+        drainLeft -= l.volume;
       }
     }
 
     if (incomingColorIdx != null && incomingVolume > 0.0001) {
-      final currentTotal = layers.fold<double>(0.0, (s, e) => s + e.volume);
-      final addable = min(incomingVolume, kCap - currentTotal);
-
-      if (addable > 0.0001) {
+      final cur = layers.fold<double>(0, (s, e) => s + e.volume);
+      final add = min(incomingVolume, kCap - cur);
+      if (add > 0.0001) {
         if (layers.isNotEmpty && layers.last.colorIdx == incomingColorIdx) {
-          final last = layers.removeLast();
-          layers.add(last.copyWith(volume: last.volume + addable));
+          final l = layers.removeLast();
+          layers.add(l.copyWith(volume: l.volume + add));
         } else {
-          layers.add(_VisualLayer(colorIdx: incomingColorIdx, volume: addable));
+          layers.add(_VisualLayer(colorIdx: incomingColorIdx!, volume: add));
         }
       }
     }
@@ -1820,17 +2002,162 @@ class _TubePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_TubePainter oldDelegate) {
-    return oldDelegate.tube != tube ||
-        oldDelegate.isSelected != isSelected ||
-        oldDelegate.tilt != tilt ||
-        oldDelegate.slosh != slosh ||
-        oldDelegate.drainedVolume != drainedVolume ||
-        oldDelegate.incomingColorIdx != incomingColorIdx ||
-        oldDelegate.incomingVolume != incomingVolume ||
-        oldDelegate.splash != splash ||
-        oldDelegate.pourProgress != pourProgress ||
-        oldDelegate.streamStartGlobal != streamStartGlobal ||
-        oldDelegate.tubeCanvasOffset != tubeCanvasOffset;
+  void paint(Canvas canvas, Size size) {
+    final clip = _clipPath();
+
+    final layers = _buildLayers();
+    final totalVol = layers.fold<double>(0, (s, e) => s + e.volume);
+    final flowBias = Curves.easeInOut.transform(
+      (pourProgress.clamp(0.0, 1.0) * (tilt.abs() / 1.02)).clamp(0.0, 1.0),
+    );
+    final liquidRect = Rect.fromLTWH(_il, _it, _iw, _ib - _it);
+
+    double accum = 0;
+    for (int i = 0; i < layers.length; i++) {
+      final layer = layers[i];
+      final vBot = accum;
+      final vTop = accum + layer.volume;
+      final fill = kColors[layer.colorIdx]['fill'] as Color;
+      final isTop = i == layers.length - 1;
+
+      final bandPath = _band(vBot, vTop, tilt, isTop ? slosh : slosh * 0.45);
+      canvas.drawPath(bandPath, Paint()..color = fill);
+
+      // Işık gradyanı
+      canvas.drawPath(
+        bandPath,
+        Paint()
+          ..shader = LinearGradient(
+            colors: [
+              Colors.white.withOpacity(0.10),
+              Colors.transparent,
+              Colors.black.withOpacity(0.08),
+            ],
+            stops: const [0.0, 0.35, 1.0],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ).createShader(liquidRect),
+      );
+
+      // Katman arası çizgi
+      if (!isTop) {
+        canvas.drawPath(
+          _surfaceLine(vTop, tilt, slosh * 0.08),
+          Paint()
+            ..color = Colors.black.withOpacity(0.18)
+            ..strokeWidth = 0.9
+            ..style = PaintingStyle.stroke,
+        );
+      }
+      accum = vTop;
+    }
+
+    // Akış dili (tongue)
+    if (totalVol > 0.0001 && flowBias > 0.001 && layers.isNotEmpty) {
+      final topColor = kColors[layers.last.colorIdx]['fill'] as Color;
+      canvas.drawPath(
+        _tongue(tilt, totalVol, flowBias),
+        Paint()..color = topColor,
+      );
+    }
+
+    // Üst yüzey parlaması
+    if (totalVol > 0.0001) {
+      canvas.drawPath(
+        _surfaceLine(totalVol, tilt, slosh),
+        Paint()
+          ..color = Colors.white.withOpacity(0.28)
+          ..strokeWidth = 1.0
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round,
+      );
+
+      // Sıçrama efekti
+      if (splash > 0.02) {
+        final s = _surface(totalVol, tilt, 0);
+        final tipX = tilt < 0 ? _ir : _il;
+        final tipY = lerpDouble(tilt < 0 ? s.rY : s.lY, _it + 1.2, flowBias)!;
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(tipX, tipY - 0.4),
+            width: lerpDouble(3.0, 6.0, splash)!,
+            height: lerpDouble(0.8, 1.5, splash)!,
+          ),
+          Paint()..color = Colors.white.withOpacity(0.08 * splash),
+        );
+      }
+    }
+
+    // 🫧 Kabarcık efekti (görünür güçlendirilmiş sürüm)
+    if (totalVol > 0.0001 && bubbleBurst > 0.01) {
+      final s = _surface(totalVol, tilt, slosh * 0.25);
+
+      final bubbleFill = Paint()
+        ..color = Colors.white.withOpacity(0.55 * bubbleBurst)
+        ..style = PaintingStyle.fill;
+
+      final bubbleStroke = Paint()
+        ..color = Colors.white.withOpacity(0.95 * bubbleBurst)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+
+      final highlightPaint = Paint()
+        ..color = Colors.white.withOpacity(0.95 * bubbleBurst)
+        ..style = PaintingStyle.fill;
+
+      final driftUp = lerpDouble(0.0, 7.0, bubbleBurst)!;
+      final sideBias = tilt < 0 ? 0.72 : 0.28;
+
+      final baseX = lerpDouble(_il + 9, _ir - 9, sideBias)!;
+      final baseY = s.cY + 16.0 - driftUp;
+
+      final bubbles = <Offset>[
+        Offset(baseX, baseY),
+        Offset(baseX - 4.5, baseY + 5.5),
+        Offset(baseX + 3.5, baseY + 10.0),
+        Offset(baseX - 2.0, baseY + 14.5),
+        Offset(baseX + 1.5, baseY + 19.0),
+        Offset(baseX - 5.5, baseY + 22.5),
+      ];
+
+      final radii = <double>[3.0, 2.5, 2.1, 1.8, 1.5, 1.2];
+
+      for (int i = 0; i < bubbles.length; i++) {
+        final p = bubbles[i];
+        final r = radii[i] * lerpDouble(0.9, 1.15, bubbleBurst)!;
+
+        canvas.drawCircle(p, r, bubbleFill);
+        canvas.drawCircle(p, r, bubbleStroke);
+
+        canvas.drawCircle(
+          Offset(p.dx - r * 0.28, p.dy - r * 0.28),
+          max(0.45, r * 0.18),
+          highlightPaint,
+        );
+      }
+    }
+
+    // Sol iç parlaklık şeridi
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(_il + 2, _it + 3, 4.0, max(0, _ib - _it - 12)),
+        const Radius.circular(2.5),
+      ),
+      Paint()..color = Colors.white.withOpacity(0.07),
+    );
+
+    canvas.restore();
   }
+
+  @override
+  bool shouldRepaint(_LiquidPainter old) =>
+      old.tube != tube ||
+      old.tilt != tilt ||
+      old.slosh != slosh ||
+      old.drainedVolume != drainedVolume ||
+      old.incomingColorIdx != incomingColorIdx ||
+      old.incomingVolume != incomingVolume ||
+      old.splash != splash ||
+      old.pourProgress != pourProgress ||
+      old.bubbleBurst != bubbleBurst;
 }
