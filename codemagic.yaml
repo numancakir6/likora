@@ -25,9 +25,7 @@ workflows:
 
       - name: Create App Store Connect key
         script: |
-          cat <<'EOF' > /tmp/appstore_key.p8
-          $APP_STORE_CONNECT_PRIVATE_KEY
-          EOF
+          printf "%s" "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/appstore_key.p8
           echo "----- debug first lines -----"
           head -n 2 /tmp/appstore_key.p8
           echo "----- debug last line -----"
