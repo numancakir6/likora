@@ -4,6 +4,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'map_theme.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 // ─────────────────────────────────────────────
 // OYUN SABİTLERİ
@@ -12,10 +13,11 @@ import 'map_theme.dart';
 const int kCap = 4;
 const int kNColors = 8;
 const int kEmpty = 2;
+const String kTubeSvgAsset = 'assets/likora/test_tube.svg';
 
 // Widget boyutları – SVG oranına göre ayarlandı (84.4 x 182 mm → 60 x 130 px)
-const double kTW = 60.0;
-const double kTH = 130.0;
+const double kTW = 72.0;
+const double kTH = 150.0;
 
 // ── SVG oranları (viewBox: 8442.66 x 18197.8) ──────────────────────────────
 // Normalize faktör:
@@ -72,19 +74,18 @@ double get kTR => kBodyInnerW / 2; // ≈ 19.88
 double get kUCenterY => kBodyBotY; // daire merkezi tam gövde altında
 
 // Sıvı için iç alan – duvarlara tam yapışık, üstte küçük boşluk
-double get kLiquidLeft => kBodyInnerLeft; // duvar iç kenarına tam
-double get kLiquidRight => kBodyInnerRight; // duvar iç kenarına tam
+double get kLiquidLeft => kBodyInnerLeft + 3;
+double get kLiquidRight => kBodyInnerRight - 3;
 double get kLiquidW => kLiquidRight - kLiquidLeft;
-double get kLiquidTopY =>
-    kBodyTopY + 10.0; // kapaktan 5px boşluk (ağzına kadar dolmasın)
-double get kLiquidBotY => kBodyBotY + kTR; // tam daire alt noktasına kadar
+double get kLiquidTopY => kBodyTopY + 22;
+double get kLiquidBotY => kBodyBotY + kTR - 12;
 
 // Widget toplam yüksekliği
 // Alt U'nun en altı: SVG'de y=18197.8 → kTH
 double get kWidgetH => kTH;
 double get kWidgetW => kTW;
 
-const double kTubeGap = 26.0;
+const double kTubeGap = 20.0;
 double get kStageW => (kWidgetW * 4) + (kTubeGap * 3) + 24.0;
 double get kStageH => (kWidgetH * 3) + (kTubeGap * 2) + 28.0;
 const Duration kPourDuration = Duration(milliseconds: 2200);
@@ -281,16 +282,20 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   static const int _lockedAdTubeIndex = 10;
 
+  // Oyun mantık durumu (gerçek veri)
   late List<List<int>> _tubes;
-  late List<List<int>> _displayTubes;
 
+  // Aktif animasyonlar (paralel çalışabilir)
+  final List<_TransferPlan> _activePlans = [];
+
+  // Seçim durumu
   int? _selected;
-  bool _animating = false;
-  _TransferPlan? _transferPlan;
+
+  // Sıralı komut kuyruğu: (from, to) çiftleri
+  final Queue<(int, int)> _commandQueue = Queue<(int, int)>();
+
   bool _gameWon = false;
   final Map<int, int> _celebratingDoneTubes = <int, int>{};
-  final Queue<int> _queuedTapIndices = Queue<int>();
-  bool _drainingQueuedTaps = false;
 
   @override
   void initState() {
@@ -310,55 +315,46 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   bool get _showLockedAdTube => widget.level <= 2;
-
   bool _isLockedAdTubeIndex(int idx) =>
       _showLockedAdTube && idx == _lockedAdTubeIndex;
+
+  // Hangi tüpler şu an aktif animasyonda meşgul
+  Set<int> get _busyTubes {
+    final s = <int>{};
+    for (final p in _activePlans) {
+      s.add(p.fromIdx);
+      s.add(p.toIdx);
+    }
+    return s;
+  }
 
   void _reset() {
     _tubes = generateTubes(level: widget.level, difficulty: widget.difficulty)
         .map((t) => List<int>.of(t, growable: true))
         .toList(growable: true);
-    _displayTubes = _tubes
-        .map((t) => List<int>.of(t, growable: true))
-        .toList(growable: true);
+    _activePlans.clear();
     _selected = null;
-    _animating = false;
-    _transferPlan = null;
     _gameWon = false;
     _celebratingDoneTubes.clear();
-    _queuedTapIndices.clear();
-    _drainingQueuedTaps = false;
+    _commandQueue.clear();
     setState(() {});
   }
 
   Future<void> _handleTap(int idx) async {
-    // Eğer aktif animasyon bu tüpü kullanıyorsa sıraya al, değilse anında işle
-    if (_animating && _transferPlan != null) {
-      final busyTubes = {_transferPlan!.fromIdx, _transferPlan!.toIdx};
-      if (busyTubes.contains(idx) ||
-          (_selected != null && busyTubes.contains(_selected))) {
-        _queuedTapIndices.addLast(idx);
-        return;
-      }
-      // Busy tubes ile ilgisi yok — direkt işle ama önce seçim durumunu kontrol et
-      // Şu anki seçimiyle çakışıyor mu?
-      if (_selected != null && busyTubes.contains(_selected)) {
-        _queuedTapIndices.addLast(idx);
-        return;
-      }
-    } else if (_animating) {
-      _queuedTapIndices.addLast(idx);
-      return;
-    }
-
     if (_isLockedAdTubeIndex(idx)) return;
 
+    final busy = _busyTubes;
+
+    // Seçim yok — kaynak seç
     if (_selected == null) {
+      // Meşgul tüpü seçme
+      if (busy.contains(idx)) return;
       if (_tubes[idx].isEmpty) return;
       setState(() => _selected = idx);
       return;
     }
 
+    // Aynı tüpe tekrar dokunduysa seçimi kaldır
     if (_selected == idx) {
       setState(() => _selected = null);
       return;
@@ -366,23 +362,32 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     final from = _selected!;
     final to = idx;
+    setState(() => _selected = null);
 
     if (_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) {
       HapticFeedback.lightImpact();
-      setState(() => _selected = null);
       return;
     }
 
+    // İki tüp de serbest — hemen başlat
+    if (!busy.contains(from) && !busy.contains(to)) {
+      await _startPour(from, to);
+      return;
+    }
+
+    // Herhangi biri meşgulse kuyruğa ekle
+    _commandQueue.addLast((from, to));
+  }
+
+  Future<void> _startPour(int from, int to) async {
     if (!canPour(_tubes, from, to)) {
       HapticFeedback.lightImpact();
-      setState(() => _selected = null);
       return;
     }
 
     final count = pourCount(_tubes, from, to);
     if (count <= 0) {
       HapticFeedback.lightImpact();
-      setState(() => _selected = null);
       return;
     }
 
@@ -395,44 +400,77 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       count: count,
     );
 
+    // Mantık durumunu hemen güncelle (animasyon gösterimi snapshot tabanlı)
+    doPour(_tubes, from, to);
+
     setState(() {
-      _selected = from;
-      _animating = true;
-      _transferPlan = plan;
-      _displayTubes = _tubes.map((t) => List<int>.from(t)).toList();
+      _activePlans.add(plan);
     });
 
     HapticFeedback.mediumImpact();
-    await Future.delayed(kPourDuration);
 
-    if (!mounted) return;
-    doPour(_tubes, from, to);
+    // Animasyon biter bitmez planı kaldır
+    Future.delayed(kPourDuration, () {
+      if (!mounted) return;
 
-    final newlyDone = <int, int>{};
-    for (final idx in [from, to]) {
-      if (!_isLockedAdTubeIndex(idx) && isTubeDone(_tubes[idx])) {
-        newlyDone[idx] = _tubes[idx].first;
+      final newlyDone = <int, int>{};
+      for (final i in [from, to]) {
+        if (!_isLockedAdTubeIndex(i) && isTubeDone(_tubes[i])) {
+          newlyDone[i] = _tubes[i].first;
+        }
+      }
+      final didWin = isGameDone(_tubes);
+
+      setState(() {
+        _activePlans.remove(plan);
+        _gameWon = didWin;
+      });
+
+      _triggerDoneCelebration(newlyDone);
+
+      // Kuyruktaki komutları işle
+      _drainQueue();
+
+      if (didWin && _activePlans.isEmpty) {
+        Future.delayed(const Duration(milliseconds: 220), () {
+          if (mounted) _showWinDialog();
+        });
+      }
+    });
+  }
+
+  void _drainQueue() {
+    if (_commandQueue.isEmpty) return;
+    final busy = _busyTubes;
+
+    // Kuyruktan işlenebilecekleri bul
+    final toProcess = <(int, int)>[];
+    final remaining = Queue<(int, int)>();
+
+    for (final cmd in _commandQueue) {
+      final (from, to) = cmd;
+      // Bu komuttaki tüpler meşgul değil VE daha önce işlenecek listede yok
+      final processingTubes = toProcess.fold<Set<int>>(
+        <int>{},
+        (s, c) => s
+          ..add(c.$1)
+          ..add(c.$2),
+      );
+      if (!busy.contains(from) &&
+          !busy.contains(to) &&
+          !processingTubes.contains(from) &&
+          !processingTubes.contains(to)) {
+        toProcess.add(cmd);
+      } else {
+        remaining.add(cmd);
       }
     }
-    final didWin = isGameDone(_tubes);
 
-    setState(() {
-      _displayTubes = _tubes
-          .map((t) => List<int>.of(t, growable: true))
-          .toList(growable: true);
-      _selected = null;
-      _animating = false;
-      _transferPlan = null;
-      _gameWon = didWin;
-    });
+    _commandQueue.clear();
+    _commandQueue.addAll(remaining);
 
-    _triggerDoneCelebration(newlyDone);
-    await _drainQueuedTaps();
-    if (didWin) {
-      await Future.delayed(const Duration(milliseconds: 220));
-      if (mounted) {
-        await _showWinDialog();
-      }
+    for (final (from, to) in toProcess) {
+      _startPour(from, to);
     }
   }
 
@@ -449,19 +487,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         }
       });
     });
-  }
-
-  Future<void> _drainQueuedTaps() async {
-    if (_drainingQueuedTaps || _animating || !mounted) return;
-    _drainingQueuedTaps = true;
-    try {
-      while (mounted && !_animating && _queuedTapIndices.isNotEmpty) {
-        final next = _queuedTapIndices.removeFirst();
-        await _handleTap(next);
-      }
-    } finally {
-      _drainingQueuedTaps = false;
-    }
   }
 
   Future<void> _showWinDialog() async {
@@ -567,9 +592,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                     width: kStageW,
                                     height: kStageH,
                                     child: _TubeStage(
-                                      tubes: _displayTubes,
+                                      tubes: _tubes,
                                       selected: _selected,
-                                      transferPlan: _transferPlan,
+                                      activePlans: _activePlans,
                                       onTap: _handleTap,
                                       lockedAdTubeIndex: _lockedAdTubeIndex,
                                       showLockedAdTube: _showLockedAdTube,
@@ -820,7 +845,7 @@ class _BottomActionBtn extends StatelessWidget {
 class _TubeStage extends StatefulWidget {
   final List<List<int>> tubes;
   final int? selected;
-  final _TransferPlan? transferPlan;
+  final List<_TransferPlan> activePlans;
   final void Function(int) onTap;
   final int lockedAdTubeIndex;
   final bool showLockedAdTube;
@@ -829,7 +854,7 @@ class _TubeStage extends StatefulWidget {
   const _TubeStage({
     required this.tubes,
     required this.selected,
-    required this.transferPlan,
+    required this.activePlans,
     required this.onTap,
     required this.lockedAdTubeIndex,
     required this.showLockedAdTube,
@@ -864,20 +889,20 @@ class _TubeStageState extends State<_TubeStage> {
     final stageBox = context.findRenderObject() as RenderBox?;
     if (box == null || stageBox == null) return null;
 
-    Offset pos =
-        box.localToGlobal(Offset.zero) - stageBox.localToGlobal(Offset.zero);
-
-    if (widget.selected == idx) {
-      pos = pos.translate(0, -15.0);
-    }
-
-    return pos;
+    return box.localToGlobal(Offset.zero) - stageBox.localToGlobal(Offset.zero);
   }
 
   Widget _tubeItem(int idx, {double topPadding = 0}) {
-    final hiddenSource = widget.transferPlan?.fromIdx;
+    // Aktif animasyonda hem kaynak hem hedef tüpü sahneden gizle.
+    // Böylece hedef tüp yalnızca _FlyingTube içinde tek kez çizilir
+    // ve halo/çift render oluşmaz.
+    final hiddenTubes =
+        widget.activePlans.expand((p) => [p.fromIdx, p.toIdx]).toSet();
     final isLockedAdTube =
         widget.showLockedAdTube && idx == widget.lockedAdTubeIndex;
+
+    final isTargetOfPlan = widget.activePlans.any((p) => p.toIdx == idx);
+    final showSelected = widget.selected == idx && !isTargetOfPlan;
 
     return Padding(
       padding: EdgeInsets.only(top: topPadding),
@@ -886,7 +911,7 @@ class _TubeStageState extends State<_TubeStage> {
         child: GestureDetector(
           onTap: () => widget.onTap(idx),
           child: Opacity(
-            opacity: idx == hiddenSource ? 0.0 : 1.0,
+            opacity: hiddenTubes.contains(idx) ? 0.0 : 1.0,
             child: Stack(
               alignment: Alignment.center,
               clipBehavior: Clip.none,
@@ -895,7 +920,9 @@ class _TubeStageState extends State<_TubeStage> {
                   opacity: isLockedAdTube ? 0.30 : 1.0,
                   child: _TubeWidget(
                     tube: widget.tubes[idx],
-                    isSelected: widget.selected == idx,
+                    isSelected: showSelected,
+                    incomingColorIdx: null,
+                    incomingVolume: 0.0,
                   ),
                 ),
                 if (isLockedAdTube)
@@ -955,9 +982,11 @@ class _TubeStageState extends State<_TubeStage> {
             ),
           ),
         ),
-        if (widget.transferPlan != null)
+        // Paralel animasyonlar — her aktif plan için ayrı FlyingTube
+        for (final plan in widget.activePlans)
           _FlyingTube(
-            plan: widget.transferPlan!,
+            key: ValueKey('fly_${plan.fromIdx}_${plan.toIdx}'),
+            plan: plan,
             getPos: _localPos,
           ),
       ],
@@ -1068,7 +1097,7 @@ class _FlyingTube extends StatefulWidget {
   final _TransferPlan plan;
   final Offset? Function(int) getPos;
 
-  const _FlyingTube({required this.plan, required this.getPos});
+  const _FlyingTube({super.key, required this.plan, required this.getPos});
 
   @override
   State<_FlyingTube> createState() => _FlyingTubeState();
@@ -1133,31 +1162,38 @@ class _FlyingTubeState extends State<_FlyingTube>
   double _targetTiltForRemaining(double remainingUnits) {
     final fill = (remainingUnits / kCap).clamp(0.0, 1.0);
     final emptiness = 1.0 - fill;
-    final deg = lerpDouble(58.0, 84.0, emptiness)!;
+    final deg = lerpDouble(64.0, 88.0, emptiness)!;
     return deg * pi / 180.0;
   }
 
-  Offset _mouthEdgeLocal({required double bottleAngle}) {
-    final poursFromRight = bottleAngle < 0;
+  Offset _mouthEdgeLocal({
+    required double fromMidX,
+  }) {
+    final stageMidX = kStageW / 2;
+    final poursFromRight = fromMidX < stageMidX;
 
     if (poursFromRight) {
-      return Offset(kBodyRightX + 2.0, kCapBotY - 0.5);
+      return Offset(kBodyRightX + 0.6, kCapBotY + 0.8);
     } else {
-      return Offset(kBodyLeftX - 2.0, kCapBotY - 0.5);
+      return Offset(kBodyLeftX - 0.6, kCapBotY + 0.8);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final fromPos = widget.getPos(widget.plan.fromIdx);
+    final rawFromPos = widget.getPos(widget.plan.fromIdx);
     final toPos = widget.getPos(widget.plan.toIdx);
-    if (fromPos == null || toPos == null) return const SizedBox.shrink();
+    if (rawFromPos == null || toPos == null) return const SizedBox.shrink();
 
+    final fromPos = rawFromPos.translate(0, -15.0);
     final fromMidX = fromPos.dx + kWidgetW / 2;
     final toMidX = toPos.dx + kWidgetW / 2;
-    final goRight = toMidX > fromMidX;
-    final tiltSign = goRight ? -1.0 : 1.0;
-    final liftY = min(fromPos.dy, toPos.dy) - 60.0;
+    final stageMidX = kStageW / 2;
+    final tiltSign = fromMidX < stageMidX ? 1.0 : -1.0;
+    final horizontalGap = (toMidX - fromMidX).abs();
+    final extraLift =
+        lerpDouble(26.0, 72.0, (horizontalGap / 220.0).clamp(0.0, 1.0))!;
+    final liftY = min(fromPos.dy, toPos.dy) - 60.0 - extraLift;
 
     final mouthLocal = Offset(kWidgetW / 2, kCapBotY + 1.0);
     final anchorLocal = Offset(kWidgetW / 2, kBodyBotY + kTR);
@@ -1171,11 +1207,15 @@ class _FlyingTubeState extends State<_FlyingTube>
             ? _phase(v, _pTiltEnd, _pPourEnd)
             : (v >= _pPourEnd ? 1.0 : 0.0);
 
-        final transferProgress =
-            Curves.easeInOutCubic.transform(rawPourProgress.clamp(0.0, 1.0));
+        final streamOpen =
+            Curves.easeInOut.transform(_phase(v, _pMoveEnd, _pPourEnd));
+        final lineProgress =
+            Curves.easeOutCubic.transform(_phase(streamOpen, 0.0, 0.42));
+        final fillProgress =
+            Curves.easeInOutCubic.transform(_phase(streamOpen, 0.42, 1.0));
 
-        final sourceDrainVolume = widget.plan.count * transferProgress;
-        final targetIncomingVolume = widget.plan.count * transferProgress;
+        final sourceDrainVolume = widget.plan.count * fillProgress;
+        final targetIncomingVolume = widget.plan.count * fillProgress;
         final remainingUnits =
             (widget.plan.fromSnapshot.length - sourceDrainVolume)
                 .clamp(0.0, kCap.toDouble());
@@ -1239,51 +1279,46 @@ class _FlyingTubeState extends State<_FlyingTube>
         const inertiaFactor = 0.07;
         _liquidTilt += (bottleAngle - _liquidTilt) * inertiaFactor;
 
-        final streamOpen =
-            Curves.easeInOut.transform(_phase(v, _pMoveEnd, _pPourEnd));
         final easedFlow =
-            Curves.easeInOutSine.transform(streamOpen.clamp(0.0, 1.0));
+            Curves.easeInOutSine.transform(fillProgress.clamp(0.0, 1.0));
 
         final isPouring = widget.plan.count > 0 &&
             v >= _pMoveEnd &&
             v < _pPourEnd &&
             streamOpen > 0.005;
 
-        final mouthEdgeLocal = _mouthEdgeLocal(bottleAngle: bottleAngle);
+        final visibleTubeAngle = _liquidTilt;
+
+        final mouthEdgeLocal = _mouthEdgeLocal(
+          fromMidX: fromMidX,
+        );
+
         final pivotInWidget = Offset(kWidgetW / 2, kBodyBotY + kTR);
-        final rotatedMouthEdge =
-            _rotateAroundAnchor(mouthEdgeLocal, pivotInWidget, bottleAngle);
+        final rotatedMouthEdge = _rotateAroundAnchor(
+            mouthEdgeLocal, pivotInWidget, visibleTubeAngle);
 
         final globalStreamStart = Offset(
           cx + rotatedMouthEdge.dx,
           cy + rotatedMouthEdge.dy,
         );
 
-        final targetFillRatio =
-            ((widget.plan.toSnapshot.length + targetIncomingVolume) / kCap)
-                .clamp(0.0, 1.0);
-
-        final targetLiquidEntry = Offset(
+        final targetMouthEntry = Offset(
           toMidX,
-          _surfaceCenterYForFillRatio(targetFillRatio) + toPos.dy + 24.0,
+          toPos.dy + kLiquidTopY - 2.0,
         );
 
         final motionEnergy = _motionEnergy(v);
         final sourceSlosh = _sloshing(v, 0.50) + motionEnergy * 0.10;
-        final targetSlosh = _sloshing(v + 0.12, 0.38) +
-            easedFlow * 0.06 +
-            targetIncomingVolume * 0.02;
-        final targetSplash = isPouring ? easedFlow * 0.32 : 0.0;
+        final targetSlosh = _sloshing(v + 0.12, 0.16) +
+            easedFlow * 0.02 +
+            targetIncomingVolume * 0.01;
+        const double targetSplash = 0.0;
         final sourceBubbleBurst = isPouring
             ? lerpDouble(0.85, 1.0, easedFlow)!
             : (v >= _pPourEnd && v < _pUprightEnd
                 ? lerpDouble(0.55, 0.0, _phase(v, _pPourEnd, _pUprightEnd))!
                 : 0.0);
-        final targetBubbleBurst = isPouring
-            ? lerpDouble(0.75, 0.95, easedFlow)!
-            : (v >= _pPourEnd && v < _pUprightEnd
-                ? lerpDouble(0.45, 0.0, _phase(v, _pPourEnd, _pUprightEnd))!
-                : 0.0);
+        const double targetBubbleBurst = 0.0;
 
         return Stack(
           clipBehavior: Clip.none,
@@ -1299,7 +1334,7 @@ class _FlyingTubeState extends State<_FlyingTube>
                   incomingVolume: targetIncomingVolume,
                   slosh: targetSlosh,
                   splash: targetSplash,
-                  pourProgress: streamOpen,
+                  pourProgress: fillProgress,
                   bubbleBurst: targetBubbleBurst,
                 ),
               ),
@@ -1326,9 +1361,9 @@ class _FlyingTubeState extends State<_FlyingTube>
                     painter: _LiquidStreamPainter(
                       color: kColors[widget.plan.colorIdx]['fill'] as Color,
                       start: globalStreamStart,
-                      end: targetLiquidEntry,
-                      progress: streamOpen,
-                      flowRate: easedFlow,
+                      end: targetMouthEntry,
+                      progress: lineProgress,
+                      flowRate: max(0.18, easedFlow),
                     ),
                   ),
                 ),
@@ -1340,7 +1375,9 @@ class _FlyingTubeState extends State<_FlyingTube>
   }
 
   double _surfaceCenterYForFillRatio(double fillRatio) {
-    final innerBottom = kBodyBotY + kTR;
+    // Sıvı alanının gerçek alt sınırını kullan (kLiquidBotY),
+    // böylece boş şişede bile akış şişe içinde kalır.
+    final innerBottom = kLiquidBotY;
     return innerBottom - (innerBottom - kLiquidTopY) * fillRatio;
   }
 
@@ -1393,13 +1430,13 @@ class _LiquidStreamPainter extends CustomPainter {
 // Başlangıçta şişe ağzına daha yapışık,
 // sonda hedef kaba daha düz giren eğri
     final c1 = Offset(
-      start.dx + dx * 0.10,
-      start.dy + max(4.0, arc * 0.85),
+      start.dx + dx * 0.06,
+      start.dy + max(2.0, arc * 0.55),
     );
 
     final c2 = Offset(
-      end.dx - dx * 0.08,
-      end.dy - max(3.0, arc * 0.18),
+      end.dx - dx * 0.06,
+      end.dy - max(2.0, arc * 0.14),
     );
 
     final path = Path()
@@ -1505,13 +1542,18 @@ class _TubeWidget extends StatelessWidget {
             bubbleBurst: bubbleBurst,
           ),
         ),
-        CustomPaint(
-          size: Size(kWidgetW, kWidgetH),
-          painter: const _TubeBodyPainter(),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: SvgPicture.asset(
+              kTubeSvgAsset,
+              fit: BoxFit.fill,
+            ),
+          ),
         ),
       ],
     );
 
+    // Seçili tüp yukarı kalkar
     final liftY = isSelected ? -15.0 : 0.0;
 
     if (tilt.abs() < 0.0001) {
