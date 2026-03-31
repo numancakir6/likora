@@ -4,6 +4,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'map_theme.dart';
+import 'puzzle_presets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 // ─────────────────────────────────────────────
@@ -108,7 +109,7 @@ const List<Map<String, dynamic>> kColors = [
 // OYUN MANTIĞI
 // ─────────────────────────────────────────────
 
-List<List<int>> generateTubes({
+List<List<int>> _legacyGenerateTubes({
   required int level,
   required int difficulty,
 }) {
@@ -313,7 +314,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   late final AnimationController _bgCtrl;
   late final MapTheme _theme;
 
-  static const int _lockedAdTubeIndex = 10;
+  late int _lockedAdTubeIndex;
 
   // Oyun mantık durumu (gerçek veri)
   late List<List<int>> _tubes;
@@ -347,7 +348,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  bool get _showLockedAdTube => widget.level <= 2;
+  bool get _showLockedAdTube => true;
   bool _isLockedAdTubeIndex(int idx) =>
       _showLockedAdTube && idx == _lockedAdTubeIndex;
 
@@ -362,9 +363,22 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   void _reset() {
-    _tubes = generateTubes(level: widget.level, difficulty: widget.difficulty)
+    final preset = PuzzlePresets.getOrNull(
+      mapNumber: widget.mapNumber,
+      levelId: widget.level,
+    );
+
+    final initialTubes = (preset?.tubes ??
+            _legacyGenerateTubes(
+              level: widget.level,
+              difficulty: widget.difficulty,
+            ))
         .map((t) => List<int>.of(t, growable: true))
         .toList(growable: true);
+
+    _tubes = initialTubes;
+    _lockedAdTubeIndex = (preset?.lockedAdTubeIndex ?? (_tubes.length - 1))
+        .clamp(0, _tubes.length - 1);
     _activePlans.clear();
     _selected = null;
     _gameWon = false;
@@ -1458,6 +1472,20 @@ class _FlyingTubeState extends State<_FlyingTube>
         return Stack(
           clipBehavior: Clip.none,
           children: [
+            if (isPouring)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _LiquidStreamPainter(
+                      color: kColors[widget.plan.colorIdx]['fill'] as Color,
+                      start: globalStreamStart,
+                      end: targetMouthEntry,
+                      progress: streamOpen,
+                      flowRate: easedFlow.clamp(0.0, 1.0),
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               left: cx,
               top: cy,
@@ -1467,26 +1495,9 @@ class _FlyingTubeState extends State<_FlyingTube>
                 drainedVolume: sourceDrainVolume,
                 tilt: _liquidTilt,
                 slosh: sourceSlosh,
-                pourProgress: streamOpen,
                 bubbleBurst: sourceBubbleBurst,
-                streamStartGlobal: isPouring ? globalStreamStart : null,
-                tubeCanvasOffset: isPouring ? Offset(cx, cy) : null,
               ),
             ),
-            if (isPouring)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: CustomPaint(
-                    painter: _LiquidStreamPainter(
-                      color: kColors[widget.plan.colorIdx]['fill'] as Color,
-                      start: globalStreamStart,
-                      end: targetMouthEntry,
-                      progress: lineProgress,
-                      flowRate: max(0.18, easedFlow),
-                    ),
-                  ),
-                ),
-              ),
           ],
         );
       },
@@ -1539,38 +1550,33 @@ class _LiquidStreamPainter extends CustomPainter {
     if (progress <= 0.0) return;
     if ((end - start).distance < 1.0) return;
 
-    final dx = end.dx - start.dx;
-    final dy = end.dy - start.dy;
-    final distance = (end - start).distance;
+    final t = progress.clamp(0.0, 1.0);
+
+    final visibleEnd = Offset(
+      lerpDouble(start.dx, end.dx, t)!,
+      lerpDouble(start.dy, end.dy, t)!,
+    );
+
+    final dx = visibleEnd.dx - start.dx;
+    final dy = visibleEnd.dy - start.dy;
+    final distance = (visibleEnd - start).distance;
 
     final thickness = lerpDouble(3.6, 7.0, flowRate)!;
     final arc = max(10.0, dy.abs() * 0.10 + distance * 0.05);
 
-// Başlangıçta şişe ağzına daha yapışık,
-// sonda hedef kaba daha düz giren eğri
     final c1 = Offset(
       start.dx + dx * 0.06,
       start.dy + max(2.0, arc * 0.55),
     );
 
     final c2 = Offset(
-      end.dx - dx * 0.06,
-      end.dy - max(2.0, arc * 0.14),
+      visibleEnd.dx - dx * 0.06,
+      visibleEnd.dy - max(2.0, arc * 0.14),
     );
 
     final path = Path()
       ..moveTo(start.dx, start.dy)
-      ..cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, end.dx, end.dy);
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color.withOpacity(0.24 * progress)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = thickness + 4.2
-        ..strokeCap = StrokeCap.round
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.5),
-    );
+      ..cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, visibleEnd.dx, visibleEnd.dy);
 
     canvas.drawPath(
       path,
@@ -1578,15 +1584,6 @@ class _LiquidStreamPainter extends CustomPainter {
         ..color = color.withOpacity(0.98)
         ..style = PaintingStyle.stroke
         ..strokeWidth = thickness
-        ..strokeCap = StrokeCap.round,
-    );
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = Colors.white.withOpacity(0.24 * flowRate)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = max(1.0, thickness * 0.24)
         ..strokeCap = StrokeCap.round,
     );
   }
@@ -1615,8 +1612,6 @@ class _TubeWidget extends StatelessWidget {
   final double splash;
   final double pourProgress;
   final double bubbleBurst;
-  final Offset? streamStartGlobal;
-  final Offset? tubeCanvasOffset;
   final double receiveFlow;
 
   const _TubeWidget({
@@ -1631,8 +1626,6 @@ class _TubeWidget extends StatelessWidget {
     this.splash = 0.0,
     this.pourProgress = 0.0,
     this.bubbleBurst = 0.0,
-    this.streamStartGlobal,
-    this.tubeCanvasOffset,
     this.receiveFlow = 0.0,
   });
 
@@ -2128,27 +2121,7 @@ class _LiquidPainter extends CustomPainter {
             end: Alignment.bottomCenter,
           ).createShader(liquidRect),
       );
-
-      // Katman arası çizgi
-      if (!isTop) {
-        canvas.drawPath(
-          _surfaceLine(vTop, tilt, slosh * 0.08),
-          Paint()
-            ..color = Colors.black.withOpacity(0.18)
-            ..strokeWidth = 0.9
-            ..style = PaintingStyle.stroke,
-        );
-      }
       accum = vTop;
-    }
-
-    // Akış dili (tongue)
-    if (totalVol > 0.0001 && flowBias > 0.001 && layers.isNotEmpty) {
-      final topColor = kColors[layers.last.colorIdx]['fill'] as Color;
-      canvas.drawPath(
-        _tongue(tilt, totalVol, flowBias),
-        Paint()..color = topColor,
-      );
     }
 
     if (incomingColorIdx != null && receiveFlow > 0.01 && totalVol > 0.0) {
@@ -2264,13 +2237,6 @@ class _LiquidPainter extends CustomPainter {
     }
 
     // Sol iç parlaklık şeridi
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(_il + 2, _it + 3, 4.0, max(0, _ib - _it - 12)),
-        const Radius.circular(2.5),
-      ),
-      Paint()..color = Colors.white.withOpacity(0.04),
-    );
 
     canvas.restore();
   }
