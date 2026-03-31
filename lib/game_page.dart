@@ -211,12 +211,16 @@ int pourCount(List<List<int>> tubes, int from, int to) {
 }
 
 void doPour(List<List<int>> tubes, int from, int to) {
-  final top = tubes[from].last;
-  while (tubes[from].isNotEmpty &&
-      tubes[from].last == top &&
-      tubes[to].length < kCap) {
-    tubes[to].add(tubes[from].removeLast());
+  final fromTube = List<int>.from(tubes[from]);
+  final toTube = List<int>.from(tubes[to]);
+
+  final top = fromTube.last;
+  while (fromTube.isNotEmpty && fromTube.last == top && toTube.length < kCap) {
+    toTube.add(fromTube.removeLast());
   }
+
+  tubes[from] = fromTube;
+  tubes[to] = toTube;
 }
 
 bool isTubeDone(List<int> t) => t.length == kCap && t.every((c) => c == t[0]);
@@ -967,15 +971,25 @@ class _TubeStageState extends State<_TubeStage> {
                       .clamp(0.0, 1.0),
                 );
           final incoming = plan.count * incomingPhase;
+          final receivePhase = incomingPhase;
+          final receiveSlosh =
+              sin(receivePhase * pi * 3.2) * (1.0 - receivePhase) * 0.30;
+          final receiveSplash =
+              sin((receivePhase * pi).clamp(0.0, pi)).abs() * 0.90;
+          final receiveBubbleBurst =
+              sin((receivePhase * pi * 0.9).clamp(0.0, pi)).abs() * 0.95;
+          final receiveFlow =
+              Curves.easeOut.transform(receivePhase.clamp(0.0, 1.0));
           return _TubeWidget(
             tube: plan.toSnapshot,
             isSelected: false,
             incomingColorIdx: plan.colorIdx,
             incomingVolume: incoming,
-            slosh: 0.0,
-            splash: 0.0,
+            slosh: receiveSlosh,
+            splash: receiveSplash,
             pourProgress: incomingPhase,
-            bubbleBurst: 0.0,
+            bubbleBurst: receiveBubbleBurst,
+            receiveFlow: receiveFlow,
           );
         },
       );
@@ -1603,8 +1617,10 @@ class _TubeWidget extends StatelessWidget {
   final double bubbleBurst;
   final Offset? streamStartGlobal;
   final Offset? tubeCanvasOffset;
+  final double receiveFlow;
 
   const _TubeWidget({
+    super.key,
     required this.tube,
     required this.isSelected,
     this.tilt = 0.0,
@@ -1617,6 +1633,7 @@ class _TubeWidget extends StatelessWidget {
     this.bubbleBurst = 0.0,
     this.streamStartGlobal,
     this.tubeCanvasOffset,
+    this.receiveFlow = 0.0,
   });
 
   Alignment _pivotAlignment() {
@@ -1630,35 +1647,41 @@ class _TubeWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final frame = Stack(
-      clipBehavior: Clip.none,
-      children: [
-        CustomPaint(
-          size: Size(kWidgetW, kWidgetH),
-          painter: _LiquidPainter(
-            tube: tube,
-            tilt: tilt,
-            slosh: slosh,
-            drainedVolume: drainedVolume,
-            incomingColorIdx: incomingColorIdx,
-            incomingVolume: incomingVolume,
-            splash: splash,
-            pourProgress: pourProgress,
-            bubbleBurst: bubbleBurst,
-          ),
-        ),
-        Positioned.fill(
-          child: IgnorePointer(
-            child: SvgPicture.asset(
-              kTubeSvgAsset,
-              fit: BoxFit.fill,
+    final frame = RepaintBoundary(
+      child: SizedBox(
+        width: kWidgetW,
+        height: kWidgetH,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CustomPaint(
+              size: Size(kWidgetW, kWidgetH),
+              painter: _LiquidPainter(
+                tube: tube,
+                tilt: tilt,
+                slosh: slosh,
+                drainedVolume: drainedVolume,
+                incomingColorIdx: incomingColorIdx,
+                incomingVolume: incomingVolume,
+                splash: splash,
+                pourProgress: pourProgress,
+                bubbleBurst: bubbleBurst,
+                receiveFlow: receiveFlow,
+              ),
             ),
-          ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: SvgPicture.asset(
+                  kTubeSvgAsset,
+                  fit: BoxFit.fill,
+                ),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
 
-    // Seçili tüp yukarı kalkar
     final liftY = isSelected ? -15.0 : 0.0;
 
     if (tilt.abs() < 0.0001) {
@@ -1672,34 +1695,23 @@ class _TubeWidget extends StatelessWidget {
       );
     }
 
-    return SizedBox(
-      width: kWidgetW,
-      height: kWidgetH,
-      child: Transform.translate(
-        offset: Offset(0, liftY),
-        child: Transform.rotate(
-          angle: tilt,
-          alignment: _pivotAlignment(),
-          child: frame,
+    return RepaintBoundary(
+      child: SizedBox(
+        width: kWidgetW,
+        height: kWidgetH,
+        child: Transform.translate(
+          offset: Offset(0, liftY),
+          child: Transform.rotate(
+            angle: tilt,
+            alignment: _pivotAlignment(),
+            transformHitTests: false,
+            child: frame,
+          ),
         ),
       ),
     );
   }
 }
-
-// ─────────────────────────────────────────────
-// TÜP GÖVDE PAINTER  –  SVG birebir replika
-// ─────────────────────────────────────────────
-//
-// SVG yapısı (yukarıdan aşağı):
-//  1. [Kapak / tıpa] fil3+str0:  üst yuvarlak köşeli dikdörtgen, degrade gri
-//  2. [Sol duvar]    fil0:       koyu gri dikey şerit (sol)
-//  3. [Sağ duvar]    fil1:       daha koyu gri dikey şerit (sağ)
-//  4. [Alt U]        fil2:       degrade yarım daire
-//  5. [Sol parlama]  fil5:       şeffaf beyaz dikey oval (sol içinde)
-//  6. [Sol çizgi]    str1:       yarı şeffaf beyaz dikey çizgi (sol kenar)
-//  7. [Sağ gölge]    fil8:       çok şeffaf beyaz oval (sağ içinde)
-//  8. [Kapak parlaması] fil4:    sol üstte parlak oval
 
 class _TubeBodyPainter extends CustomPainter {
   const _TubeBodyPainter();
@@ -1879,6 +1891,7 @@ class _LiquidPainter extends CustomPainter {
   final double splash;
   final double pourProgress;
   final double bubbleBurst;
+  final double receiveFlow;
 
   const _LiquidPainter({
     required this.tube,
@@ -1890,6 +1903,7 @@ class _LiquidPainter extends CustomPainter {
     required this.splash,
     required this.pourProgress,
     required this.bubbleBurst,
+    required this.receiveFlow,
   });
 
   // İç alan sınırları
@@ -2078,6 +2092,8 @@ class _LiquidPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final clip = _clipPath();
+    canvas.save();
+    canvas.clipPath(clip);
 
     final layers = _buildLayers();
     final totalVol = layers.fold<double>(0, (s, e) => s + e.volume);
@@ -2132,6 +2148,42 @@ class _LiquidPainter extends CustomPainter {
       canvas.drawPath(
         _tongue(tilt, totalVol, flowBias),
         Paint()..color = topColor,
+      );
+    }
+
+    if (incomingColorIdx != null && receiveFlow > 0.01 && totalVol > 0.0) {
+      final streamColor = kColors[incomingColorIdx!]['fill'] as Color;
+      final s = _surface(totalVol, 0.0, slosh * 0.12);
+      final streamBottomY = s.cY + lerpDouble(18.0, 3.0, receiveFlow)!;
+      final streamRect = RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset((_il + _ir) / 2, (_it + streamBottomY) / 2),
+          width: lerpDouble(5.5, 9.0, receiveFlow)!,
+          height: max(8.0, streamBottomY - _it + 2.0),
+        ),
+        Radius.circular(lerpDouble(2.2, 4.6, receiveFlow)!),
+      );
+
+      canvas.drawRRect(
+        streamRect,
+        Paint()
+          ..color = streamColor.withOpacity(0.70 * receiveFlow)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
+      );
+      canvas.drawRRect(
+        streamRect,
+        Paint()..color = streamColor.withOpacity(0.94 * receiveFlow),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset((_il + _ir) / 2 - 0.7, (_it + streamBottomY) / 2),
+            width: lerpDouble(1.2, 2.0, receiveFlow)!,
+            height: max(6.0, streamBottomY - _it - 1.0),
+          ),
+          const Radius.circular(1.2),
+        ),
+        Paint()..color = Colors.white.withOpacity(0.22 * receiveFlow),
       );
     }
 
@@ -2233,5 +2285,6 @@ class _LiquidPainter extends CustomPainter {
       old.incomingVolume != incomingVolume ||
       old.splash != splash ||
       old.pourProgress != pourProgress ||
-      old.bubbleBurst != bubbleBurst;
+      old.bubbleBurst != bubbleBurst ||
+      old.receiveFlow != receiveFlow;
 }
