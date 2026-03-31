@@ -77,7 +77,8 @@ double get kUCenterY => kBodyBotY; // daire merkezi tam gövde altında
 double get kLiquidLeft => kBodyInnerLeft + 3;
 double get kLiquidRight => kBodyInnerRight - 3;
 double get kLiquidW => kLiquidRight - kLiquidLeft;
-double get kLiquidTopY => kBodyTopY + 22;
+double get kLiquidTopY => kCapBotY + 22.0;
+double get kMouthEntryY => kCapBotY + 4.0;
 double get kLiquidBotY => kBodyBotY + kTR - 12;
 
 // Widget toplam yüksekliği
@@ -254,6 +255,34 @@ class _VisualLayer {
         colorIdx: colorIdx ?? this.colorIdx,
         volume: volume ?? this.volume,
       );
+}
+
+// ─────────────────────────────────────────────
+// ORTAK TEMAS HESABI
+// ─────────────────────────────────────────────
+//
+// Akış çizgisinin hedefteki sıvıya (veya boş şişe dibine) değdiği
+// streamOpen anını hesaplar.
+//
+// Tüm koordinatlar LOCAL şişe koordinatındadır.
+// Akış ağız noktası: kLiquidTopY + kStreamMouthOffset
+// Max iniş mesafesi: kLiquidBotY - (kLiquidTopY + kStreamMouthOffset)
+//
+// Bu sabit her iki yerde (FlyingTube & TubeStage) aynı olmalı.
+const double kStreamMouthOffset = 24.0; // ağız Y = kLiquidTopY + bu değer
+
+double computeContactThreshold(int existingLayerCount) {
+  final fillRatio = (existingLayerCount / kCap).clamp(0.0, 1.0);
+  // Mevcut sıvı yüzey Y (local, 0 katman=dip, 4 katman=üst)
+  final surfaceY = kLiquidBotY - (kLiquidBotY - kLiquidTopY) * fillRatio;
+  // Akış çizgisinin başladığı Y (şişe ağzı)
+  final mouthY = kLiquidTopY + kStreamMouthOffset;
+  // Akışın inmesi gereken mesafe
+  final needed = (surfaceY - mouthY).clamp(0.0, double.infinity);
+  // Akışın inebileceği maksimum mesafe (ağızdan dibe)
+  final maxTravel = (kLiquidBotY - mouthY).clamp(1.0, double.infinity);
+  // 0.90 tavanı: boş şişede bile fillProgress'in çalışacak %10 payı olsun
+  return (needed / maxTravel).clamp(0.0, 0.90);
 }
 
 // ─────────────────────────────────────────────
@@ -893,16 +922,71 @@ class _TubeStageState extends State<_TubeStage> {
   }
 
   Widget _tubeItem(int idx, {double topPadding = 0}) {
-    // Aktif animasyonda hem kaynak hem hedef tüpü sahneden gizle.
-    // Böylece hedef tüp yalnızca _FlyingTube içinde tek kez çizilir
-    // ve halo/çift render oluşmaz.
-    final hiddenTubes =
-        widget.activePlans.expand((p) => [p.fromIdx, p.toIdx]).toSet();
+    // Aktif animasyonda yalnızca kaynak tüp sahneden gizlenir.
+    // Hedef tüp sahnede sabit kalır ve dolum yerinde animasyonlanır.
+    final hiddenSources = widget.activePlans.map((p) => p.fromIdx).toSet();
     final isLockedAdTube =
         widget.showLockedAdTube && idx == widget.lockedAdTubeIndex;
 
-    final isTargetOfPlan = widget.activePlans.any((p) => p.toIdx == idx);
+    final activeTargetPlan =
+        widget.activePlans.cast<_TransferPlan?>().firstWhere(
+              (p) => p?.toIdx == idx,
+              orElse: () => null,
+            );
+
+    final isTargetOfPlan = activeTargetPlan != null;
     final showSelected = widget.selected == idx && !isTargetOfPlan;
+
+    Widget tubeView;
+    if (isTargetOfPlan) {
+      final plan = activeTargetPlan!;
+      tubeView = TweenAnimationBuilder<double>(
+        key: ValueKey('target_fill_${plan.fromIdx}_${plan.toIdx}'),
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: kPourDuration,
+        curve: Curves.linear,
+        builder: (context, timeline, _) {
+          // Ortak helper — FlyingTube ile tamamen senkron
+          final contactThreshold =
+              computeContactThreshold(plan.toSnapshot.length);
+
+          // FlyingTube ile aynı v-bazlı temas hesabı
+          const pMoveEnd = 0.44;
+          const pTiltEnd = 0.58;
+          const pPourEnd = 0.90;
+          const pUprightEnd = 0.97;
+          final vStreamStart = pMoveEnd + 0.93 * (pTiltEnd - pMoveEnd);
+          final vContact =
+              vStreamStart + contactThreshold * (pPourEnd - vStreamStart);
+
+          // Dolum: vContact → pUprightEnd arasında
+          final incomingPhase = timeline <= vContact
+              ? 0.0
+              : Curves.easeInOutCubic.transform(
+                  ((timeline - vContact) / max(0.0001, pUprightEnd - vContact))
+                      .clamp(0.0, 1.0),
+                );
+          final incoming = plan.count * incomingPhase;
+          return _TubeWidget(
+            tube: plan.toSnapshot,
+            isSelected: false,
+            incomingColorIdx: plan.colorIdx,
+            incomingVolume: incoming,
+            slosh: 0.0,
+            splash: 0.0,
+            pourProgress: incomingPhase,
+            bubbleBurst: 0.0,
+          );
+        },
+      );
+    } else {
+      tubeView = _TubeWidget(
+        tube: widget.tubes[idx],
+        isSelected: showSelected,
+        incomingColorIdx: null,
+        incomingVolume: 0.0,
+      );
+    }
 
     return Padding(
       padding: EdgeInsets.only(top: topPadding),
@@ -911,19 +995,14 @@ class _TubeStageState extends State<_TubeStage> {
         child: GestureDetector(
           onTap: () => widget.onTap(idx),
           child: Opacity(
-            opacity: hiddenTubes.contains(idx) ? 0.0 : 1.0,
+            opacity: hiddenSources.contains(idx) ? 0.0 : 1.0,
             child: Stack(
               alignment: Alignment.center,
               clipBehavior: Clip.none,
               children: [
                 Opacity(
                   opacity: isLockedAdTube ? 0.30 : 1.0,
-                  child: _TubeWidget(
-                    tube: widget.tubes[idx],
-                    isSelected: showSelected,
-                    incomingColorIdx: null,
-                    incomingVolume: 0.0,
-                  ),
+                  child: tubeView,
                 ),
                 if (isLockedAdTube)
                   Positioned(
@@ -1160,23 +1239,17 @@ class _FlyingTubeState extends State<_FlyingTube>
   }
 
   double _targetTiltForRemaining(double remainingUnits) {
-    final fill = (remainingUnits / kCap).clamp(0.0, 1.0);
-    final emptiness = 1.0 - fill;
-    final deg = lerpDouble(64.0, 88.0, emptiness)!;
-    return deg * pi / 180.0;
+    // 90 dereceye yakın sabit döküm: şişe hedef tüpün tam üstüne gelir
+    // ve akış mümkün olduğunca dik aşağı iner.
+    return pi / 2;
   }
 
   Offset _mouthEdgeLocal({
     required double fromMidX,
   }) {
-    final stageMidX = kStageW / 2;
-    final poursFromRight = fromMidX < stageMidX;
-
-    if (poursFromRight) {
-      return Offset(kBodyRightX + 0.6, kCapBotY + 0.8);
-    } else {
-      return Offset(kBodyLeftX - 0.6, kCapBotY + 0.8);
-    }
+    // 90 derecelik dökümde akışı hedef tüpün tam üstüne hizalamak için
+    // akış başlangıcını şişe ağzının merkezine yakın tutuyoruz.
+    return Offset(kWidgetW / 2, kCapBotY + 0.8);
   }
 
   @override
@@ -1188,12 +1261,11 @@ class _FlyingTubeState extends State<_FlyingTube>
     final fromPos = rawFromPos.translate(0, -15.0);
     final fromMidX = fromPos.dx + kWidgetW / 2;
     final toMidX = toPos.dx + kWidgetW / 2;
-    final stageMidX = kStageW / 2;
-    final tiltSign = fromMidX < stageMidX ? 1.0 : -1.0;
+    final tiltSign = fromMidX <= toMidX ? 1.0 : -1.0;
     final horizontalGap = (toMidX - fromMidX).abs();
     final extraLift =
-        lerpDouble(26.0, 72.0, (horizontalGap / 220.0).clamp(0.0, 1.0))!;
-    final liftY = min(fromPos.dy, toPos.dy) - 60.0 - extraLift;
+        lerpDouble(44.0, 92.0, (horizontalGap / 220.0).clamp(0.0, 1.0))!;
+    final liftY = min(fromPos.dy, toPos.dy) - 74.0 - extraLift;
 
     final mouthLocal = Offset(kWidgetW / 2, kCapBotY + 1.0);
     final anchorLocal = Offset(kWidgetW / 2, kBodyBotY + kTR);
@@ -1207,23 +1279,69 @@ class _FlyingTubeState extends State<_FlyingTube>
             ? _phase(v, _pTiltEnd, _pPourEnd)
             : (v >= _pPourEnd ? 1.0 : 0.0);
 
-        final streamOpen =
-            Curves.easeInOut.transform(_phase(v, _pMoveEnd, _pPourEnd));
-        final lineProgress =
-            Curves.easeOutCubic.transform(_phase(streamOpen, 0.0, 0.42));
-        final fillProgress =
-            Curves.easeInOutCubic.transform(_phase(streamOpen, 0.42, 1.0));
+        // Döküm çok erken başlamasın: şişe neredeyse 90° konuma geldiğinde,
+        // yaklaşık 70-75° bandını geçince akış açılsın.
+        final angleProgress = v < _pMoveEnd
+            ? 0.0
+            : (v < _pTiltEnd
+                ? _phase(v, _pMoveEnd, _pTiltEnd)
+                : (v < _pPourEnd ? 1.0 : 1.0));
+        const double pourStartAngleThreshold = 0.93;
+        final delayedStreamOpen = angleProgress <= pourStartAngleThreshold
+            ? 0.0
+            : Curves.easeInOut.transform(
+                ((angleProgress - pourStartAngleThreshold) /
+                        (1.0 - pourStartAngleThreshold))
+                    .clamp(0.0, 1.0),
+              );
+        final streamOpen = v >= _pPourEnd ? 1.0 : delayedStreamOpen;
 
-        final sourceDrainVolume = widget.plan.count * fillProgress;
-        final targetIncomingVolume = widget.plan.count * fillProgress;
+        // Ortak helper — TubeStage ile tamamen senkron
+        final contactThreshold =
+            computeContactThreshold(widget.plan.toSnapshot.length);
+
+        // streamOpen'ın başladığı v noktası (angle threshold geçilince)
+        // _pMoveEnd → _pTiltEnd arası angle 0→1, threshold=0.93 → v_streamStart
+        final vStreamStart =
+            _pMoveEnd + 0.93 * (_pTiltEnd - _pMoveEnd); // ≈ 0.57
+        // streamOpen=1 olduğu v noktası = _pPourEnd
+        // Temas v'si: vStreamStart + contactThreshold*(pPourEnd - vStreamStart)
+        final vContact =
+            vStreamStart + contactThreshold * (_pPourEnd - vStreamStart);
+
+// Akış çizgisi: v < vContact → uzar, v >= vContact → tam görünür.
+        final lineProgress = v <= vStreamStart
+            ? 0.0
+            : (v >= vContact
+                ? 1.0
+                : Curves.easeOut.transform(
+                    ((v - vStreamStart) / max(0.0001, vContact - vStreamStart))
+                        .clamp(0.0, 1.0)));
+
+// Dolum: temas anından (_vContact) akış bitişine (_pUprightEnd) kadar lineer.
+        final fillProgress = v <= vContact
+            ? 0.0
+            : Curves.easeInOutCubic.transform(
+                ((v - vContact) / max(0.0001, _pUprightEnd - vContact))
+                    .clamp(0.0, 1.0),
+              );
+
+// Drain: akış başından (_pTiltEnd) bitimine (_pUprightEnd) kadar.
+        final drainProgress = v <= _pTiltEnd
+            ? 0.0
+            : Curves.easeInOut.transform(
+                ((v - _pTiltEnd) / max(0.0001, _pUprightEnd - _pTiltEnd))
+                    .clamp(0.0, 1.0));
+
+        final sourceDrainVolume = widget.plan.count * drainProgress;
         final remainingUnits =
             (widget.plan.fromSnapshot.length - sourceDrainVolume)
                 .clamp(0.0, kCap.toDouble());
 
         final dynamicMaxTilt = _targetTiltForRemaining(remainingUnits);
 
-        const double kPourGapY = 18.0;
-        final targetMouth = Offset(toMidX, toPos.dy + kCapBotY - kPourGapY);
+        const double kPourGapY = 34.0;
+        final targetMouth = Offset(toMidX, toPos.dy + kCapTopY - kPourGapY);
 
         final pourTopLeft = _tubeTopLeftToMatchMouth(
           targetMouth: targetMouth,
@@ -1280,11 +1398,11 @@ class _FlyingTubeState extends State<_FlyingTube>
         _liquidTilt += (bottleAngle - _liquidTilt) * inertiaFactor;
 
         final easedFlow =
-            Curves.easeInOutSine.transform(fillProgress.clamp(0.0, 1.0));
+            Curves.easeInOutSine.transform(drainProgress.clamp(0.0, 1.0));
 
         final isPouring = widget.plan.count > 0 &&
             v >= _pMoveEnd &&
-            v < _pPourEnd &&
+            v < _pUprightEnd &&
             streamOpen > 0.005;
 
         final visibleTubeAngle = _liquidTilt;
@@ -1302,43 +1420,30 @@ class _FlyingTubeState extends State<_FlyingTube>
           cy + rotatedMouthEdge.dy,
         );
 
+        final targetBaseUnits = widget.plan.toSnapshot.length.toDouble();
+
+        // Akış çizgisinin ucu: dolmadan ÖNCEKİ sıvı seviyesi (sabit).
+        // Dolum ilerledikçe yukarı kaçmaması için currentTargetUnits kullanmıyoruz.
+        final initialTargetSurfaceY = _surfaceCenterYForFillRatio(
+          (targetBaseUnits / kCap).clamp(0.0, 1.0),
+        );
+
         final targetMouthEntry = Offset(
           toMidX,
-          toPos.dy + kLiquidTopY - 2.0,
+          toPos.dy + initialTargetSurfaceY,
         );
 
         final motionEnergy = _motionEnergy(v);
         final sourceSlosh = _sloshing(v, 0.50) + motionEnergy * 0.10;
-        final targetSlosh = _sloshing(v + 0.12, 0.16) +
-            easedFlow * 0.02 +
-            targetIncomingVolume * 0.01;
-        const double targetSplash = 0.0;
         final sourceBubbleBurst = isPouring
             ? lerpDouble(0.85, 1.0, easedFlow)!
             : (v >= _pPourEnd && v < _pUprightEnd
                 ? lerpDouble(0.55, 0.0, _phase(v, _pPourEnd, _pUprightEnd))!
                 : 0.0);
-        const double targetBubbleBurst = 0.0;
 
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            Positioned(
-              left: toPos.dx,
-              top: toPos.dy,
-              child: IgnorePointer(
-                child: _TubeWidget(
-                  tube: widget.plan.toSnapshot,
-                  isSelected: false,
-                  incomingColorIdx: widget.plan.colorIdx,
-                  incomingVolume: targetIncomingVolume,
-                  slosh: targetSlosh,
-                  splash: targetSplash,
-                  pourProgress: fillProgress,
-                  bubbleBurst: targetBubbleBurst,
-                ),
-              ),
-            ),
             Positioned(
               left: cx,
               top: cy,
