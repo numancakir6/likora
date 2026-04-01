@@ -88,9 +88,38 @@ double get kWidgetH => kTH;
 double get kWidgetW => kTW;
 
 const double kTubeGap = 20.0;
-double get kStageW => (kWidgetW * 4) + (kTubeGap * 3) + 24.0;
-double get kStageH => (kWidgetH * 3) + (kTubeGap * 2) + 28.0;
-const Duration kPourDuration = Duration(milliseconds: 2200);
+
+class _StageMetrics {
+  final double width;
+  final double height;
+
+  const _StageMetrics({required this.width, required this.height});
+}
+
+_StageMetrics _measureStageLayout(StageLayout layout) {
+  switch (layout.mode) {
+    case StageLayoutMode.manual:
+      return _StageMetrics(
+        width: layout.canvasWidth ?? ((kWidgetW * 4) + (kTubeGap * 3) + 24.0),
+        height: layout.canvasHeight ?? ((kWidgetH * 3) + (kTubeGap * 2) + 28.0),
+      );
+    case StageLayoutMode.rows:
+      final rowCount = layout.rows.isEmpty ? 1 : layout.rows.length;
+      var maxCount = 1;
+      for (final row in layout.rows) {
+        if (row.length > maxCount) maxCount = row.length;
+      }
+      final width =
+          (maxCount * kWidgetW) + ((maxCount - 1) * layout.tubeGap) + 24.0;
+      final height = (rowCount * kWidgetH) +
+          ((rowCount - 1) * layout.rowGap) +
+          28.0 +
+          layout.topOffset.abs();
+      return _StageMetrics(width: width, height: height);
+  }
+}
+
+const Duration kPourDuration = Duration(milliseconds: 1500);
 
 const List<Map<String, dynamic>> kColors = [
   {'name': 'Gül Kırmızısı', 'fill': Color(0xFFE83060)},
@@ -359,6 +388,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
 
   bool get _canBuyJoker => _coins >= _jokerCost;
+
+  StageLayout get _stageLayout =>
+      _preset?.layout ?? StageLayout.standardForTubeCount(_tubes.length);
+
+  _StageMetrics get _stageMetrics => _measureStageLayout(_stageLayout);
 
   @override
   void initState() {
@@ -1266,8 +1300,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                 child: FittedBox(
                                   fit: BoxFit.scaleDown,
                                   child: SizedBox(
-                                    width: kStageW,
-                                    height: kStageH,
+                                    width: _stageMetrics.width,
+                                    height: _stageMetrics.height,
                                     child: _TubeStage(
                                       tubes: _tubes,
                                       selected: _selected,
@@ -1279,6 +1313,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                           _celebratingDoneTubes,
                                       gameWon: _gameWon,
                                       undoSloshingTubes: _undoSloshingTubes,
+                                      layout: _stageLayout,
                                     ),
                                   ),
                                 ),
@@ -1778,6 +1813,7 @@ class _TubeStage extends StatefulWidget {
   final Map<int, int> celebratingDoneTubes;
   final bool gameWon;
   final Map<int, int> undoSloshingTubes;
+  final StageLayout layout;
 
   const _TubeStage({
     required this.tubes,
@@ -1787,6 +1823,7 @@ class _TubeStage extends StatefulWidget {
     required this.lockedAdTubeIndex,
     required this.showLockedAdTube,
     required this.celebratingDoneTubes,
+    required this.layout,
     this.gameWon = false,
     this.undoSloshingTubes = const {},
   });
@@ -1823,8 +1860,6 @@ class _TubeStageState extends State<_TubeStage> {
   }
 
   Widget _tubeItem(int idx, {double topPadding = 0}) {
-    // Aktif animasyonda yalnızca kaynak tüp sahneden gizlenir.
-    // Hedef tüp sahnede sabit kalır ve dolum yerinde animasyonlanır.
     final hiddenSources = widget.activePlans.map((p) => p.fromIdx).toSet();
     final isLockedAdTube =
         widget.showLockedAdTube && idx == widget.lockedAdTubeIndex;
@@ -1847,11 +1882,9 @@ class _TubeStageState extends State<_TubeStage> {
         duration: kPourDuration,
         curve: Curves.linear,
         builder: (context, timeline, _) {
-          // Ortak helper — FlyingTube ile tamamen senkron
           final contactThreshold =
               computeContactThreshold(plan.toSnapshot.length);
 
-          // FlyingTube ile aynı v-bazlı temas hesabı
           const pMoveEnd = 0.44;
           const pTiltEnd = 0.58;
           const pPourEnd = 0.90;
@@ -1860,7 +1893,6 @@ class _TubeStageState extends State<_TubeStage> {
           final vContact =
               vStreamStart + contactThreshold * (pPourEnd - vStreamStart);
 
-          // Dolum: vContact → pUprightEnd arasında
           final incomingPhase = timeline <= vContact
               ? 0.0
               : Curves.easeInOutCubic.transform(
@@ -1891,13 +1923,11 @@ class _TubeStageState extends State<_TubeStage> {
         },
       );
     } else if (widget.undoSloshingTubes.containsKey(idx)) {
-      // Geri alma animasyonu — sıvı çalkantısı
       tubeView = TweenAnimationBuilder<double>(
         key: ValueKey('undo_slosh_$idx'),
         tween: Tween(begin: 0.0, end: 1.0),
         duration: const Duration(milliseconds: 700),
         builder: (context, t, _) {
-          // Çalkantı: önce güçlü, sonra sönümleniyor
           final decay = (1.0 - t);
           final slosh = sin(t * pi * 4.5) * decay * 0.55;
           final bubble = sin((t * pi * 1.2).clamp(0.0, pi)).abs() * decay * 0.7;
@@ -1962,14 +1992,67 @@ class _TubeStageState extends State<_TubeStage> {
     );
   }
 
-  Widget _row(List<int> indices, {double topPadding = 0}) {
+  Widget _row(List<int> indices,
+      {double topPadding = 0, double tubeGap = kTubeGap}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (final idx in indices) ...[
           _tubeItem(idx, topPadding: topPadding),
-          if (idx != indices.last) const SizedBox(width: kTubeGap),
+          if (idx != indices.last) SizedBox(width: tubeGap),
         ],
+      ],
+    );
+  }
+
+  Widget _buildRowsLayout() {
+    final effectiveLayout = widget.layout.mode == StageLayoutMode.rows
+        ? widget.layout
+        : StageLayout.standardForTubeCount(widget.tubes.length);
+    final rows = effectiveLayout.rows
+        .map((row) =>
+            row.where((idx) => idx >= 0 && idx < widget.tubes.length).toList())
+        .where((row) => row.isNotEmpty)
+        .toList();
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Padding(
+        padding: EdgeInsets.only(top: max(0.0, effectiveLayout.topOffset)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < rows.length; i++) ...[
+              _row(
+                rows[i],
+                topPadding: i < effectiveLayout.rowTopPaddings.length
+                    ? effectiveLayout.rowTopPaddings[i]
+                    : 0,
+                tubeGap: effectiveLayout.tubeGap,
+              ),
+              if (i != rows.length - 1)
+                SizedBox(height: effectiveLayout.rowGap),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManualLayout() {
+    final width = widget.layout.canvasWidth ?? context.size?.width ?? 0;
+    final height = widget.layout.canvasHeight ?? context.size?.height ?? 0;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        for (final pos in widget.layout.positions)
+          if (pos.index >= 0 && pos.index < widget.tubes.length)
+            Positioned(
+              left: pos.x * max(0.0, width - kWidgetW),
+              top: pos.y * max(0.0, height - kWidgetH),
+              child: _tubeItem(pos.index),
+            ),
       ],
     );
   }
@@ -1980,24 +2063,12 @@ class _TubeStageState extends State<_TubeStage> {
       clipBehavior: Clip.none,
       children: [
         Positioned.fill(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _row(const [0, 1, 2, 3]),
-                const SizedBox(height: kTubeGap),
-                _row(const [4, 5, 6, 7]),
-                const SizedBox(height: kTubeGap),
-                _row(const [8, 9, 10], topPadding: 4),
-              ],
-            ),
-          ),
+          child: widget.layout.mode == StageLayoutMode.manual
+              ? _buildManualLayout()
+              : _buildRowsLayout(),
         ),
-        // Paralel animasyonlar — her aktif plan için ayrı FlyingTube
         for (final plan in widget.activePlans)
           _FlyingTube(
-            key: ValueKey('fly_${plan.fromIdx}_${plan.toIdx}'),
             plan: plan,
             getPos: _localPos,
           ),

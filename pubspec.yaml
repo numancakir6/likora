@@ -3,7 +3,7 @@ description: Likora App
 
 publish_to: 'none'
 
-version: 1.0.0+12
+version: 1.0.0+13
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -13,6 +13,7 @@ dependencies:
     sdk: flutter
   flutter_launcher_icons: ^0.14.4
   flutter_svg: ^2.0.10
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:

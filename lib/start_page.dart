@@ -6,6 +6,7 @@ import 'daily_puzzle_page.dart';
 import 'how_to_play_page.dart';
 import 'settings_page.dart';
 import 'contact_page.dart';
+import 'player_progress.dart';
 
 class StartPage extends StatefulWidget {
   const StartPage({super.key});
@@ -25,6 +26,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _loadProgress();
 
     // Burada repeat devam ediyor ama artık bubble hesabında
     // controller.value kullanmayacağız
@@ -50,6 +52,12 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
         ),
       );
     }
+  }
+
+  Future<void> _loadProgress() async {
+    await PlayerProgress.ensureLoaded();
+    if (!mounted) return;
+    setState(() {});
   }
 
   @override
@@ -92,41 +100,11 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
           SafeArea(
             child: Column(
               children: [
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(14, 12, 14, 6),
                   child: Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.07),
-                          borderRadius: BorderRadius.circular(24),
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.12)),
-                        ),
-                        child: Row(
-                          children: const [
-                            Icon(
-                              Icons.monetization_on,
-                              color: Color(0xFFFFD700),
-                              size: 20,
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              "1250",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      CoinPill(),
                     ],
                   ),
                 ),
