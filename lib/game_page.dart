@@ -1284,28 +1284,28 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 20),
                             Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Expanded(
-                                  child: _BottomActionBtn(
-                                    label: 'Seviyeyi Düşür',
-                                    color: Colors.white.withOpacity(0.10),
-                                    borderColor: Colors.white.withOpacity(0.18),
-                                    textColor: Colors.white,
-                                    onTap: _lowerLevel,
-                                  ),
+                                _LevelIconBtn(
+                                  icon:
+                                      Icons.keyboard_double_arrow_down_rounded,
+                                  tooltip: 'Seviyeyi Düşür',
+                                  color: Colors.white.withOpacity(0.10),
+                                  borderColor: Colors.white.withOpacity(0.18),
+                                  iconColor: Colors.white,
+                                  onTap: _lowerLevel,
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: _BottomActionBtn(
-                                    label: 'Seviyeyi Geç',
-                                    color: _theme.accentColor.withOpacity(0.18),
-                                    borderColor:
-                                        _theme.accentColor.withOpacity(0.45),
-                                    textColor: _theme.accentColor,
-                                    onTap: _completeLevel,
-                                  ),
+                                const SizedBox(width: 20),
+                                _LevelIconBtn(
+                                  icon: Icons.keyboard_double_arrow_up_rounded,
+                                  tooltip: 'Seviyeyi Geç',
+                                  color: _theme.accentColor.withOpacity(0.18),
+                                  borderColor:
+                                      _theme.accentColor.withOpacity(0.45),
+                                  iconColor: _theme.accentColor,
+                                  onTap: _completeLevel,
                                 ),
                               ],
                             ),
@@ -1708,6 +1708,54 @@ class _BottomActionBtn extends StatelessWidget {
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// SEVİYE İKON BUTONU
+// ─────────────────────────────────────────────
+
+class _LevelIconBtn extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final Color color;
+  final Color borderColor;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  const _LevelIconBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.color,
+    required this.borderColor,
+    required this.iconColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Ink(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: borderColor, width: 1.5),
+            ),
+            child: Center(
+              child: Icon(icon, color: iconColor, size: 26),
             ),
           ),
         ),
