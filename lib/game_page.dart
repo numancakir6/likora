@@ -262,6 +262,18 @@ class _VisualLayer {
       );
 }
 
+class _JokerDecision {
+  final int from;
+  final int to;
+  final int rewindCount;
+
+  const _JokerDecision({
+    required this.from,
+    required this.to,
+    this.rewindCount = 0,
+  });
+}
+
 // ─────────────────────────────────────────────
 // ORTAK TEMAS HESABI
 // ─────────────────────────────────────────────
@@ -287,7 +299,7 @@ double computeContactThreshold(int existingLayerCount) {
   // Akışın inebileceği maksimum mesafe (ağızdan dibe)
   final maxTravel = (kLiquidBotY - mouthY).clamp(1.0, double.infinity);
   // 0.90 tavanı: boş şişede bile fillProgress'in çalışacak %10 payı olsun
-  return (needed / maxTravel).clamp(0.0, 0.90);
+  return (needed / maxTravel).clamp(0.0, 0.10);
 }
 
 // ─────────────────────────────────────────────
@@ -298,12 +310,14 @@ class GamePage extends StatefulWidget {
   final int level;
   final int mapNumber;
   final int difficulty;
+  final int initialCoins;
 
   const GamePage({
     super.key,
     required this.level,
     required this.mapNumber,
     this.difficulty = 1,
+    this.initialCoins = 0,
   });
 
   @override
@@ -315,6 +329,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   late final MapTheme _theme;
 
   late int _lockedAdTubeIndex;
+  PuzzlePreset? _preset;
 
   // Oyun mantık durumu (gerçek veri)
   late List<List<int>> _tubes;
@@ -331,6 +346,20 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _gameWon = false;
   final Map<int, int> _celebratingDoneTubes = <int, int>{};
 
+  // Geri alma geçmişi
+  final List<({List<List<int>> tubes, int fromIdx, int toIdx})> _history = [];
+  // Geri alma animasyonu — hangi tüpler sloshing yapıyor
+  final Map<int, int> _undoSloshingTubes = {}; // tubeIdx → colorIdx
+
+  static const int _jokerCost = 50;
+
+  late int _coins;
+  bool _jokerBusy = false;
+  bool _adTubeUnlocked = false;
+  final Map<String, List<(int, int)>> _solverSuccessCache = {};
+
+  bool get _canBuyJoker => _coins >= _jokerCost;
+
   @override
   void initState() {
     super.initState();
@@ -339,6 +368,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(seconds: 10),
     )..repeat(reverse: true);
+    _coins = widget.initialCoins;
     _reset();
   }
 
@@ -348,7 +378,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  bool get _showLockedAdTube => true;
+  bool get _showLockedAdTube => !_adTubeUnlocked;
   bool _isLockedAdTubeIndex(int idx) =>
       _showLockedAdTube && idx == _lockedAdTubeIndex;
 
@@ -363,12 +393,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   void _reset() {
-    final preset = PuzzlePresets.getOrNull(
+    _preset = PuzzlePresets.getOrNull(
       mapNumber: widget.mapNumber,
       levelId: widget.level,
     );
 
-    final initialTubes = (preset?.tubes ??
+    final initialTubes = (_preset?.tubes ??
             _legacyGenerateTubes(
               level: widget.level,
               difficulty: widget.difficulty,
@@ -377,14 +407,552 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         .toList(growable: true);
 
     _tubes = initialTubes;
-    _lockedAdTubeIndex = (preset?.lockedAdTubeIndex ?? (_tubes.length - 1))
+    _lockedAdTubeIndex = (_preset?.lockedAdTubeIndex ?? (_tubes.length - 1))
         .clamp(0, _tubes.length - 1);
     _activePlans.clear();
     _selected = null;
     _gameWon = false;
     _celebratingDoneTubes.clear();
     _commandQueue.clear();
+    _history.clear();
+    _undoSloshingTubes.clear();
+    _adTubeUnlocked = false;
     setState(() {});
+  }
+
+  String _canonicalBoardSignature(
+    List<List<int>> tubes, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final playable = <String>[];
+    String? locked;
+
+    for (int i = 0; i < tubes.length; i++) {
+      final sig = tubes[i].join(',');
+
+      if (i == _lockedAdTubeIndex && !includeUnlockedAdTube) {
+        locked = 'LOCK:$sig';
+      } else {
+        playable.add(sig);
+      }
+    }
+
+    playable.sort((a, b) {
+      final aEmpty = a.isEmpty;
+      final bEmpty = b.isEmpty;
+
+      if (aEmpty && !bEmpty) return 1;
+      if (!aEmpty && bEmpty) return -1;
+      return a.compareTo(b);
+    });
+
+    if (locked != null) {
+      playable.add(locked!);
+    }
+
+    return playable.join('|');
+  }
+
+  String _boardSignature(List<List<int>> tubes) {
+    return _canonicalBoardSignature(
+      tubes,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    );
+  }
+
+  String _currentBoardSignature() {
+    return _boardSignature(_tubes);
+  }
+
+  List<int> _completedTubeColorsOf(List<List<int>> tubes) {
+    final colors = <int>[];
+    for (int i = 0; i < tubes.length; i++) {
+      if (!_adTubeUnlocked && i == _lockedAdTubeIndex) continue;
+      final tube = tubes[i];
+      if (isTubeDone(tube)) {
+        colors.add(tube.first);
+      }
+    }
+    colors.sort();
+    return colors;
+  }
+
+  int _doneTubeCountOf(List<List<int>> tubes) {
+    int count = 0;
+    for (int i = 0; i < tubes.length; i++) {
+      if (!_adTubeUnlocked && i == _lockedAdTubeIndex) continue;
+      if (isTubeDone(tubes[i])) count++;
+    }
+    return count;
+  }
+
+  bool _preservesCompletedTubes(
+    List<List<int>> current,
+    List<List<int>> candidate,
+  ) {
+    if (_doneTubeCountOf(candidate) < _doneTubeCountOf(current)) {
+      return false;
+    }
+
+    final currentDone = _completedTubeColorsOf(current);
+    final candidateDone = _completedTubeColorsOf(candidate);
+
+    for (final color in currentDone) {
+      if (!candidateDone.contains(color)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  List<List<int>> _cloneTubes(List<List<int>> tubes) => tubes
+      .map((t) => List<int>.from(t, growable: true))
+      .toList(growable: true);
+
+  bool _solverCanUseTube(int idx, {bool? includeUnlockedAdTube}) {
+    final allowAd = includeUnlockedAdTube ?? _adTubeUnlocked;
+    if (idx != _lockedAdTubeIndex) return true;
+    return allowAd;
+  }
+
+  bool _solverCanPour(
+    List<List<int>> tubes,
+    int from,
+    int to, {
+    bool? includeUnlockedAdTube,
+  }) {
+    if (!_solverCanUseTube(from,
+        includeUnlockedAdTube: includeUnlockedAdTube)) {
+      return false;
+    }
+    if (!_solverCanUseTube(to, includeUnlockedAdTube: includeUnlockedAdTube)) {
+      return false;
+    }
+    return canPour(tubes, from, to);
+  }
+
+  List<(int, int)> _orderedSolverMoves(
+    List<List<int>> tubes, {
+    bool? includeUnlockedAdTube,
+  }) {
+    final moves = <({int from, int to, int score})>[];
+    final usable = <int>[];
+
+    for (int i = 0; i < tubes.length; i++) {
+      if (_solverCanUseTube(i, includeUnlockedAdTube: includeUnlockedAdTube)) {
+        usable.add(i);
+      }
+    }
+
+    final emptyTargets =
+        usable.where((i) => tubes[i].isEmpty).toList(growable: false);
+
+    for (final from in usable) {
+      final source = tubes[from];
+      if (source.isEmpty) continue;
+      if (isTubeDone(source)) continue;
+
+      final sourceTop = source.last;
+      final sourceUniform = source.every((c) => c == sourceTop);
+
+      for (final to in usable) {
+        if (from == to) continue;
+        if (!_solverCanPour(
+          tubes,
+          from,
+          to,
+          includeUnlockedAdTube: includeUnlockedAdTube,
+        )) {
+          continue;
+        }
+
+        final target = tubes[to];
+
+        if (target.isEmpty &&
+            emptyTargets.isNotEmpty &&
+            to != emptyTargets.first) {
+          continue;
+        }
+
+        if (target.isEmpty && sourceUniform) {
+          continue;
+        }
+
+        int score = 0;
+
+        if (target.isNotEmpty && target.last == sourceTop) {
+          score += 120;
+          if (target.length + pourCount(tubes, from, to) == kCap) {
+            score += 80;
+          }
+        }
+
+        if (target.isEmpty) {
+          score += 15;
+        }
+
+        final next = _cloneTubes(tubes);
+        doPour(next, from, to);
+
+        if (isTubeDone(next[to])) {
+          score += 60;
+        }
+        if (isTubeDone(next[from])) {
+          score += 8;
+        }
+
+        final beforeDone = _doneTubeCountOf(tubes);
+        final afterDone = _doneTubeCountOf(next);
+        score += (afterDone - beforeDone) * 50;
+
+        moves.add((from: from, to: to, score: score));
+      }
+    }
+
+    moves.sort((a, b) {
+      final byScore = b.score.compareTo(a.score);
+      if (byScore != 0) return byScore;
+      final byFrom = a.from.compareTo(b.from);
+      if (byFrom != 0) return byFrom;
+      return a.to.compareTo(b.to);
+    });
+
+    return moves.map((m) => (m.from, m.to)).toList(growable: false);
+  }
+
+  String _solverCacheKey(
+    List<List<int>> tubes, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final sig = _canonicalBoardSignature(
+      tubes,
+      includeUnlockedAdTube: includeUnlockedAdTube,
+    );
+    return '${includeUnlockedAdTube ? 1 : 0}:$sig';
+  }
+
+  List<(int, int)>? _quickSolveFromState(
+    List<List<int>> start, {
+    required bool includeUnlockedAdTube,
+  }) {
+    return _solveFromState(
+      start,
+      includeUnlockedAdTube: includeUnlockedAdTube,
+      maxDepth: 48,
+      maxNodes: 45000,
+      maxMillis: 160,
+    );
+  }
+
+  List<(int, int)>? _mediumSolveFromState(
+    List<List<int>> start, {
+    required bool includeUnlockedAdTube,
+  }) {
+    return _solveFromState(
+      start,
+      includeUnlockedAdTube: includeUnlockedAdTube,
+      maxDepth: 90,
+      maxNodes: 180000,
+      maxMillis: 1400,
+    );
+  }
+
+  List<(int, int)>? _solveFromState(
+    List<List<int>> start, {
+    required bool includeUnlockedAdTube,
+    int maxDepth = 110,
+    int maxNodes = 280000,
+    int maxMillis = 2600,
+  }) {
+    final cacheKey = _solverCacheKey(
+      start,
+      includeUnlockedAdTube: includeUnlockedAdTube,
+    );
+    final cached = _solverSuccessCache[cacheKey];
+    if (cached != null) {
+      return List<(int, int)>.from(cached, growable: false);
+    }
+
+    final stopwatch = Stopwatch()..start();
+    final dead = <String>{};
+    final path = <(int, int)>[];
+    int nodes = 0;
+
+    bool dfs(List<List<int>> state, int depthLeft) {
+      if (isGameDone(state)) {
+        return true;
+      }
+      if (depthLeft <= 0) {
+        return false;
+      }
+      if (nodes >= maxNodes || stopwatch.elapsedMilliseconds >= maxMillis) {
+        return false;
+      }
+
+      final sig = _canonicalBoardSignature(
+        state,
+        includeUnlockedAdTube: includeUnlockedAdTube,
+      );
+      if (dead.contains(sig)) {
+        return false;
+      }
+
+      nodes++;
+
+      final moves = _orderedSolverMoves(
+        state,
+        includeUnlockedAdTube: includeUnlockedAdTube,
+      );
+
+      for (final move in moves) {
+        final next = _cloneTubes(state);
+        doPour(next, move.$1, move.$2);
+
+        path.add(move);
+        if (dfs(next, depthLeft - 1)) {
+          return true;
+        }
+        path.removeLast();
+      }
+
+      dead.add(sig);
+      return false;
+    }
+
+    for (int depth = 1; depth <= maxDepth; depth++) {
+      path.clear();
+      dead.clear();
+      nodes = 0;
+
+      final root = _cloneTubes(start);
+      if (dfs(root, depth)) {
+        final solvedPath = List<(int, int)>.from(path, growable: false);
+        _solverSuccessCache[cacheKey] = solvedPath;
+        return solvedPath;
+      }
+
+      if (stopwatch.elapsedMilliseconds >= maxMillis || nodes >= maxNodes) {
+        break;
+      }
+    }
+
+    return null;
+  }
+
+  bool _wouldCreateRecentLoop(
+    List<List<int>> board,
+    int from,
+    int to, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final next = _cloneTubes(board);
+    doPour(next, from, to);
+    final nextSig = _canonicalBoardSignature(
+      next,
+      includeUnlockedAdTube: includeUnlockedAdTube,
+    );
+
+    final start = _history.length > 8 ? _history.length - 8 : 0;
+    for (int i = start; i < _history.length; i++) {
+      final sig = _canonicalBoardSignature(
+        _history[i].tubes,
+        includeUnlockedAdTube: includeUnlockedAdTube,
+      );
+      if (sig == nextSig) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  (int, int)? _findBestEffortMove(
+    List<List<int>> board, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final moves = _orderedSolverMoves(
+      board,
+      includeUnlockedAdTube: includeUnlockedAdTube,
+    );
+    if (moves.isEmpty) return null;
+
+    for (final move in moves) {
+      if (!_wouldCreateRecentLoop(
+        board,
+        move.$1,
+        move.$2,
+        includeUnlockedAdTube: includeUnlockedAdTube,
+      )) {
+        return move;
+      }
+    }
+
+    return null;
+  }
+
+  _JokerDecision? _findSmartJokerDecision() {
+    // Önce bulunduğumuz noktadan hızlıca çözüm var mı bak.
+    final directQuick = _quickSolveFromState(
+      _tubes,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    );
+    if (directQuick != null && directQuick.isNotEmpty) {
+      return _JokerDecision(
+        from: directQuick.first.$1,
+        to: directQuick.first.$2,
+      );
+    }
+
+    // Çıkmaza girilmişse hızlıca geçmişte çözülebilen en yakın noktayı bul.
+    // Önce tamamlanmış tüpleri koruyan state'leri, sonra diğerlerini tara.
+    for (final keepDone in [true, false]) {
+      final maxQuickHistory = _history.length < 10 ? _history.length : 10;
+
+      for (int rewindCount = 1; rewindCount <= maxQuickHistory; rewindCount++) {
+        final snapshot =
+            _cloneTubes(_history[_history.length - rewindCount].tubes);
+        final preservesDone = _preservesCompletedTubes(_tubes, snapshot);
+
+        if (keepDone && !preservesDone) continue;
+        if (!keepDone && preservesDone) continue;
+
+        final quick = _quickSolveFromState(
+          snapshot,
+          includeUnlockedAdTube: _adTubeUnlocked,
+        );
+        if (quick != null && quick.isNotEmpty) {
+          return _JokerDecision(
+            from: quick.first.$1,
+            to: quick.first.$2,
+            rewindCount: rewindCount,
+          );
+        }
+      }
+    }
+
+    // Hızlı tarama bulamazsa bulunduğumuz noktada biraz daha derin çözüm dene.
+    final directMedium = _mediumSolveFromState(
+      _tubes,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    );
+    if (directMedium != null && directMedium.isNotEmpty) {
+      return _JokerDecision(
+        from: directMedium.first.$1,
+        to: directMedium.first.$2,
+      );
+    }
+
+    // Sonra bütün geçmişte çözülebilen en yakın state'i ara.
+    _JokerDecision? fallbackKeepingDone;
+    _JokerDecision? fallbackAny;
+
+    for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
+      final snapshot =
+          _cloneTubes(_history[_history.length - rewindCount].tubes);
+      final preservesDone = _preservesCompletedTubes(_tubes, snapshot);
+
+      final solution = _mediumSolveFromState(
+        snapshot,
+        includeUnlockedAdTube: _adTubeUnlocked,
+      );
+      if (solution != null && solution.isNotEmpty) {
+        final candidate = _JokerDecision(
+          from: solution.first.$1,
+          to: solution.first.$2,
+          rewindCount: rewindCount,
+        );
+
+        if (preservesDone) {
+          fallbackKeepingDone ??= candidate;
+        } else {
+          fallbackAny ??= candidate;
+        }
+      }
+    }
+
+    if (fallbackKeepingDone != null) return fallbackKeepingDone;
+    if (fallbackAny != null) return fallbackAny;
+
+    // En son çare: loop oluşturmayan mantıklı bir hamle yap.
+    final directBestEffort = _findBestEffortMove(
+      _tubes,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    );
+    if (directBestEffort != null) {
+      return _JokerDecision(
+        from: directBestEffort.$1,
+        to: directBestEffort.$2,
+      );
+    }
+
+    return null;
+  }
+
+  Future<void> _rewindHistoryForJoker(int rewindCount) async {
+    if (rewindCount <= 0) return;
+
+    for (int i = 0; i < rewindCount; i++) {
+      if (_history.isEmpty || _activePlans.isNotEmpty) break;
+      _undo();
+      await Future.delayed(const Duration(milliseconds: 760));
+    }
+  }
+
+  void _spendCoins(int amount) {
+    setState(() {
+      _coins = max(0, _coins - amount);
+    });
+
+    // TODO: Coin bilgisini kalıcı kayda yaz.
+  }
+
+  Future<bool> _showRewardedAdForJoker() async {
+    // TODO: Gerçek rewarded reklam entegrasyonunu burada bağla.
+    await Future.delayed(const Duration(milliseconds: 1200));
+    return true;
+  }
+
+  Future<void> _useJokerWithEconomy() async {
+    if (_jokerBusy || _activePlans.isNotEmpty || _gameWon) return;
+
+    final decision = _findSmartJokerDecision();
+    if (decision == null) {
+      HapticFeedback.lightImpact();
+      return;
+    }
+
+    setState(() {
+      _jokerBusy = true;
+    });
+
+    try {
+      bool allowed = false;
+
+      if (_canBuyJoker) {
+        _spendCoins(_jokerCost);
+        allowed = true;
+      } else {
+        allowed = await _showRewardedAdForJoker();
+      }
+
+      if (!allowed) {
+        HapticFeedback.lightImpact();
+        return;
+      }
+
+      if (decision.rewindCount > 0) {
+        await _rewindHistoryForJoker(decision.rewindCount);
+      }
+
+      await _startPour(decision.from, decision.to);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _jokerBusy = false;
+        });
+      }
+    }
   }
 
   Future<void> _handleTap(int idx) async {
@@ -447,6 +1015,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       count: count,
     );
 
+    // Hamleyi geçmişe kaydet (doPour öncesi snapshot)
+    _history.add((
+      tubes: _tubes.map((t) => List<int>.from(t)).toList(),
+      fromIdx: from,
+      toIdx: to,
+    ));
+
     // Mantık durumunu hemen güncelle (animasyon gösterimi snapshot tabanlı)
     doPour(_tubes, from, to);
 
@@ -473,16 +1048,68 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         _gameWon = didWin;
       });
 
-      _triggerDoneCelebration(newlyDone);
+      if (didWin) {
+        // Oyun bitti — son döküm görsel olarak tam bitmesini bekle, sonra tüm şişelerden aynı anda burst
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (!mounted) return;
+          final allDone = <int, int>{};
+          for (int i = 0; i < _tubes.length; i++) {
+            if (!_isLockedAdTubeIndex(i) && isTubeDone(_tubes[i])) {
+              allDone[i] = _tubes[i].first;
+            }
+          }
+          _triggerDoneCelebration(allDone, isWin: true);
+        });
+      } else {
+        // Normal tamamlama — sadece yeni dolan şişeler
+        _triggerDoneCelebration(newlyDone);
+      }
 
       // Kuyruktaki komutları işle
       _drainQueue();
 
       if (didWin && _activePlans.isEmpty) {
-        Future.delayed(const Duration(milliseconds: 220), () {
+        Future.delayed(const Duration(milliseconds: 2100), () {
           if (mounted) _showWinDialog();
         });
       }
+    });
+  }
+
+  void _undo() {
+    // Animasyon devam ediyorsa veya geçmiş yoksa işlem yapma
+    if (_activePlans.isNotEmpty || _history.isEmpty) {
+      HapticFeedback.lightImpact();
+      return;
+    }
+
+    final last = _history.removeLast();
+
+    // Sloshing animasyonu için etkilenen tüplerin renklerini al (geri dönmeden önce)
+    final fromColor = last.tubes[last.fromIdx].isNotEmpty
+        ? last.tubes[last.fromIdx].last
+        : (_tubes[last.toIdx].isNotEmpty ? _tubes[last.toIdx].last : 0);
+    final toColor = _tubes[last.toIdx].isNotEmpty ? _tubes[last.toIdx].last : 0;
+
+    setState(() {
+      _tubes = last.tubes;
+      _selected = null;
+      _gameWon = false;
+      _commandQueue.clear();
+      // Etkilenen tüplere slosh animasyonu ver
+      _undoSloshingTubes[last.fromIdx] = fromColor;
+      _undoSloshingTubes[last.toIdx] = toColor;
+    });
+
+    HapticFeedback.mediumImpact();
+
+    // Slosh animasyonu bitince temizle
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      setState(() {
+        _undoSloshingTubes.remove(last.fromIdx);
+        _undoSloshingTubes.remove(last.toIdx);
+      });
     });
   }
 
@@ -521,12 +1148,15 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
   }
 
-  void _triggerDoneCelebration(Map<int, int> bursts) {
+  void _triggerDoneCelebration(Map<int, int> bursts, {bool isWin = false}) {
     if (bursts.isEmpty || !mounted) return;
     setState(() {
       _celebratingDoneTubes.addAll(bursts);
     });
-    Future.delayed(const Duration(milliseconds: 900), () {
+    final clearDelay = isWin
+        ? const Duration(milliseconds: 1300)
+        : const Duration(milliseconds: 900);
+    Future.delayed(clearDelay, () {
       if (!mounted) return;
       setState(() {
         for (final idx in bursts.keys) {
@@ -647,6 +1277,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                       showLockedAdTube: _showLockedAdTube,
                                       celebratingDoneTubes:
                                           _celebratingDoneTubes,
+                                      gameWon: _gameWon,
+                                      undoSloshingTubes: _undoSloshingTubes,
                                     ),
                                   ),
                                 ),
@@ -677,17 +1309,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                 ),
                               ],
                             ),
-                            if (_gameWon) ...[
-                              const SizedBox(height: 16),
-                              Text(
-                                'Tebrikler, bölüm tamamlandı!',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.96),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),
@@ -696,6 +1317,33 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 ),
                 const SizedBox(height: 14),
               ],
+            ),
+          ),
+          Positioned(
+            right: 20,
+            bottom: 132,
+            child: SafeArea(
+              child: _JokerButton(
+                enabled: !_gameWon && _activePlans.isEmpty && !_jokerBusy,
+                busy: _jokerBusy,
+                canBuy: _canBuyJoker,
+                cost: _jokerCost,
+                accentColor: _theme.accentColor,
+                onTap: _useJokerWithEconomy,
+              ),
+            ),
+          ),
+          // Geri alma butonu — sağ alt köşe
+          Positioned(
+            right: 20,
+            bottom: 62,
+            child: SafeArea(
+              child: _UndoButton(
+                canUndo:
+                    _history.isNotEmpty && _activePlans.isEmpty && !_gameWon,
+                accentColor: _theme.accentColor,
+                onTap: _undo,
+              ),
             ),
           ),
         ],
@@ -738,7 +1386,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 56),
+              padding: const EdgeInsets.symmetric(horizontal: 92),
               child: Text(
                 _theme.name,
                 maxLines: 1,
@@ -753,6 +1401,37 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     Shadow(
                       color: _theme.primaryColor.withOpacity(0.6),
                       blurRadius: 12,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withOpacity(0.14)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.toll_rounded,
+                      color: _theme.accentColor,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$_coins',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
                 ),
@@ -840,6 +1519,158 @@ class _AnimatedThemeBg extends StatelessWidget {
 // ALT BUTON
 // ─────────────────────────────────────────────
 
+// ─────────────────────────────────────────────
+// GERİ ALMA BUTONU
+// ─────────────────────────────────────────────
+
+class _JokerButton extends StatelessWidget {
+  final bool enabled;
+  final bool busy;
+  final bool canBuy;
+  final int cost;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _JokerButton({
+    required this.enabled,
+    required this.busy,
+    required this.canBuy,
+    required this.cost,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      opacity: enabled ? 1.0 : 0.4,
+      duration: const Duration(milliseconds: 220),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: enabled ? onTap : null,
+          child: Ink(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: canBuy
+                    ? accentColor.withOpacity(0.60)
+                    : Colors.white.withOpacity(0.24),
+                width: 1.5,
+              ),
+              boxShadow: canBuy
+                  ? [
+                      BoxShadow(
+                        color: accentColor.withOpacity(0.22),
+                        blurRadius: 14,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: busy
+                ? Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          canBuy ? accentColor : Colors.white,
+                        ),
+                      ),
+                    ),
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        canBuy
+                            ? Icons.auto_fix_high_rounded
+                            : Icons.ondemand_video_rounded,
+                        color: canBuy ? accentColor : Colors.white,
+                        size: 22,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        canBuy ? '$cost' : 'Reklam',
+                        style: TextStyle(
+                          color: canBuy ? accentColor : Colors.white,
+                          fontSize: canBuy ? 13 : 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UndoButton extends StatelessWidget {
+  final bool canUndo;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _UndoButton({
+    required this.canUndo,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      opacity: canUndo ? 1.0 : 0.32,
+      duration: const Duration(milliseconds: 250),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: canUndo ? onTap : null,
+          child: Ink(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: canUndo
+                    ? accentColor.withOpacity(0.45)
+                    : Colors.white.withOpacity(0.14),
+                width: 1.4,
+              ),
+              boxShadow: canUndo
+                  ? [
+                      BoxShadow(
+                        color: accentColor.withOpacity(0.18),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Center(
+              child: Icon(
+                Icons.undo_rounded,
+                color: canUndo ? accentColor : Colors.white.withOpacity(0.45),
+                size: 24,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _BottomActionBtn extends StatelessWidget {
   final String label;
   final Color color;
@@ -897,6 +1728,8 @@ class _TubeStage extends StatefulWidget {
   final int lockedAdTubeIndex;
   final bool showLockedAdTube;
   final Map<int, int> celebratingDoneTubes;
+  final bool gameWon;
+  final Map<int, int> undoSloshingTubes;
 
   const _TubeStage({
     required this.tubes,
@@ -906,6 +1739,8 @@ class _TubeStage extends StatefulWidget {
     required this.lockedAdTubeIndex,
     required this.showLockedAdTube,
     required this.celebratingDoneTubes,
+    this.gameWon = false,
+    this.undoSloshingTubes = const {},
   });
 
   @override
@@ -1007,6 +1842,27 @@ class _TubeStageState extends State<_TubeStage> {
           );
         },
       );
+    } else if (widget.undoSloshingTubes.containsKey(idx)) {
+      // Geri alma animasyonu — sıvı çalkantısı
+      tubeView = TweenAnimationBuilder<double>(
+        key: ValueKey('undo_slosh_$idx'),
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 700),
+        builder: (context, t, _) {
+          // Çalkantı: önce güçlü, sonra sönümleniyor
+          final decay = (1.0 - t);
+          final slosh = sin(t * pi * 4.5) * decay * 0.55;
+          final bubble = sin((t * pi * 1.2).clamp(0.0, pi)).abs() * decay * 0.7;
+          return _TubeWidget(
+            tube: widget.tubes[idx],
+            isSelected: showSelected,
+            slosh: slosh,
+            bubbleBurst: bubble,
+            incomingColorIdx: null,
+            incomingVolume: 0.0,
+          );
+        },
+      );
     } else {
       tubeView = _TubeWidget(
         tube: widget.tubes[idx],
@@ -1046,6 +1902,7 @@ class _TubeStageState extends State<_TubeStage> {
                     child: IgnorePointer(
                       child: _TubeDoneBurst(
                         colorIdx: widget.celebratingDoneTubes[idx]!,
+                        isGameWin: widget.gameWon,
                       ),
                     ),
                   ),
@@ -1125,43 +1982,154 @@ class _AdUnlockBadge extends StatelessWidget {
   }
 }
 
-class _TubeDoneBurst extends StatelessWidget {
+// ─────────────────────────────────────────────
+// TEK ŞİŞE TAMAMLANDI — ALTIEGEN PATLAMA
+// ─────────────────────────────────────────────
+
+class _TubeDoneBurst extends StatefulWidget {
   final int colorIdx;
 
-  const _TubeDoneBurst({required this.colorIdx});
+  /// Oyun bitişinde true — daha büyük + daha parlak efekt
+  final bool isGameWin;
+
+  const _TubeDoneBurst({
+    required this.colorIdx,
+    this.isGameWin = false,
+  });
+
+  @override
+  State<_TubeDoneBurst> createState() => _TubeDoneBurstState();
+}
+
+class _TubeDoneBurstState extends State<_TubeDoneBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final dur = widget.isGameWin
+        ? const Duration(milliseconds: 1200)
+        : const Duration(milliseconds: 900);
+    _ctrl = AnimationController(vsync: this, duration: dur)..forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 850),
-      builder: (context, value, child) {
-        final eased = Curves.easeOutCubic.transform(value);
-        final dy = lerpDouble(18.0, -58.0, eased)!;
-        final opacity = (1.0 - eased).clamp(0.0, 1.0);
-        return Opacity(
-          opacity: opacity,
-          child: Transform.translate(
-            offset: Offset(0, dy),
-            child: Align(
-              alignment: Alignment.center,
-              child: child,
+    final color = kColors[widget.colorIdx]['fill'] as Color;
+    final hexSize = widget.isGameWin ? 30.0 : 28.0;
+
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final t = _ctrl.value;
+
+        // ── Ana altıgen: şişeden çıkıp yukarı uçar ──────────────────────────
+        final eased = Curves.easeOutCubic.transform(t);
+        final dy = lerpDouble(widget.isGameWin ? 10.0 : 14.0,
+            widget.isGameWin ? -80.0 : -60.0, eased)!;
+
+        // Önce hızla belirsin, sonra yavaş yavaş kaybolsun
+        final opacity = t < 0.15
+            ? (t / 0.15).clamp(0.0, 1.0)
+            : (1.0 - ((t - 0.15) / 0.85)).clamp(0.0, 1.0);
+
+        // Parlaklık: t=0.25'te zirve yapar
+        final glowT = (sin(t * pi)).clamp(0.0, 1.0);
+
+        // Hafif büyüme-küçülme
+        final scale = 1.0 + glowT * (widget.isGameWin ? 0.45 : 0.28);
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            // Glow halkası
+            Transform.translate(
+              offset: Offset(0, dy),
+              child: Opacity(
+                opacity: (opacity * glowT * 0.65).clamp(0.0, 1.0),
+                child: Transform.scale(
+                  scale: scale * 1.6,
+                  child: Container(
+                    width: hexSize,
+                    height: hexSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          color.withOpacity(0.55),
+                          color.withOpacity(0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
+            // Altıgen kendisi
+            Transform.translate(
+              offset: Offset(0, dy),
+              child: Opacity(
+                opacity: opacity,
+                child: Transform.scale(
+                  scale: scale,
+                  child: CustomPaint(
+                    size: Size(hexSize, hexSize),
+                    painter: _BurstHexPainter(
+                      color: color,
+                      glowIntensity: glowT,
+                      isGameWin: widget.isGameWin,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Oyun bitişi: ek mini parçacıklar
+            if (widget.isGameWin)
+              ...List.generate(6, (i) {
+                final angle = (pi / 3) * i - pi / 2;
+                final dist = lerpDouble(0, 36.0, eased)!;
+                final px = cos(angle) * dist;
+                final py = sin(angle) * dist + dy;
+                final pOpacity = (opacity * (1.0 - t * 0.7)).clamp(0.0, 1.0);
+                return Transform.translate(
+                  offset: Offset(px, py),
+                  child: Opacity(
+                    opacity: pOpacity,
+                    child: CustomPaint(
+                      size: const Size(6, 6),
+                      painter: _BurstHexPainter(
+                        color: color,
+                        glowIntensity: glowT * 0.6,
+                        isGameWin: false,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+          ],
         );
       },
-      child: CustomPaint(
-        size: const Size(26, 26),
-        painter: _BurstHexPainter(color: kColors[colorIdx]['fill'] as Color),
-      ),
     );
   }
 }
 
 class _BurstHexPainter extends CustomPainter {
   final Color color;
+  final double glowIntensity;
+  final bool isGameWin;
 
-  const _BurstHexPainter({required this.color});
+  const _BurstHexPainter({
+    required this.color,
+    this.glowIntensity = 0.0,
+    this.isGameWin = false,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1179,20 +2147,35 @@ class _BurstHexPainter extends CustomPainter {
     }
     path.close();
 
-    final paint = Paint()..color = color.withOpacity(0.95);
-    canvas.drawPath(path, paint);
+    // Dolgu — rengin kendisi
+    canvas.drawPath(path, Paint()..color = color.withOpacity(0.95));
 
+    // İç parlama (glowIntensity ile büyür)
+    if (glowIntensity > 0.01) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = Colors.white.withOpacity(0.35 * glowIntensity)
+          ..maskFilter = MaskFilter.blur(
+            BlurStyle.normal,
+            isGameWin ? 4.0 * glowIntensity : 2.5 * glowIntensity,
+          ),
+      );
+    }
+
+    // Dış çerçeve
     canvas.drawPath(
       path,
       Paint()
-        ..color = Colors.white.withOpacity(0.18)
+        ..color = Colors.white.withOpacity(0.25 + 0.35 * glowIntensity)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
+        ..strokeWidth = isGameWin ? 1.6 : 1.2,
     );
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(_BurstHexPainter old) =>
+      old.glowIntensity != glowIntensity;
 }
 
 // ─────────────────────────────────────────────
@@ -1214,7 +2197,6 @@ class _FlyingTubeState extends State<_FlyingTube>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
-  static const double _pLiftEnd = 0.18;
   static const double _pMoveEnd = 0.44;
   static const double _pTiltEnd = 0.58;
   static const double _pPourEnd = 0.90;
@@ -1290,10 +2272,6 @@ class _FlyingTubeState extends State<_FlyingTube>
     final fromMidX = fromPos.dx + kWidgetW / 2;
     final toMidX = toPos.dx + kWidgetW / 2;
     final tiltSign = fromMidX <= toMidX ? 1.0 : -1.0;
-    final horizontalGap = (toMidX - fromMidX).abs();
-    final extraLift =
-        lerpDouble(44.0, 92.0, (horizontalGap / 220.0).clamp(0.0, 1.0))!;
-    final liftY = min(fromPos.dy, toPos.dy) - 74.0 - extraLift;
 
     final mouthLocal = Offset(kWidgetW / 2, kCapBotY + 1.0);
     final anchorLocal = Offset(kWidgetW / 2, kBodyBotY + kTR);
@@ -1379,12 +2357,10 @@ class _FlyingTubeState extends State<_FlyingTube>
         );
 
         double cx;
-        if (v < _pLiftEnd) {
-          cx = fromPos.dx;
-        } else if (v < _pMoveEnd) {
+        if (v < _pMoveEnd) {
           cx = fromPos.dx +
               (pourTopLeft.dx - fromPos.dx) *
-                  _easeHeavy(_phase(v, _pLiftEnd, _pMoveEnd));
+                  _easeHeavy(_phase(v, 0.0, _pMoveEnd));
         } else if (v < _pUprightEnd) {
           cx = pourTopLeft.dx;
         } else {
@@ -1394,13 +2370,10 @@ class _FlyingTubeState extends State<_FlyingTube>
         }
 
         double cy;
-        if (v < _pLiftEnd) {
+        if (v < _pMoveEnd) {
           cy = fromPos.dy +
-              (liftY - fromPos.dy) * _easeHeavy(_phase(v, 0.0, _pLiftEnd));
-        } else if (v < _pMoveEnd) {
-          cy = liftY +
-              (pourTopLeft.dy - liftY) *
-                  _easeHeavy(_phase(v, _pLiftEnd, _pMoveEnd));
+              (pourTopLeft.dy - fromPos.dy) *
+                  _easeHeavy(_phase(v, 0.0, _pMoveEnd));
         } else if (v < _pUprightEnd) {
           cy = pourTopLeft.dy;
         } else {
@@ -1505,14 +2478,11 @@ class _FlyingTubeState extends State<_FlyingTube>
   }
 
   double _surfaceCenterYForFillRatio(double fillRatio) {
-    // Sıvı alanının gerçek alt sınırını kullan (kLiquidBotY),
-    // böylece boş şişede bile akış şişe içinde kalır.
-    final innerBottom = kLiquidBotY;
+    final innerBottom = kLiquidBotY - 20.0;
     return innerBottom - (innerBottom - kLiquidTopY) * fillRatio;
   }
 
   double _motionEnergy(double v) {
-    if (v < _pLiftEnd) return _phase(v, 0.0, _pLiftEnd) * 0.45;
     if (v < _pMoveEnd) return 0.25;
     if (v < _pPourEnd) return 0.15;
     return (1.0 - _phase(v, _pPourEnd, 1.0)) * 0.20;
@@ -2122,42 +3092,6 @@ class _LiquidPainter extends CustomPainter {
           ).createShader(liquidRect),
       );
       accum = vTop;
-    }
-
-    if (incomingColorIdx != null && receiveFlow > 0.01 && totalVol > 0.0) {
-      final streamColor = kColors[incomingColorIdx!]['fill'] as Color;
-      final s = _surface(totalVol, 0.0, slosh * 0.12);
-      final streamBottomY = s.cY + lerpDouble(18.0, 3.0, receiveFlow)!;
-      final streamRect = RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: Offset((_il + _ir) / 2, (_it + streamBottomY) / 2),
-          width: lerpDouble(5.5, 9.0, receiveFlow)!,
-          height: max(8.0, streamBottomY - _it + 2.0),
-        ),
-        Radius.circular(lerpDouble(2.2, 4.6, receiveFlow)!),
-      );
-
-      canvas.drawRRect(
-        streamRect,
-        Paint()
-          ..color = streamColor.withOpacity(0.70 * receiveFlow)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
-      );
-      canvas.drawRRect(
-        streamRect,
-        Paint()..color = streamColor.withOpacity(0.94 * receiveFlow),
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: Offset((_il + _ir) / 2 - 0.7, (_it + streamBottomY) / 2),
-            width: lerpDouble(1.2, 2.0, receiveFlow)!,
-            height: max(6.0, streamBottomY - _it - 1.0),
-          ),
-          const Radius.circular(1.2),
-        ),
-        Paint()..color = Colors.white.withOpacity(0.22 * receiveFlow),
-      );
     }
 
     // Üst yüzey parlaması

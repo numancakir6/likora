@@ -1,3 +1,10 @@
+class PuzzleMove {
+  final int from;
+  final int to;
+
+  const PuzzleMove(this.from, this.to);
+}
+
 class PuzzlePreset {
   final int mapNumber;
   final int levelId;
@@ -5,12 +12,20 @@ class PuzzlePreset {
   final List<List<int>> tubes;
   final int lockedAdTubeIndex;
 
+  /// Ana çözüm yolu + izin verilen alternatif yollar.
+  final List<List<PuzzleMove>> solutionBranches;
+
+  /// Kısıtlı sapmalarda jokerin tek hamlede geri bağlanması için özel state -> hamle map'i.
+  final Map<String, PuzzleMove> jokerRecoveryMoves;
+
   const PuzzlePreset({
     required this.mapNumber,
     required this.levelId,
     required this.difficulty,
     required this.tubes,
     this.lockedAdTubeIndex = 10,
+    this.solutionBranches = const [],
+    this.jokerRecoveryMoves = const {},
   });
 }
 
@@ -40,6 +55,10 @@ class PuzzlePresets {
     return mapPresets[levelId];
   }
 
+  static String signatureOf(List<List<int>> tubes) {
+    return tubes.map((t) => t.join(',')).join('|');
+  }
+
   static const Map<int, Map<int, PuzzlePreset>> _presets = {
     1: {
       1: PuzzlePreset(
@@ -48,215 +67,79 @@ class PuzzlePresets {
         difficulty: 1,
         tubes: [
           [0, 1, 2, 3],
+          [0, 1, 2, 3],
           [4, 5, 6, 7],
-          [1, 2, 3, 4],
-          [5, 6, 7, 0],
-          [2, 3, 4, 5],
-          [6, 7, 0, 1],
-          [3, 4, 5, 6],
-          [7, 0, 1, 2],
-          [],
-          [],
-          [],
-        ],
-      ),
-      2: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 2,
-        difficulty: 1,
-        tubes: [
-          [0, 2, 4, 6],
-          [1, 3, 5, 7],
-          [2, 4, 6, 1],
-          [3, 5, 7, 0],
-          [4, 6, 1, 3],
-          [5, 7, 0, 2],
-          [6, 1, 3, 5],
-          [7, 0, 2, 4],
-          [],
-          [],
-          [],
-        ],
-      ),
-      3: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 3,
-        difficulty: 1,
-        tubes: [
-          [0, 3, 1, 4],
-          [2, 5, 6, 7],
-          [1, 4, 2, 5],
-          [6, 7, 0, 3],
-          [2, 5, 3, 6],
-          [7, 0, 4, 1],
-          [3, 6, 5, 2],
-          [4, 1, 7, 0],
-          [],
-          [],
-          [],
-        ],
-      ),
-      4: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 4,
-        difficulty: 1,
-        tubes: [
+          [4, 5, 6, 7],
           [0, 4, 1, 5],
           [2, 6, 3, 7],
-          [1, 5, 2, 6],
-          [3, 7, 4, 0],
-          [2, 6, 5, 1],
-          [4, 0, 7, 3],
-          [5, 1, 6, 2],
-          [7, 3, 0, 4],
+          [1, 5, 0, 4],
+          [3, 7, 2, 6],
           [],
           [],
           [],
         ],
-      ),
-      5: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 5,
-        difficulty: 2,
-        tubes: [
-          [0, 5, 2, 7],
-          [1, 6, 3, 4],
-          [2, 7, 4, 1],
-          [3, 0, 5, 6],
-          [4, 1, 6, 3],
-          [5, 2, 7, 0],
-          [6, 3, 0, 5],
-          [7, 4, 1, 2],
-          [],
-          [],
-          [],
+        lockedAdTubeIndex: 10,
+        solutionBranches: [
+          [
+            PuzzleMove(2, 8),
+            PuzzleMove(7, 2),
+            PuzzleMove(3, 8),
+            PuzzleMove(5, 8),
+            PuzzleMove(0, 5),
+            PuzzleMove(7, 0),
+            PuzzleMove(7, 8),
+            PuzzleMove(1, 7),
+            PuzzleMove(5, 7),
+            PuzzleMove(5, 3),
+            PuzzleMove(0, 5),
+            PuzzleMove(1, 5),
+            PuzzleMove(0, 1),
+            PuzzleMove(2, 9),
+            PuzzleMove(3, 9),
+            PuzzleMove(2, 3),
+            PuzzleMove(4, 3),
+            PuzzleMove(4, 1),
+            PuzzleMove(2, 4),
+            PuzzleMove(6, 4),
+            PuzzleMove(0, 6),
+            PuzzleMove(3, 0),
+            PuzzleMove(4, 3),
+            PuzzleMove(6, 4),
+            PuzzleMove(6, 0),
+            PuzzleMove(1, 6),
+            PuzzleMove(1, 4),
+          ],
+          [
+            PuzzleMove(2, 9),
+            PuzzleMove(7, 2),
+            PuzzleMove(3, 9),
+            PuzzleMove(5, 9),
+            PuzzleMove(0, 5),
+            PuzzleMove(7, 0),
+            PuzzleMove(7, 9),
+            PuzzleMove(1, 7),
+            PuzzleMove(5, 7),
+            PuzzleMove(5, 3),
+            PuzzleMove(0, 5),
+            PuzzleMove(1, 5),
+            PuzzleMove(0, 1),
+            PuzzleMove(2, 8),
+            PuzzleMove(3, 8),
+            PuzzleMove(2, 3),
+            PuzzleMove(4, 3),
+            PuzzleMove(4, 1),
+            PuzzleMove(2, 4),
+            PuzzleMove(6, 4),
+            PuzzleMove(0, 6),
+            PuzzleMove(3, 0),
+            PuzzleMove(4, 3),
+            PuzzleMove(6, 4),
+            PuzzleMove(6, 0),
+            PuzzleMove(1, 6),
+            PuzzleMove(1, 4),
+          ],
         ],
-      ),
-      6: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 6,
-        difficulty: 2,
-        tubes: [
-          [0, 2, 5, 7],
-          [1, 3, 6, 4],
-          [2, 4, 7, 0],
-          [3, 5, 0, 1],
-          [4, 6, 1, 2],
-          [5, 7, 2, 3],
-          [6, 0, 3, 4],
-          [7, 1, 4, 5],
-          [],
-          [],
-          [],
-        ],
-      ),
-      7: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 7,
-        difficulty: 2,
-        tubes: [
-          [0, 6, 2, 4],
-          [1, 7, 3, 5],
-          [2, 4, 0, 6],
-          [3, 5, 1, 7],
-          [4, 0, 6, 2],
-          [5, 1, 7, 3],
-          [6, 2, 4, 0],
-          [7, 3, 5, 1],
-          [],
-          [],
-          [],
-        ],
-      ),
-      8: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 8,
-        difficulty: 2,
-        tubes: [
-          [0, 3, 6, 1],
-          [2, 5, 7, 4],
-          [1, 4, 0, 7],
-          [3, 6, 2, 5],
-          [4, 7, 1, 6],
-          [5, 0, 3, 2],
-          [6, 1, 4, 7],
-          [7, 2, 5, 0],
-          [],
-          [],
-          [],
-        ],
-      ),
-      9: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 9,
-        difficulty: 2,
-        tubes: [
-          [0, 4, 7, 2],
-          [1, 5, 3, 6],
-          [2, 6, 0, 4],
-          [3, 7, 1, 5],
-          [4, 0, 2, 6],
-          [5, 1, 6, 3],
-          [6, 2, 4, 7],
-          [7, 3, 5, 0],
-          [],
-          [],
-          [],
-        ],
-      ),
-      10: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 10,
-        difficulty: 3,
-        tubes: [
-          [0, 5, 1, 6],
-          [2, 7, 3, 4],
-          [1, 6, 4, 0],
-          [3, 4, 2, 7],
-          [4, 0, 6, 2],
-          [5, 1, 7, 3],
-          [6, 2, 0, 5],
-          [7, 3, 5, 1],
-          [],
-          [],
-          [],
-        ],
-      ),
-      11: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 11,
-        difficulty: 3,
-        tubes: [
-          [0, 6, 1, 7],
-          [2, 4, 3, 5],
-          [1, 7, 5, 0],
-          [3, 5, 2, 6],
-          [4, 0, 6, 2],
-          [5, 1, 7, 3],
-          [6, 2, 4, 1],
-          [7, 3, 0, 4],
-          [],
-          [],
-          [],
-        ],
-      ),
-      12: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 12,
-        difficulty: 3,
-        tubes: [
-          [0, 7, 2, 5],
-          [1, 4, 3, 6],
-          [2, 5, 0, 7],
-          [3, 6, 1, 4],
-          [4, 1, 6, 2],
-          [5, 2, 7, 3],
-          [6, 3, 4, 0],
-          [7, 0, 5, 1],
-          [],
-          [],
-          [],
-        ],
+        jokerRecoveryMoves: {},
       ),
     },
   };
