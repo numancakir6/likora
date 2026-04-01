@@ -6,13 +6,14 @@ import 'package:flutter/services.dart';
 import 'map_theme.dart';
 import 'puzzle_presets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'player_progress.dart';
 
 // ─────────────────────────────────────────────
 // OYUN SABİTLERİ
 // ─────────────────────────────────────────────
 
 const int kCap = 4;
-const int kNColors = 8;
+const int kNColors = 17;
 const int kEmpty = 2;
 const String kTubeSvgAsset = 'assets/likora/test_tube.svg';
 
@@ -86,50 +87,31 @@ double get kLiquidBotY => kBodyBotY + kTR - 12;
 // Alt U'nun en altı: SVG'de y=18197.8 → kTH
 double get kWidgetH => kTH;
 double get kWidgetW => kTW;
+const double kTubeGap = 3.0;
+const double kRowGap = 18.0;
 
-const double kTubeGap = 20.0;
-
-class _StageMetrics {
-  final double width;
-  final double height;
-
-  const _StageMetrics({required this.width, required this.height});
-}
-
-_StageMetrics _measureStageLayout(StageLayout layout) {
-  switch (layout.mode) {
-    case StageLayoutMode.manual:
-      return _StageMetrics(
-        width: layout.canvasWidth ?? ((kWidgetW * 4) + (kTubeGap * 3) + 24.0),
-        height: layout.canvasHeight ?? ((kWidgetH * 3) + (kTubeGap * 2) + 28.0),
-      );
-    case StageLayoutMode.rows:
-      final rowCount = layout.rows.isEmpty ? 1 : layout.rows.length;
-      var maxCount = 1;
-      for (final row in layout.rows) {
-        if (row.length > maxCount) maxCount = row.length;
-      }
-      final width =
-          (maxCount * kWidgetW) + ((maxCount - 1) * layout.tubeGap) + 24.0;
-      final height = (rowCount * kWidgetH) +
-          ((rowCount - 1) * layout.rowGap) +
-          28.0 +
-          layout.topOffset.abs();
-      return _StageMetrics(width: width, height: height);
-  }
-}
-
-const Duration kPourDuration = Duration(milliseconds: 1500);
+double get kStageW => (kWidgetW * 5) + (kTubeGap * 4) + 12.0;
+double get kStageH => (kWidgetH * 4) + (kRowGap * 3) + 18.0;
+const Duration kPourDuration = Duration(milliseconds: 1000);
 
 const List<Map<String, dynamic>> kColors = [
-  {'name': 'Gül Kırmızısı', 'fill': Color(0xFFE83060)},
-  {'name': 'Elektrik Mavisi', 'fill': Color(0xFF2E7FFF)},
-  {'name': 'Zümrüt Yeşili', 'fill': Color(0xFF26C26A)},
-  {'name': 'Mor', 'fill': Color(0xFFAB47FF)},
-  {'name': 'Ateş Turuncusu', 'fill': Color(0xFFFF6B1A)},
-  {'name': 'Altın Sarısı', 'fill': Color(0xFFFFCC00)},
-  {'name': 'Turkuaz', 'fill': Color(0xFF00C8D7)},
-  {'name': 'Şeker Pembesi', 'fill': Color(0xFFFF4FA8)},
+  {'name': 'Kırmızı', 'fill': Color(0xFFE53935)},
+  {'name': 'Turuncu', 'fill': Color(0xFFFB8C00)},
+  {'name': 'Sarı', 'fill': Color(0xFFFDD835)},
+  {'name': 'Lime', 'fill': Color(0xFFB2FF00)},
+  {'name': 'Yeşil', 'fill': Color(0xFF43A047)},
+  {'name': 'Turkuaz', 'fill': Color(0xFF00ACC1)},
+  {'name': 'Mavi', 'fill': Color(0xFF1E88E5)},
+  {'name': 'Mor', 'fill': Color(0xFF8E24AA)},
+  {'name': 'Pembe', 'fill': Color(0xFFD81B60)},
+  {'name': 'Bordo', 'fill': Color(0xFF880E4F)},
+  {'name': 'Kahverengi', 'fill': Color(0xFF6D4C41)},
+  {'name': 'Ahşap', 'fill': Color(0xFFA1887F)},
+  {'name': 'Zeytin', 'fill': Color(0xFF827717)},
+  {'name': 'Gri', 'fill': Color(0xFF757575)},
+  {'name': 'Fildişi', 'fill': Color(0xFFFFF3E0)},
+  {'name': 'Antrasit', 'fill': Color(0xFF424242)},
+  {'name': 'Petrol', 'fill': Color(0xFF00695C)},
 ];
 
 // _MapTheme ve _themeForMap kaldırıldı — MapTheme artık map_theme.dart'tan geliyor.
@@ -335,6 +317,18 @@ double computeContactThreshold(int existingLayerCount) {
 // GAME PAGE
 // ─────────────────────────────────────────────
 
+class GamePageResult {
+  final bool completed;
+  final int coinsAfterLevel;
+  final int earnedCoins;
+
+  const GamePageResult({
+    required this.completed,
+    required this.coinsAfterLevel,
+    this.earnedCoins = 0,
+  });
+}
+
 class GamePage extends StatefulWidget {
   final int level;
   final int mapNumber;
@@ -385,14 +379,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   late int _coins;
   bool _jokerBusy = false;
   bool _adTubeUnlocked = false;
+  bool _levelRewardGranted = false;
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
 
   bool get _canBuyJoker => _coins >= _jokerCost;
-
-  StageLayout get _stageLayout =>
-      _preset?.layout ?? StageLayout.standardForTubeCount(_tubes.length);
-
-  _StageMetrics get _stageMetrics => _measureStageLayout(_stageLayout);
 
   @override
   void initState() {
@@ -403,7 +393,20 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       duration: const Duration(seconds: 10),
     )..repeat(reverse: true);
     _coins = widget.initialCoins;
+    _loadProgress();
     _reset();
+  }
+
+  Future<void> _loadProgress() async {
+    await PlayerProgress.ensureLoaded();
+    final syncedCoins = widget.initialCoins > 0
+        ? widget.initialCoins
+        : PlayerProgress.coins.value;
+    if (!mounted) return;
+    setState(() {
+      _coins = syncedCoins;
+    });
+    PlayerProgress.setCoins(syncedCoins);
   }
 
   @override
@@ -937,13 +940,64 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     setState(() {
       _coins = max(0, _coins - amount);
     });
-
-    // TODO: Coin bilgisini kalıcı kayda yaz.
+    PlayerProgress.setCoins(_coins);
   }
 
-  Future<bool> _showRewardedAdForJoker() async {
-    // TODO: Gerçek rewarded reklam entegrasyonunu burada bağla.
-    await Future.delayed(const Duration(milliseconds: 1200));
+  void _addCoins(int amount) {
+    if (amount <= 0) return;
+    setState(() {
+      _coins += amount;
+    });
+    PlayerProgress.setCoins(_coins);
+  }
+
+  int get _levelReward =>
+      PlayerProgress.rewardForDifficultyDots(widget.difficulty);
+
+  Future<bool> _showRewardedJokerAdGate() async {
+    if (!mounted) return false;
+
+    final shouldGrant = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF161127),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          title: const Text(
+            'Joker reklamı',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: const Text(
+            '50 oyun paran yetmediği için jokeri reklam izleyerek kullanabilirsin.',
+            style: TextStyle(
+              color: Colors.white70,
+              height: 1.35,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Vazgeç'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.ondemand_video_rounded),
+              label: const Text('Reklam İzle'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldGrant != true) return false;
+
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
     return true;
   }
 
@@ -961,17 +1015,16 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     });
 
     try {
-      bool allowed = false;
+      var jokerGranted = false;
 
       if (_canBuyJoker) {
         _spendCoins(_jokerCost);
-        allowed = true;
+        jokerGranted = true;
       } else {
-        allowed = await _showRewardedAdForJoker();
+        jokerGranted = await _showRewardedJokerAdGate();
       }
 
-      if (!allowed) {
-        HapticFeedback.lightImpact();
+      if (!jokerGranted) {
         return;
       }
 
@@ -1235,7 +1288,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Seviyeyi geçtiniz.',
+                  'Seviyeyi geçtiniz. +$_levelReward oyun parası kazandın.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.92),
@@ -1266,13 +1319,32 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   void _completeLevel() {
+    if (!_levelRewardGranted) {
+      _addCoins(_levelReward);
+      _levelRewardGranted = true;
+    }
+
     HapticFeedback.mediumImpact();
-    Navigator.pop(context, true);
+    Navigator.pop(
+      context,
+      GamePageResult(
+        completed: true,
+        coinsAfterLevel: _coins,
+        earnedCoins: _levelReward,
+      ),
+    );
   }
 
   void _lowerLevel() {
     HapticFeedback.lightImpact();
-    Navigator.pop(context, false);
+    Navigator.pop(
+      context,
+      GamePageResult(
+        completed: false,
+        coinsAfterLevel: _coins,
+        earnedCoins: 0,
+      ),
+    );
   }
 
   @override
@@ -1286,7 +1358,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             child: Column(
               children: [
                 _buildTopBar(),
-                const SizedBox(height: 8),
+                const SizedBox(height: 30),
                 Expanded(
                   child: Center(
                     child: Padding(
@@ -1296,53 +1368,59 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                         child: Column(
                           children: [
                             Expanded(
-                              child: Center(
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: SizedBox(
-                                    width: _stageMetrics.width,
-                                    height: _stageMetrics.height,
-                                    child: _TubeStage(
-                                      tubes: _tubes,
-                                      selected: _selected,
-                                      activePlans: _activePlans,
-                                      onTap: _handleTap,
-                                      lockedAdTubeIndex: _lockedAdTubeIndex,
-                                      showLockedAdTube: _showLockedAdTube,
-                                      celebratingDoneTubes:
-                                          _celebratingDoneTubes,
-                                      gameWon: _gameWon,
-                                      undoSloshingTubes: _undoSloshingTubes,
-                                      layout: _stageLayout,
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 0),
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.topCenter,
+                                    child: SizedBox(
+                                      width: kStageW,
+                                      height: kStageH,
+                                      child: _TubeStage(
+                                        tubes: _tubes,
+                                        selected: _selected,
+                                        activePlans: _activePlans,
+                                        onTap: _handleTap,
+                                        lockedAdTubeIndex: _lockedAdTubeIndex,
+                                        showLockedAdTube: _showLockedAdTube,
+                                        celebratingDoneTubes:
+                                            _celebratingDoneTubes,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
                             const SizedBox(height: 20),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _LevelIconBtn(
-                                  icon:
-                                      Icons.keyboard_double_arrow_down_rounded,
-                                  tooltip: 'Seviyeyi Düşür',
-                                  color: Colors.white.withOpacity(0.10),
-                                  borderColor: Colors.white.withOpacity(0.18),
-                                  iconColor: Colors.white,
-                                  onTap: _lowerLevel,
-                                ),
-                                const SizedBox(width: 20),
-                                _LevelIconBtn(
-                                  icon: Icons.keyboard_double_arrow_up_rounded,
-                                  tooltip: 'Seviyeyi Geç',
-                                  color: _theme.accentColor.withOpacity(0.18),
-                                  borderColor:
-                                      _theme.accentColor.withOpacity(0.45),
-                                  iconColor: _theme.accentColor,
-                                  onTap: _completeLevel,
-                                ),
-                              ],
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _LevelIconBtn(
+                                    icon: Icons
+                                        .keyboard_double_arrow_down_rounded,
+                                    tooltip: 'Seviyeyi Düşür',
+                                    color: Colors.white.withOpacity(0.10),
+                                    borderColor: Colors.white.withOpacity(0.18),
+                                    iconColor: Colors.white,
+                                    onTap: _lowerLevel,
+                                  ),
+                                  const SizedBox(width: 20),
+                                  _LevelIconBtn(
+                                    icon:
+                                        Icons.keyboard_double_arrow_up_rounded,
+                                    tooltip: 'Seviyeyi Geç',
+                                    color: _theme.accentColor.withOpacity(0.18),
+                                    borderColor:
+                                        _theme.accentColor.withOpacity(0.45),
+                                    iconColor: _theme.accentColor,
+                                    onTap: _completeLevel,
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -1356,28 +1434,29 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           ),
           Positioned(
             right: 20,
-            bottom: 132,
+            bottom: 20,
             child: SafeArea(
-              child: _JokerButton(
-                enabled: !_gameWon && _activePlans.isEmpty && !_jokerBusy,
-                busy: _jokerBusy,
-                canBuy: _canBuyJoker,
-                cost: _jokerCost,
-                accentColor: _theme.accentColor,
-                onTap: _useJokerWithEconomy,
-              ),
-            ),
-          ),
-          // Geri alma butonu — sağ alt köşe
-          Positioned(
-            right: 20,
-            bottom: 62,
-            child: SafeArea(
-              child: _UndoButton(
-                canUndo:
-                    _history.isNotEmpty && _activePlans.isEmpty && !_gameWon,
-                accentColor: _theme.accentColor,
-                onTap: _undo,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _UndoButton(
+                    canUndo: _history.isNotEmpty &&
+                        _activePlans.isEmpty &&
+                        !_gameWon,
+                    accentColor: _theme.accentColor,
+                    onTap: _undo,
+                  ),
+                  const SizedBox(width: 12),
+                  _JokerButton(
+                    enabled: !_gameWon && _activePlans.isEmpty && !_jokerBusy,
+                    busy: _jokerBusy,
+                    canBuy: _canBuyJoker,
+                    cost: _jokerCost,
+                    accentColor: _theme.accentColor,
+                    onTap: _useJokerWithEconomy,
+                  ),
+                ],
               ),
             ),
           ),
@@ -1388,92 +1467,74 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   Widget _buildTopBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 0),
-      child: SizedBox(
-        height: 52,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () => Navigator.pop(context),
-                  child: Ink(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CoinPill(coinsValue: _coins),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 52,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.14),
+                      onTap: () => Navigator.pop(
+                        context,
+                        GamePageResult(
+                          completed: false,
+                          coinsAfterLevel: _coins,
+                          earnedCoins: 0,
+                        ),
                       ),
-                    ),
-                    child: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: Colors.white,
-                      size: 18,
+                      child: Ink(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.14),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 92),
-              child: Text(
-                _theme.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _theme.primaryColor,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.8,
-                  shadows: [
-                    Shadow(
-                      color: _theme.primaryColor.withOpacity(0.6),
-                      blurRadius: 12,
+                Center(
+                  child: Text(
+                    _theme.name,
+                    style: TextStyle(
+                      color: _theme.primaryColor,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.8,
+                      shadows: [
+                        Shadow(
+                          color: _theme.primaryColor.withOpacity(0.6),
+                          blurRadius: 12,
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white.withOpacity(0.14)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.toll_rounded,
-                      color: _theme.accentColor,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$_coins',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1632,7 +1693,7 @@ class _JokerButton extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        canBuy ? '$cost' : 'Reklam',
+                        canBuy ? '$cost' : 'İzle',
                         style: TextStyle(
                           color: canBuy ? accentColor : Colors.white,
                           fontSize: canBuy ? 13 : 10,
@@ -1782,8 +1843,8 @@ class _LevelIconBtn extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Ink(
-            width: 56,
-            height: 56,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(18),
@@ -1813,7 +1874,6 @@ class _TubeStage extends StatefulWidget {
   final Map<int, int> celebratingDoneTubes;
   final bool gameWon;
   final Map<int, int> undoSloshingTubes;
-  final StageLayout layout;
 
   const _TubeStage({
     required this.tubes,
@@ -1823,7 +1883,6 @@ class _TubeStage extends StatefulWidget {
     required this.lockedAdTubeIndex,
     required this.showLockedAdTube,
     required this.celebratingDoneTubes,
-    required this.layout,
     this.gameWon = false,
     this.undoSloshingTubes = const {},
   });
@@ -1860,6 +1919,8 @@ class _TubeStageState extends State<_TubeStage> {
   }
 
   Widget _tubeItem(int idx, {double topPadding = 0}) {
+    // Aktif animasyonda yalnızca kaynak tüp sahneden gizlenir.
+    // Hedef tüp sahnede sabit kalır ve dolum yerinde animasyonlanır.
     final hiddenSources = widget.activePlans.map((p) => p.fromIdx).toSet();
     final isLockedAdTube =
         widget.showLockedAdTube && idx == widget.lockedAdTubeIndex;
@@ -1882,9 +1943,11 @@ class _TubeStageState extends State<_TubeStage> {
         duration: kPourDuration,
         curve: Curves.linear,
         builder: (context, timeline, _) {
+          // Ortak helper — FlyingTube ile tamamen senkron
           final contactThreshold =
               computeContactThreshold(plan.toSnapshot.length);
 
+          // FlyingTube ile aynı v-bazlı temas hesabı
           const pMoveEnd = 0.44;
           const pTiltEnd = 0.58;
           const pPourEnd = 0.90;
@@ -1893,6 +1956,7 @@ class _TubeStageState extends State<_TubeStage> {
           final vContact =
               vStreamStart + contactThreshold * (pPourEnd - vStreamStart);
 
+          // Dolum: vContact → pUprightEnd arasında
           final incomingPhase = timeline <= vContact
               ? 0.0
               : Curves.easeInOutCubic.transform(
@@ -1923,11 +1987,13 @@ class _TubeStageState extends State<_TubeStage> {
         },
       );
     } else if (widget.undoSloshingTubes.containsKey(idx)) {
+      // Geri alma animasyonu — sıvı çalkantısı
       tubeView = TweenAnimationBuilder<double>(
         key: ValueKey('undo_slosh_$idx'),
         tween: Tween(begin: 0.0, end: 1.0),
         duration: const Duration(milliseconds: 700),
         builder: (context, t, _) {
+          // Çalkantı: önce güçlü, sonra sönümleniyor
           final decay = (1.0 - t);
           final slosh = sin(t * pi * 4.5) * decay * 0.55;
           final bubble = sin((t * pi * 1.2).clamp(0.0, pi)).abs() * decay * 0.7;
@@ -1992,67 +2058,14 @@ class _TubeStageState extends State<_TubeStage> {
     );
   }
 
-  Widget _row(List<int> indices,
-      {double topPadding = 0, double tubeGap = kTubeGap}) {
+  Widget _row(List<int> indices, {double topPadding = 0}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (final idx in indices) ...[
           _tubeItem(idx, topPadding: topPadding),
-          if (idx != indices.last) SizedBox(width: tubeGap),
+          if (idx != indices.last) const SizedBox(width: kTubeGap),
         ],
-      ],
-    );
-  }
-
-  Widget _buildRowsLayout() {
-    final effectiveLayout = widget.layout.mode == StageLayoutMode.rows
-        ? widget.layout
-        : StageLayout.standardForTubeCount(widget.tubes.length);
-    final rows = effectiveLayout.rows
-        .map((row) =>
-            row.where((idx) => idx >= 0 && idx < widget.tubes.length).toList())
-        .where((row) => row.isNotEmpty)
-        .toList();
-
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Padding(
-        padding: EdgeInsets.only(top: max(0.0, effectiveLayout.topOffset)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (int i = 0; i < rows.length; i++) ...[
-              _row(
-                rows[i],
-                topPadding: i < effectiveLayout.rowTopPaddings.length
-                    ? effectiveLayout.rowTopPaddings[i]
-                    : 0,
-                tubeGap: effectiveLayout.tubeGap,
-              ),
-              if (i != rows.length - 1)
-                SizedBox(height: effectiveLayout.rowGap),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildManualLayout() {
-    final width = widget.layout.canvasWidth ?? context.size?.width ?? 0;
-    final height = widget.layout.canvasHeight ?? context.size?.height ?? 0;
-
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        for (final pos in widget.layout.positions)
-          if (pos.index >= 0 && pos.index < widget.tubes.length)
-            Positioned(
-              left: pos.x * max(0.0, width - kWidgetW),
-              top: pos.y * max(0.0, height - kWidgetH),
-              child: _tubeItem(pos.index),
-            ),
       ],
     );
   }
@@ -2063,12 +2076,57 @@ class _TubeStageState extends State<_TubeStage> {
       clipBehavior: Clip.none,
       children: [
         Positioned.fill(
-          child: widget.layout.mode == StageLayoutMode.manual
-              ? _buildManualLayout()
-              : _buildRowsLayout(),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Builder(
+              builder: (context) {
+                final count = widget.tubes.length;
+                final rows = <List<int>>[];
+                int cursor = 0;
+
+                if (cursor < count) {
+                  final take = min(4, count - cursor);
+                  rows.add(List<int>.generate(take, (i) => cursor + i));
+                  cursor += take;
+                }
+
+                if (cursor < count) {
+                  final take = min(5, count - cursor);
+                  rows.add(List<int>.generate(take, (i) => cursor + i));
+                  cursor += take;
+                }
+
+                if (cursor < count) {
+                  final take = min(3, count - cursor);
+                  rows.add(List<int>.generate(take, (i) => cursor + i));
+                  cursor += take;
+                }
+
+                if (cursor < count) {
+                  rows.add(
+                      List<int>.generate(count - cursor, (i) => cursor + i));
+                }
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (int i = 0; i < rows.length; i++) ...[
+                      _row(
+                        rows[i],
+                        topPadding: i >= 2 ? 4 : 0,
+                      ),
+                      if (i != rows.length - 1) const SizedBox(height: kRowGap),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ),
         ),
+        // Paralel animasyonlar — her aktif plan için ayrı FlyingTube
         for (final plan in widget.activePlans)
           _FlyingTube(
+            key: ValueKey('fly_${plan.fromIdx}_${plan.toIdx}'),
             plan: plan,
             getPos: _localPos,
           ),
@@ -2854,9 +2912,11 @@ class _TubeBodyPainter extends CustomPainter {
       end: Alignment.bottomCenter,
     ).createShader(uOuterRect);
 
-    // saveLayer ile BlendMode.clear çalışsın (transparan arka plan gerekir)
-    canvas.saveLayer(null, Paint());
-    canvas.clipRect(Rect.fromLTWH(0, botY - 1, size.width, outerR + 4));
+    // saveLayer ile BlendMode.clear çalışsın — null yerine bounded rect kullan
+    // (null bounds RepaintBoundary ile birleşince beyaz flash üretir)
+    final layerRect = Rect.fromLTWH(0, botY - 1, size.width, outerR + 5);
+    canvas.saveLayer(layerRect, Paint());
+    canvas.clipRect(layerRect);
     canvas.drawOval(uOuterRect, Paint()..shader = uGrad);
     canvas.drawOval(uInnerRect, Paint()..blendMode = BlendMode.clear);
     canvas.restore();
