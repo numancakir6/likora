@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.luxion.likora</string>
+	<string>com.lexion.likora</string>
 	<key>PROJECT_ID</key>
 	<string>sozcuk-avi-57982</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:946222241770:ios:b492f631227c4c9e540493</string>
+	<string>1:946222241770:ios:d6b3d0c5358c83aa540493</string>
 </dict>
 </plist>
