@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'game_page.dart';
 import 'map_theme.dart';
-import 'settings_page.dart';
+import 'player_progress.dart';
 
 // ─────────────────────────────────────────────
 //  DIFFICULTY
@@ -203,9 +203,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const int _maxMapCount = 15;
   static const double _swipeVelocityThreshold = 250;
   static const double _swipeDistanceThreshold = 24;
-  static const double _nodeSize = 72;
-  static const double _nodeHalf = _nodeSize / 2;
-  static const double _minNodeDistance = 78;
 
   static final Map<int, Set<int>> _mapCompletedLevels = {
     for (var i = 1; i <= _maxMapCount; i++) i: <int>{},
@@ -243,6 +240,27 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..forward();
+
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    await PlayerProgress.ensureLoaded();
+
+    final savedCompleted = await PlayerProgress.getCompletedLevels(_mapNumber);
+    _mapCompletedLevels[_mapNumber] = Set<int>.from(savedCompleted);
+
+    if (!mounted) return;
+
+    setState(() {
+      completedLevels = Set<int>.from(savedCompleted);
+      _rebuildLevels();
+    });
+  }
+
+  Future<void> _saveProgress() async {
+    _mapCompletedLevels[_mapNumber] = Set<int>.from(completedLevels);
+    await PlayerProgress.setCompletedLevels(_mapNumber, completedLevels);
   }
 
   @override
@@ -299,7 +317,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   static bool _isMapPlayableStatic(int mapNumber) {
     if (mapNumber <= 1) return true;
-    return _isMapFullyCompleted(mapNumber - 1);
+    return mapNumber <= PlayerProgress.latestUnlockedMap;
   }
 
   static int _latestPlayableMapNumber() {
@@ -316,76 +334,38 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   bool _isMapPlayable(int mapNumber) {
     if (mapNumber <= 1) return true;
-
-    final previousLayout = getMapLayout(mapNumber - 1);
-    final previousCompleted = _mapCompletedLevels[mapNumber - 1] ?? <int>{};
-    return previousCompleted.length >= previousLayout.totalLevels;
+    return mapNumber <= PlayerProgress.latestUnlockedMap;
   }
 
-  Map<int, Offset> _levelPositions(double w, double h) {
-    final placed = <int, Offset>{};
-
-    for (final node in _layout.nodes) {
-      Offset pos = Offset(w * node.x, h * node.y);
-
-      final horizontalJitter = ((node.id % 2 == 0) ? -1 : 1) * 6.0;
-      final verticalJitter = ((node.id % 3) - 1) * 4.0;
-
-      pos = Offset(
-        pos.dx + horizontalJitter,
-        pos.dy + verticalJitter,
-      );
-
-      for (final existing in placed.values) {
-        final delta = pos - existing;
-        final distance = delta.distance;
-
-        if (distance > 0 && distance < _minNodeDistance) {
-          final push = _minNodeDistance - distance;
-          final direction = delta / distance;
-          pos = pos + direction * push;
-        }
-      }
-
-      pos = Offset(
-        pos.dx.clamp(_nodeHalf + 8, w - _nodeHalf - 8),
-        pos.dy.clamp(_nodeHalf + 8, h - _nodeHalf - 8),
-      );
-
-      placed[node.id] = pos;
-    }
-
-    return placed;
-  }
+  Map<int, Offset> _levelPositions(double w, double h) => {
+        for (final node in _layout.nodes)
+          node.id: Offset(w * node.x, h * node.y),
+      };
 
   Future<void> _navigateToLevel(int levelId) async {
-    final result = await Navigator.push<GamePageResult>(
+    final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => GamePage(
-          level: levelId,
-          mapNumber: _mapNumber,
-          difficulty:
-              _levels.firstWhere((e) => e.id == levelId).difficulty.dotCount,
-        ),
+        builder: (_) => GamePage(level: levelId, mapNumber: _mapNumber),
       ),
     );
 
-    if (result != null && result.completed && mounted) {
+    if (result == true && mounted) {
       final updatedCompleted = {...completedLevels, levelId};
-
-      // Static map'i de güncelle — map değişince de veri korunsun
-      _mapCompletedLevels[_mapNumber] = updatedCompleted;
 
       setState(() {
         completedLevels = updatedCompleted;
         _rebuildLevels();
       });
 
+      await _saveProgress();
+
       final isMapFullyCompleted =
           updatedCompleted.length >= _layout.totalLevels;
 
-      if (isMapFullyCompleted && widget.mapNumber < _maxMapCount) {
+      if (isMapFullyCompleted && _mapNumber < _maxMapCount) {
+        await PlayerProgress.unlockMap(_mapNumber + 1);
+
         Future.delayed(const Duration(milliseconds: 250), () {
           if (!mounted) return;
           _goToNextMap();
@@ -630,8 +610,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 ),
                 for (final level in _levels)
                   Positioned(
-                    left: positions[level.id]!.dx - _nodeHalf,
-                    top: positions[level.id]!.dy - _nodeHalf,
+                    left: positions[level.id]!.dx - 42,
+                    top: positions[level.id]!.dy - 42,
                     child: _StaggeredNodeEntry(
                       index: level.id - 1,
                       controller: _entryController,
@@ -760,11 +740,6 @@ class PremiumLevelNodeWidget extends StatefulWidget {
 
 class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
     with TickerProviderStateMixin {
-  static const double _nodeSize = 72;
-  static const double _hexPaintSize = 62;
-  static const double _ringPaintSize = 70;
-  static const double _overlaySize = 62;
-
   late final AnimationController _pulseController;
   late final AnimationController _rotateController;
   late final AnimationController _tapController;
@@ -777,7 +752,7 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
       duration: const Duration(milliseconds: 2200),
     );
     _rotateController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 7));
+        AnimationController(vsync: this, duration: const Duration(seconds: 6));
     _tapController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 160),
@@ -799,11 +774,11 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
 
   void _handleTap() {
     if (!widget.data.isUnlocked) {
-      SettingsPage.vibrateLight();
+      HapticFeedback.lightImpact();
       _tapController.forward().then((_) => _tapController.reverse());
       return;
     }
-    SettingsPage.vibrateTap();
+    HapticFeedback.mediumImpact();
     _tapController
         .forward()
         .then((_) => _tapController.reverse())
@@ -849,22 +824,22 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
           return Transform.scale(scale: pulse * tapScale, child: child);
         },
         child: SizedBox(
-          width: _nodeSize,
-          height: _nodeSize,
+          width: 84,
+          height: 84,
           child: Stack(alignment: Alignment.center, children: [
             if (!isLocked)
               AnimatedBuilder(
                 animation: _pulseController,
                 builder: (_, __) {
                   final sz =
-                      isPlayable ? 70 + _pulseController.value * 10.0 : 66.0;
+                      isPlayable ? 84 + _pulseController.value * 18.0 : 80.0;
                   return Container(
                     width: sz,
                     height: sz,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: RadialGradient(colors: [
-                        glowColor.withOpacity(isCompleted ? 0.18 : 0.24),
+                        glowColor.withOpacity(isCompleted ? 0.22 : 0.32),
                         glowColor.withOpacity(0.0),
                       ]),
                     ),
@@ -877,13 +852,13 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
                 builder: (_, __) => Transform.rotate(
                   angle: _rotateController.value * 2 * pi,
                   child: CustomPaint(
-                    size: const Size(_ringPaintSize, _ringPaintSize),
+                    size: const Size(78, 78),
                     painter: _OrbitRingPainter(color: glowColor),
                   ),
                 ),
               ),
             CustomPaint(
-              size: const Size(_hexPaintSize, _hexPaintSize),
+              size: const Size(72, 72),
               painter: _HexBadgePainter(
                 topColor: topColor,
                 bottomColor: bottomColor,
@@ -904,23 +879,23 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
               ClipPath(
                 clipper: _HexClipper(),
                 child: Container(
-                  width: _overlaySize,
-                  height: _overlaySize,
+                  width: 72,
+                  height: 72,
                   color: Colors.black.withOpacity(0.38),
                 ),
               ),
             SizedBox(
-              width: _overlaySize,
-              height: _overlaySize,
+              width: 72,
+              height: 72,
               child: Center(
                 child: isLocked
                     ? const Icon(Icons.lock_rounded,
-                        color: Colors.white54, size: 20)
+                        color: Colors.white54, size: 22)
                     : isCompleted
                         ? const Icon(Icons.check_rounded,
-                            color: Colors.white, size: 26)
+                            color: Colors.white, size: 28)
                         : const Icon(Icons.play_arrow_rounded,
-                            color: Colors.white, size: 28),
+                            color: Colors.white, size: 30),
               ),
             ),
           ]),
@@ -1474,12 +1449,7 @@ class _GlassButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap == null
-          ? null
-          : () async {
-              await SettingsPage.vibrateTap();
-              onTap?.call();
-            },
+      onTap: onTap,
       child: Opacity(
         opacity: onTap == null ? 0.45 : 1.0,
         child: Container(
