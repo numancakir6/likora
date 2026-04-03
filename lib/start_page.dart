@@ -6,6 +6,7 @@ import 'daily_puzzle_page.dart';
 import 'settings_page.dart';
 import 'contact_page.dart';
 import 'player_progress.dart';
+import 'audio_service.dart';
 
 class StartPage extends StatefulWidget {
   const StartPage({super.key});
@@ -26,6 +27,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _loadProgress();
+    MusicService.ensureStarted();
 
     _controller = AnimationController(
       vsync: this,
@@ -65,6 +67,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
   }
 
   Future<void> _navigate(Widget page) async {
+    await SfxService.playClick();
     await SettingsPage.vibrateTap();
     if (!mounted) return;
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));

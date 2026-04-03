@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'feedback_service.dart';
 import 'settings_page.dart';
+import 'audio_service.dart';
 
 enum FeedbackType { bug, suggestion, other }
 
@@ -410,6 +411,8 @@ class _ContactPageState extends State<ContactPage>
   }
 
   Future<void> _send() async {
+    await SfxService.playClick();
+    await SettingsPage.vibrateTap();
     FocusScope.of(context).unfocus();
 
     final title = _titleCtrl.text.trim();
@@ -526,7 +529,12 @@ class _ContactPageState extends State<ContactPage>
                   child: Row(
                     children: [
                       IconButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () async {
+                          await SfxService.playClick();
+                          await SettingsPage.vibrateTap();
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                        },
                         icon: const Icon(
                           Icons.arrow_back_ios_new,
                           color: Colors.white,
@@ -688,6 +696,7 @@ class _ContactPageState extends State<ContactPage>
           _TypeSelector(
             selected: _type,
             onChanged: (value) async {
+              await SfxService.playClick();
               await SettingsPage.vibrateTap();
               if (!mounted) return;
               setState(() => _type = value);
@@ -742,6 +751,7 @@ class _ContactPageState extends State<ContactPage>
                 Switch(
                   value: _includeDeviceInfo,
                   onChanged: (v) async {
+                    await SfxService.playClick();
                     await SettingsPage.vibrateTap();
                     if (!mounted) return;
                     setState(() => _includeDeviceInfo = v);

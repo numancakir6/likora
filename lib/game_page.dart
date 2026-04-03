@@ -9,6 +9,7 @@ import 'puzzle_presets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'player_progress.dart';
 import 'settings_page.dart';
+import 'audio_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ─────────────────────────────────────────────
@@ -360,6 +361,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     await SettingsPage.vibrateLight();
   }
 
+  Future<void> _playClick() async {
+    await SfxService.playClick();
+  }
+
   late final AnimationController _bgCtrl;
   late final MapTheme _theme;
 
@@ -471,6 +476,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    SfxService.stopWater();
     _bgCtrl.dispose();
     super.dispose();
   }
@@ -1148,6 +1154,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   Future<void> _useJokerWithEconomy() async {
     if (_jokerBusy || _activePlans.isNotEmpty || _gameWon) return;
 
+    await _playClick();
+    await _vibrateTap();
+
     setState(() {
       _jokerBusy = true;
     });
@@ -1401,6 +1410,21 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     });
     _persistLevelState();
 
+    final waterStartMs = (kPourDuration.inMilliseconds * 0.58).round();
+    final waterStopMs = (kPourDuration.inMilliseconds * 0.90).round();
+
+    Future.delayed(Duration(milliseconds: waterStartMs), () {
+      if (!mounted || !_activePlans.contains(plan)) return;
+      SfxService.startWater();
+    });
+
+    Future.delayed(Duration(milliseconds: waterStopMs), () {
+      if (!mounted) return;
+      if (_activePlans.length <= 1) {
+        SfxService.stopWater();
+      }
+    });
+
     // Animasyon biter bitmez planı kaldır
     Future.delayed(kPourDuration, () {
       if (!mounted) return;
@@ -1417,6 +1441,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         _activePlans.remove(plan);
         _gameWon = didWin;
       });
+
+      if (_activePlans.isEmpty) {
+        SfxService.stopWater();
+      }
 
       if (didWin) {
         // Oyun bitti — son döküm görsel olarak tam bitmesini bekle, sonra tüm şişelerden aynı anda burst
@@ -1472,10 +1500,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     });
     _persistLevelState();
 
+    _playClick();
     _vibrateTap();
+    SfxService.startWater();
 
     // Slosh animasyonu bitince temizle
     Future.delayed(const Duration(milliseconds: 700), () {
+      SfxService.stopWater();
       if (!mounted) return;
       setState(() {
         _undoSloshingTubes.remove(last.fromIdx);
@@ -1521,6 +1552,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   void _triggerDoneCelebration(Map<int, int> bursts, {bool isWin = false}) {
     if (bursts.isEmpty || !mounted) return;
+    if (isWin) {
+      SfxService.playLevelComplete();
+    } else {
+      SfxService.playSmallSuccess();
+    }
     setState(() {
       _celebratingDoneTubes.addAll(bursts);
     });
@@ -1564,6 +1600,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Expanded(
                       child: Text(
@@ -1587,24 +1624,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                           color: const Color(0xFFFFD54F).withOpacity(0.30),
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.toll_rounded,
-                            color: Color(0xFFFFD54F),
-                            size: 16,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '+$_levelReward',
-                            style: const TextStyle(
-                              color: Color(0xFFFFF3C2),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        '+$_levelReward coin',
+                        style: const TextStyle(
+                          color: Color(0xFFFFD54F),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ],
@@ -1656,11 +1682,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _levelRewardGranted = true;
     }
 
+    _playClick();
     _vibrateTap();
     _exitLevel(completed: true);
   }
 
   void _lowerLevel() {
+    _playClick();
     _vibrateLight();
     _exitLevel(completed: false);
   }
@@ -1922,8 +1950,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                           children: [
                             if (!isFinalStep)
                               TextButton(
-                                onPressed: () =>
-                                    _completeTutorial(skipped: true),
+                                onPressed: () async {
+                                  await _playClick();
+                                  await _vibrateTap();
+                                  _completeTutorial(skipped: true);
+                                },
                                 child: Text(
                                   'Geç',
                                   style: TextStyle(
@@ -1936,7 +1967,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                             const Spacer(),
                             if (isFinalStep)
                               GestureDetector(
-                                onTap: _completeTutorial,
+                                onTap: () async {
+                                  await _playClick();
+                                  await _vibrateTap();
+                                  _completeTutorial();
+                                },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,

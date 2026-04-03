@@ -18,6 +18,7 @@ dependencies:
   firebase_core: ^3.13.0
   firebase_auth: ^5.5.2
   cloud_firestore: ^5.6.6
+  audioplayers: ^6.0.0
 
 dev_dependencies:
   flutter_test:
@@ -29,6 +30,17 @@ flutter:
   assets:
     - assets/likora/
     - assets/lexion/
+    - assets/sfx/click.mp3
+    - assets/sfx/complete.mp3
+    - assets/sfx/small.mp3
+    - assets/sfx/water.mp3
+    - assets/sfx/music_1.mp3
+    - assets/sfx/music_2.mp3
+    - assets/sfx/music_3.mp3
+    - assets/sfx/music_4.mp3
+    - assets/sfx/music_5.mp3
+    - assets/sfx/music_6.mp3
+    - assets/sfx/music_7.mp3
 
 flutter_launcher_icons:
   ios: true

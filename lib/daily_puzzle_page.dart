@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'audio_service.dart';
+import 'settings_page.dart';
+
 class DailyPuzzlePage extends StatelessWidget {
   const DailyPuzzlePage({super.key});
 
@@ -33,7 +36,12 @@ class _PlaceholderPage extends StatelessWidget {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () async {
+            await SfxService.playClick();
+            await SettingsPage.vibrateTap();
+            if (!context.mounted) return;
+            Navigator.pop(context);
+          },
         ),
         title: Text(
           title,

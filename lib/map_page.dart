@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'game_page.dart';
 import 'map_theme.dart';
 import 'player_progress.dart';
+import 'settings_page.dart';
+import 'audio_service.dart';
 
 // ─────────────────────────────────────────────
 //  DIFFICULTY
@@ -368,7 +370,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
         Future.delayed(const Duration(milliseconds: 250), () {
           if (!mounted) return;
-          _goToNextMap();
+          _switchToMap(_mapNumber + 1);
         });
       }
     }
@@ -402,13 +404,19 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     );
   }
 
-  void _goToPreviousMap() {
+  Future<void> _goToPreviousMap() async {
     if (_mapNumber <= 1) return;
+    await SfxService.playClick();
+    await SettingsPage.vibrateTap();
+    if (!mounted) return;
     _switchToMap(_mapNumber - 1);
   }
 
-  void _goToNextMap() {
+  Future<void> _goToNextMap() async {
     if (_mapNumber >= _maxMapCount) return;
+    await SfxService.playClick();
+    await SettingsPage.vibrateTap();
+    if (!mounted) return;
     _switchToMap(_mapNumber + 1);
   }
 
@@ -417,9 +425,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     if (velocity.abs() < _swipeVelocityThreshold) return;
 
     if (velocity < 0) {
-      _goToNextMap();
+      if (_mapNumber < _maxMapCount) _switchToMap(_mapNumber + 1);
     } else {
-      _goToPreviousMap();
+      if (_mapNumber > 1) _switchToMap(_mapNumber - 1);
     }
   }
 
@@ -453,7 +461,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       child: Row(children: [
         _GlassButton(
           accentColor: _theme.primaryColor,
-          onTap: () => Navigator.of(context).pop(),
+          onTap: () async {
+            await SfxService.playClick();
+            await SettingsPage.vibrateTap();
+            if (!mounted) return;
+            Navigator.of(context).pop();
+          },
           child: const Icon(Icons.arrow_back_ios_new_rounded,
               color: Colors.white, size: 18),
         ),
@@ -774,11 +787,12 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
 
   void _handleTap() {
     if (!widget.data.isUnlocked) {
-      HapticFeedback.lightImpact();
+      SettingsPage.vibrateLight();
       _tapController.forward().then((_) => _tapController.reverse());
       return;
     }
-    HapticFeedback.mediumImpact();
+    SfxService.playClick();
+    SettingsPage.vibrateTap();
     _tapController
         .forward()
         .then((_) => _tapController.reverse())

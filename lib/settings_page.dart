@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'audio_service.dart';
+
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -76,6 +78,17 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Future<void> _setSound(bool value) async {
+    if (value) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(SettingsPage.soundKey, value);
+      await SfxService.playClick();
+      await SettingsPage.vibrateTap();
+      if (!mounted) return;
+      setState(() => _soundOn = value);
+      return;
+    }
+
+    await SfxService.playClick(ignoreSetting: true);
     await SettingsPage.vibrateTap();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(SettingsPage.soundKey, value);
@@ -84,14 +97,17 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Future<void> _setMusic(bool value) async {
+    await SfxService.playClick();
     await SettingsPage.vibrateTap();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(SettingsPage.musicKey, value);
+    await MusicService.setEnabled(value);
     if (!mounted) return;
     setState(() => _musicOn = value);
   }
 
   Future<void> _setVibration(bool value) async {
+    await SfxService.playClick();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(SettingsPage.vibrationKey, value);
     if (!mounted) return;
@@ -131,7 +147,12 @@ class _SettingsPageState extends State<SettingsPage>
                   child: Row(
                     children: [
                       IconButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () async {
+                          await SfxService.playClick();
+                          await SettingsPage.vibrateTap();
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                        },
                         icon: const Icon(
                           Icons.arrow_back_ios_new,
                           color: Colors.white,
