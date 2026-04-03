@@ -92,7 +92,7 @@ const double kRowGap = 18.0;
 
 double get kStageW => (kWidgetW * 5) + (kTubeGap * 4) + 12.0;
 double get kStageH => (kWidgetH * 4) + (kRowGap * 3) + 18.0;
-const Duration kPourDuration = Duration(milliseconds: 1000);
+const Duration kPourDuration = Duration(milliseconds: 1500);
 
 const List<Map<String, dynamic>> kColors = [
   {'name': 'Kırmızı', 'fill': Color(0xFFE53935)},
@@ -1910,12 +1910,36 @@ class _TubeStageState extends State<_TubeStage> {
     _keys = List.generate(widget.tubes.length, (_) => GlobalKey());
   }
 
-  Offset? _localPos(int idx) {
+  Offset? _localPos(int idx) => _anchorPos(idx, Offset.zero);
+
+  Offset? _anchorPos(int idx, Offset localAnchor) {
+    if (idx < 0 || idx >= _keys.length) return null;
     final box = _keys[idx].currentContext?.findRenderObject() as RenderBox?;
     final stageBox = context.findRenderObject() as RenderBox?;
-    if (box == null || stageBox == null) return null;
+    if (box == null || stageBox == null || !box.hasSize || !stageBox.hasSize) {
+      return null;
+    }
 
-    return box.localToGlobal(Offset.zero) - stageBox.localToGlobal(Offset.zero);
+    return box.localToGlobal(localAnchor) - stageBox.localToGlobal(Offset.zero);
+  }
+
+  Offset? _realTargetMouthPos(int idx) {
+    if (idx < 0 || idx >= _keys.length) return null;
+
+    final targetCtx = _keys[idx].currentContext;
+    final stageBox = context.findRenderObject() as RenderBox?;
+    final tubeBox = targetCtx?.findRenderObject() as RenderBox?;
+
+    if (targetCtx == null || stageBox == null || tubeBox == null) return null;
+    if (!stageBox.hasSize || !tubeBox.hasSize) return null;
+
+    // Hedef tüpün gerçek render edilmiş genişlik merkezini kullan.
+    final localMouth = Offset(
+      tubeBox.size.width / 2,
+      kMouthEntryY,
+    );
+
+    return tubeBox.localToGlobal(localMouth, ancestor: stageBox);
   }
 
   Widget _tubeItem(int idx, {double topPadding = 0}) {
@@ -1952,7 +1976,7 @@ class _TubeStageState extends State<_TubeStage> {
           const pTiltEnd = 0.58;
           const pPourEnd = 0.90;
           const pUprightEnd = 0.97;
-          final vStreamStart = pMoveEnd + 0.93 * (pTiltEnd - pMoveEnd);
+          final vStreamStart = pTiltEnd;
           final vContact =
               vStreamStart + contactThreshold * (pPourEnd - vStreamStart);
 
@@ -2129,6 +2153,8 @@ class _TubeStageState extends State<_TubeStage> {
             key: ValueKey('fly_${plan.fromIdx}_${plan.toIdx}'),
             plan: plan,
             getPos: _localPos,
+            getAnchor: _anchorPos,
+            getRealTargetMouth: _realTargetMouthPos,
           ),
       ],
     );
@@ -2362,9 +2388,17 @@ class _BurstHexPainter extends CustomPainter {
 
 class _FlyingTube extends StatefulWidget {
   final _TransferPlan plan;
-  final Offset? Function(int) getPos;
+  final Offset? Function(int idx) getPos;
+  final Offset? Function(int idx, Offset local) getAnchor;
+  final Offset? Function(int idx) getRealTargetMouth;
 
-  const _FlyingTube({super.key, required this.plan, required this.getPos});
+  const _FlyingTube({
+    super.key,
+    required this.plan,
+    required this.getPos,
+    required this.getAnchor,
+    required this.getRealTargetMouth,
+  });
 
   @override
   State<_FlyingTube> createState() => _FlyingTubeState();
@@ -2378,6 +2412,10 @@ class _FlyingTubeState extends State<_FlyingTube>
   static const double _pTiltEnd = 0.58;
   static const double _pPourEnd = 0.90;
   static const double _pUprightEnd = 0.97;
+
+  // Uçan şişeyi hedefin üstünde biraz daha yukarıda tut.
+  // İstersen 28 → 36 → 44 diye deneyebilirsin.
+  static const double _extraHoverLift = 80.0;
 
   double _liquidTilt = 0.0;
 
@@ -2396,8 +2434,10 @@ class _FlyingTubeState extends State<_FlyingTube>
 
   static double _easeHeavy(double t) =>
       Curves.easeInOutCubic.transform(t.clamp(0.0, 1.0));
+
   static double _easeOutHeavy(double t) =>
       Curves.easeOutCubic.transform(t.clamp(0.0, 1.0));
+
   static double _phase(double v, double start, double end) =>
       ((v - start) / (end - start)).clamp(0.0, 1.0);
 
@@ -2410,6 +2450,16 @@ class _FlyingTubeState extends State<_FlyingTube>
       anchor.dx + dx * c - dy * s,
       anchor.dy + dx * s + dy * c,
     );
+  }
+
+  Offset _tubeMouthCenterLocal() => Offset(kWidgetW / 2, kCapBotY + 1.0);
+  Offset _tubeLipAnchorLocal() => Offset(kWidgetW / 2, kCapBotY + 1.0);
+  Offset _tubeMouthEntryLocal() => Offset(kWidgetW / 2, kMouthEntryY);
+
+  Offset _tubeSurfaceAnchorLocal(double units) {
+    final fillRatio = (units / kCap).clamp(0.0, 1.0);
+    final y = kLiquidBotY - (kLiquidBotY - kLiquidTopY) * fillRatio;
+    return Offset(kWidgetW / 2, y);
   }
 
   Offset _tubeTopLeftToMatchMouth({
@@ -2425,32 +2475,45 @@ class _FlyingTubeState extends State<_FlyingTube>
     );
   }
 
-  double _targetTiltForRemaining(double remainingUnits) {
-    // 90 dereceye yakın sabit döküm: şişe hedef tüpün tam üstüne gelir
-    // ve akış mümkün olduğunca dik aşağı iner.
-    return pi / 2;
+  double _targetTiltForRemaining(double remainingUnits) => pi / 2.8;
+
+  double _motionEnergy(double v) {
+    if (v < _pMoveEnd) return 0.25;
+    if (v < _pPourEnd) return 0.15;
+    return (1.0 - _phase(v, _pPourEnd, 1.0)) * 0.20;
   }
 
-  Offset _mouthEdgeLocal({
-    required double fromMidX,
-  }) {
-    // 90 derecelik dökümde akışı hedef tüpün tam üstüne hizalamak için
-    // akış başlangıcını şişe ağzının merkezine yakın tutuyoruz.
-    return Offset(kWidgetW / 2, kCapBotY + 0.8);
+  double _sloshing(double t, double intensity) {
+    final x = t.clamp(0.0, 1.0);
+    final wave = sin(x * 5.6);
+    final damping = exp(-x * 3.4);
+    return wave * intensity * damping * 0.45;
   }
 
   @override
   Widget build(BuildContext context) {
-    final rawFromPos = widget.getPos(widget.plan.fromIdx);
-    final toPos = widget.getPos(widget.plan.toIdx);
-    if (rawFromPos == null || toPos == null) return const SizedBox.shrink();
+    final fromPos = widget.getPos(widget.plan.fromIdx);
 
-    final fromPos = rawFromPos.translate(0, -15.0);
-    final fromMidX = fromPos.dx + kWidgetW / 2;
-    final toMidX = toPos.dx + kWidgetW / 2;
-    final tiltSign = fromMidX <= toMidX ? 1.0 : -1.0;
+    final targetSurface = widget.getAnchor(
+      widget.plan.toIdx,
+      _tubeSurfaceAnchorLocal(widget.plan.toSnapshot.length.toDouble()),
+    );
 
-    final mouthLocal = Offset(kWidgetW / 2, kCapBotY + 1.0);
+    // Artık sabit local ağız noktası değil,
+    // hedef tüpün gerçek render edilmiş ağız merkezi kullanılıyor.
+    final targetMouthEntry = widget.getRealTargetMouth(widget.plan.toIdx);
+
+    if (fromPos == null || targetSurface == null || targetMouthEntry == null) {
+      return const SizedBox.shrink();
+    }
+
+    // Uçan şişe hedef tüpün gerçek giriş merkezine göre hizalanır.
+    final targetLip = targetMouthEntry.translate(0, -_extraHoverLift);
+
+    final fromMidX = fromPos.dx + (kWidgetW / 2);
+    final tiltSign = fromMidX <= targetLip.dx ? 1.0 : -1.0;
+
+    final mouthLocal = _tubeMouthCenterLocal();
     final anchorLocal = Offset(kWidgetW / 2, kBodyBotY + kTR);
 
     return AnimatedBuilder(
@@ -2458,76 +2521,25 @@ class _FlyingTubeState extends State<_FlyingTube>
       builder: (_, __) {
         final v = _ctrl.value;
 
-        final rawPourProgress = v >= _pTiltEnd && v < _pPourEnd
-            ? _phase(v, _pTiltEnd, _pPourEnd)
-            : (v >= _pPourEnd ? 1.0 : 0.0);
-
-        // Döküm çok erken başlamasın: şişe neredeyse 90° konuma geldiğinde,
-        // yaklaşık 70-75° bandını geçince akış açılsın.
-        final angleProgress = v < _pMoveEnd
-            ? 0.0
-            : (v < _pTiltEnd
-                ? _phase(v, _pMoveEnd, _pTiltEnd)
-                : (v < _pPourEnd ? 1.0 : 1.0));
-        const double pourStartAngleThreshold = 0.93;
-        final delayedStreamOpen = angleProgress <= pourStartAngleThreshold
-            ? 0.0
-            : Curves.easeInOut.transform(
-                ((angleProgress - pourStartAngleThreshold) /
-                        (1.0 - pourStartAngleThreshold))
-                    .clamp(0.0, 1.0),
-              );
-        final streamOpen = v >= _pPourEnd ? 1.0 : delayedStreamOpen;
-
-        // Ortak helper — TubeStage ile tamamen senkron
-        final contactThreshold =
-            computeContactThreshold(widget.plan.toSnapshot.length);
-
-        // streamOpen'ın başladığı v noktası (angle threshold geçilince)
-        // _pMoveEnd → _pTiltEnd arası angle 0→1, threshold=0.93 → v_streamStart
-        final vStreamStart =
-            _pMoveEnd + 0.93 * (_pTiltEnd - _pMoveEnd); // ≈ 0.57
-        // streamOpen=1 olduğu v noktası = _pPourEnd
-        // Temas v'si: vStreamStart + contactThreshold*(pPourEnd - vStreamStart)
-        final vContact =
-            vStreamStart + contactThreshold * (_pPourEnd - vStreamStart);
-
-// Akış çizgisi: v < vContact → uzar, v >= vContact → tam görünür.
-        final lineProgress = v <= vStreamStart
-            ? 0.0
-            : (v >= vContact
-                ? 1.0
-                : Curves.easeOut.transform(
-                    ((v - vStreamStart) / max(0.0001, vContact - vStreamStart))
-                        .clamp(0.0, 1.0)));
-
-// Dolum: temas anından (_vContact) akış bitişine (_pUprightEnd) kadar lineer.
-        final fillProgress = v <= vContact
-            ? 0.0
-            : Curves.easeInOutCubic.transform(
-                ((v - vContact) / max(0.0001, _pUprightEnd - vContact))
-                    .clamp(0.0, 1.0),
-              );
-
-// Drain: akış başından (_pTiltEnd) bitimine (_pUprightEnd) kadar.
+        // KRİTİK DÜZELTME:
+        // boşalma artık _pUprightEnd'e kadar değil, _pPourEnd'e kadar tamamlanıyor.
+        // Böylece akış bitmeden şişe dikleşmeye başlamıyor.
         final drainProgress = v <= _pTiltEnd
             ? 0.0
             : Curves.easeInOut.transform(
-                ((v - _pTiltEnd) / max(0.0001, _pUprightEnd - _pTiltEnd))
-                    .clamp(0.0, 1.0));
+                ((v - _pTiltEnd) / max(0.0001, _pPourEnd - _pTiltEnd))
+                    .clamp(0.0, 1.0),
+              );
 
         final sourceDrainVolume = widget.plan.count * drainProgress;
-        final remainingUnits =
-            (widget.plan.fromSnapshot.length - sourceDrainVolume)
-                .clamp(0.0, kCap.toDouble());
+        final sourceUnits = widget.plan.fromSnapshot.length.toDouble();
+        final remainingUnits = max(0.0, sourceUnits - sourceDrainVolume)
+            .clamp(0.0, kCap.toDouble());
 
         final dynamicMaxTilt = _targetTiltForRemaining(remainingUnits);
 
-        const double kPourGapY = 34.0;
-        final targetMouth = Offset(toMidX, toPos.dy + kCapTopY - kPourGapY);
-
         final pourTopLeft = _tubeTopLeftToMatchMouth(
-          targetMouth: targetMouth,
+          targetMouth: targetLip,
           mouthLocal: mouthLocal,
           anchorLocal: anchorLocal,
           angle: tiltSign * dynamicMaxTilt,
@@ -2565,54 +2577,59 @@ class _FlyingTubeState extends State<_FlyingTube>
               dynamicMaxTilt *
               _easeOutHeavy(_phase(v, _pMoveEnd, _pTiltEnd));
         } else if (v >= _pTiltEnd && v < _pPourEnd) {
+          // Akış sürerken sabit yatık kalsın
           bottleAngle = tiltSign * dynamicMaxTilt;
         } else if (v >= _pPourEnd && v < _pUprightEnd) {
+          // Akış bittikten sonra ayağa kalksın
           bottleAngle = tiltSign *
               dynamicMaxTilt *
               (1.0 - _easeHeavy(_phase(v, _pPourEnd, _pUprightEnd)));
         }
 
-        const inertiaFactor = 0.07;
+        const inertiaFactor = 0.12;
         _liquidTilt += (bottleAngle - _liquidTilt) * inertiaFactor;
 
         final easedFlow =
             Curves.easeInOutSine.transform(drainProgress.clamp(0.0, 1.0));
 
+        const vStreamStart = _pTiltEnd;
+
+        final contactThreshold2 =
+            computeContactThreshold(widget.plan.toSnapshot.length);
+
+        final vContact2 =
+            vStreamStart + contactThreshold2 * (_pPourEnd - vStreamStart);
+
+        final lineProgressDelayed = v <= vStreamStart
+            ? 0.0
+            : (v >= vContact2
+                ? 1.0
+                : Curves.easeOut.transform(
+                    ((v - vStreamStart) / max(0.0001, vContact2 - vStreamStart))
+                        .clamp(0.0, 1.0),
+                  ));
+
         final isPouring = widget.plan.count > 0 &&
-            v >= _pMoveEnd &&
-            v < _pUprightEnd &&
-            streamOpen > 0.005;
-
-        final visibleTubeAngle = _liquidTilt;
-
-        final mouthEdgeLocal = _mouthEdgeLocal(
-          fromMidX: fromMidX,
-        );
+            v >= vStreamStart &&
+            v < _pPourEnd &&
+            lineProgressDelayed > 0.005 &&
+            drainProgress > 0.0;
 
         final pivotInWidget = Offset(kWidgetW / 2, kBodyBotY + kTR);
-        final rotatedMouthEdge = _rotateAroundAnchor(
-            mouthEdgeLocal, pivotInWidget, visibleTubeAngle);
+        final rotatedMouth = _rotateAroundAnchor(
+          mouthLocal,
+          pivotInWidget,
+          bottleAngle,
+        );
 
         final globalStreamStart = Offset(
-          cx + rotatedMouthEdge.dx,
-          cy + rotatedMouthEdge.dy,
-        );
-
-        final targetBaseUnits = widget.plan.toSnapshot.length.toDouble();
-
-        // Akış çizgisinin ucu: dolmadan ÖNCEKİ sıvı seviyesi (sabit).
-        // Dolum ilerledikçe yukarı kaçmaması için currentTargetUnits kullanmıyoruz.
-        final initialTargetSurfaceY = _surfaceCenterYForFillRatio(
-          (targetBaseUnits / kCap).clamp(0.0, 1.0),
-        );
-
-        final targetMouthEntry = Offset(
-          toMidX,
-          toPos.dy + initialTargetSurfaceY,
+          cx + rotatedMouth.dx,
+          cy + rotatedMouth.dy,
         );
 
         final motionEnergy = _motionEnergy(v);
         final sourceSlosh = _sloshing(v, 0.50) + motionEnergy * 0.10;
+
         final sourceBubbleBurst = isPouring
             ? lerpDouble(0.85, 1.0, easedFlow)!
             : (v >= _pPourEnd && v < _pUprightEnd
@@ -2629,8 +2646,9 @@ class _FlyingTubeState extends State<_FlyingTube>
                     painter: _LiquidStreamPainter(
                       color: kColors[widget.plan.colorIdx]['fill'] as Color,
                       start: globalStreamStart,
-                      end: targetMouthEntry,
-                      progress: streamOpen,
+                      end: targetSurface,
+                      mouthEntry: targetMouthEntry,
+                      progress: lineProgressDelayed,
                       flowRate: easedFlow.clamp(0.0, 1.0),
                     ),
                   ),
@@ -2643,7 +2661,7 @@ class _FlyingTubeState extends State<_FlyingTube>
                 tube: widget.plan.fromSnapshot,
                 isSelected: false,
                 drainedVolume: sourceDrainVolume,
-                tilt: _liquidTilt,
+                tilt: bottleAngle,
                 slosh: sourceSlosh,
                 bubbleBurst: sourceBubbleBurst,
               ),
@@ -2653,24 +2671,6 @@ class _FlyingTubeState extends State<_FlyingTube>
       },
     );
   }
-
-  double _surfaceCenterYForFillRatio(double fillRatio) {
-    final innerBottom = kLiquidBotY - 20.0;
-    return innerBottom - (innerBottom - kLiquidTopY) * fillRatio;
-  }
-
-  double _motionEnergy(double v) {
-    if (v < _pMoveEnd) return 0.25;
-    if (v < _pPourEnd) return 0.15;
-    return (1.0 - _phase(v, _pPourEnd, 1.0)) * 0.20;
-  }
-
-  double _sloshing(double t, double intensity) {
-    final x = t.clamp(0.0, 1.0);
-    final wave = sin(x * 5.6);
-    final damping = exp(-x * 3.4);
-    return wave * intensity * damping * 0.45;
-  }
 }
 
 // ─────────────────────────────────────────────
@@ -2679,8 +2679,9 @@ class _FlyingTubeState extends State<_FlyingTube>
 
 class _LiquidStreamPainter extends CustomPainter {
   final Color color;
-  final Offset start;
-  final Offset end;
+  final Offset start; // Döküm şişesinin ağzı (dönen, global)
+  final Offset end; // Hedef şişedeki sıvı yüzeyi (global)
+  final Offset mouthEntry; // Hedef şişenin ağzı / giriş noktası (global)
   final double progress;
   final double flowRate;
 
@@ -2688,6 +2689,7 @@ class _LiquidStreamPainter extends CustomPainter {
     required this.color,
     required this.start,
     required this.end,
+    required this.mouthEntry,
     required this.progress,
     required this.flowRate,
   });
@@ -2698,47 +2700,45 @@ class _LiquidStreamPainter extends CustomPainter {
     if ((end - start).distance < 1.0) return;
 
     final t = progress.clamp(0.0, 1.0);
+    final thickness = lerpDouble(3.6, 7.0, flowRate)!;
 
+    final paint = Paint()
+      ..color = color.withOpacity(0.98)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = thickness
+      ..strokeCap = StrokeCap.round;
+
+    // Akışın anlık ucu: start → end doğrusunda t kadar ilerlemiş nokta
     final visibleEnd = Offset(
       lerpDouble(start.dx, end.dx, t)!,
       lerpDouble(start.dy, end.dy, t)!,
     );
 
-    final dx = visibleEnd.dx - start.dx;
-    final dy = visibleEnd.dy - start.dy;
-    final distance = (visibleEnd - start).distance;
+    // Tek sürekli cubic Bezier: start → visibleEnd
+    // Kontrol noktaları mouthEntry'yi doğal geçiş olarak kullanır,
+    // kesik oluşturmadan şişe dışı yay + içi düşey iniş sağlar.
+    //
+    //  c1: start'ın hemen altında — çıkış yönü aşağı-yana
+    //  c2: visibleEnd'in hemen üstünde — giriş yönü düşey yukarıdan
+    //
+    // Bu sayede eğri mouthEntry civarında kendiliğinden düzleşir
+    // ve şişe içinde düz aşağı iner.
 
-    final thickness = lerpDouble(3.6, 7.0, flowRate)!;
-    final arc = max(10.0, dy.abs() * 0.10 + distance * 0.05);
-
-    final c1 = Offset(
-      start.dx + dx * 0.06,
-      start.dy + max(2.0, arc * 0.55),
-    );
-
-    final c2 = Offset(
-      visibleEnd.dx - dx * 0.06,
-      visibleEnd.dy - max(2.0, arc * 0.14),
-    );
-
+    // Akış boyunca yatay sapma yok — start.dx hattında düz aşağı iner.
+    // visibleEnd.dx ile fark olsa bile X sabit tutulur; akış tüp içine
+    // girdikten sonra da kaymaz.
     final path = Path()
       ..moveTo(start.dx, start.dy)
-      ..cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, visibleEnd.dx, visibleEnd.dy);
+      ..lineTo(start.dx, visibleEnd.dy);
 
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color.withOpacity(0.98)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = thickness
-        ..strokeCap = StrokeCap.round,
-    );
+    canvas.drawPath(path, paint);
   }
 
   @override
   bool shouldRepaint(_LiquidStreamPainter old) =>
       old.start != start ||
       old.end != end ||
+      old.mouthEntry != mouthEntry ||
       old.progress != progress ||
       old.flowRate != flowRate ||
       old.color != color;
