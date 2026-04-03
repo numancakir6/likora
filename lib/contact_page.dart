@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
-
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -415,6 +415,14 @@ class _ContactPageState extends State<ContactPage>
     final title = _titleCtrl.text.trim();
     final message = _msgCtrl.text.trim();
 
+    if (kIsWeb || !Platform.isIOS) {
+      await _showResultDialog(
+        ok: false,
+        title: 'ŞU AN KAPALI',
+        message: 'İletişim sistemi şu an sadece iOS sürümünde aktif.',
+      );
+      return;
+    }
     if (title.isEmpty) {
       await _showResultDialog(
         ok: false,
