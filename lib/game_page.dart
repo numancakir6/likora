@@ -1592,19 +1592,69 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
-                        color: const Color(0xFFFFD54F).withValues(alpha: 0.14),
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFFFFE082).withValues(alpha: 0.22),
+                            Colors.white.withValues(alpha: 0.07),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         border: Border.all(
                           color:
-                              const Color(0xFFFFD54F).withValues(alpha: 0.30),
+                              const Color(0xFFFFD54F).withValues(alpha: 0.34),
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                const Color(0xFFFFC107).withValues(alpha: 0.12),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
                       ),
-                      child: Text(
-                        '+$_levelReward coin',
-                        style: const TextStyle(
-                          color: Color(0xFFFFD54F),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFFFFF176),
+                                  Color(0xFFFFB300),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFFC107)
+                                      .withValues(alpha: 0.34),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.toll_rounded,
+                              color: Color(0xFF6A4300),
+                              size: 13,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '+$_levelReward',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
