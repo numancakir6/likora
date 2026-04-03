@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'map_page.dart';
 import 'daily_puzzle_page.dart';
-import 'how_to_play_page.dart';
 import 'settings_page.dart';
 import 'contact_page.dart';
 import 'player_progress.dart';
@@ -28,11 +27,9 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
     super.initState();
     _loadProgress();
 
-    // Burada repeat devam ediyor ama artık bubble hesabında
-    // controller.value kullanmayacağız
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 20),
+      duration: const Duration(seconds: 40),
     )..repeat();
 
     _btnController = AnimationController(
@@ -40,7 +37,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 800),
     )..forward();
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
       _buttonAnimations.add(
         CurvedAnimation(
           parent: _btnController,
@@ -67,7 +64,9 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  void _navigate(Widget page) {
+  Future<void> _navigate(Widget page) async {
+    await SettingsPage.vibrateTap();
+    if (!mounted) return;
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
 
@@ -140,7 +139,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
                           glowColor: const Color(0xFFF50057),
                           fontSize: 17,
                           verticalPad: 20,
-                          onTap: () => _navigate(MapPage()),
+                          onTap: () async => _navigate(MapPage()),
                         ),
                       ),
                       _buildAnimatedButton(
@@ -155,7 +154,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
                                 const Color(0xFFF5A623),
                               ],
                               glowColor: const Color(0xFFFF6D00),
-                              onTap: () => _navigate(DailyPuzzlePage()),
+                              onTap: () async => _navigate(DailyPuzzlePage()),
                             ),
                             Positioned(
                               top: -8,
@@ -190,28 +189,16 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
                       ),
                       _buildAnimatedButton(
                         index: 2,
-                        child: _buildGradientButton(
-                          label: "NASIL OYNANIR",
-                          colors: [
-                            const Color(0xFF00BCD4),
-                            const Color(0xFF4ECDC4),
-                          ],
-                          glowColor: const Color(0xFF4ECDC4),
-                          onTap: () => _navigate(HowToPlayPage()),
+                        child: _buildGlassButton(
+                          label: "AYARLAR",
+                          onTap: () async => _navigate(SettingsPage()),
                         ),
                       ),
                       _buildAnimatedButton(
                         index: 3,
-                        child: _buildGlassButton(
-                          label: "AYARLAR",
-                          onTap: () => _navigate(SettingsPage()),
-                        ),
-                      ),
-                      _buildAnimatedButton(
-                        index: 4,
                         child: _buildPurpleButton(
                           label: "BİZE ULAŞIN",
-                          onTap: () => _navigate(ContactPage()),
+                          onTap: () async => _navigate(ContactPage()),
                         ),
                       ),
                     ],
@@ -473,10 +460,10 @@ class BubblePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final b in bubbles) {
-      final t = (sin(timeSeconds * b.verticalSpeed + b.wobble) + 1) / 2;
+      final localTime = timeSeconds + b.timeOffset;
 
-      // Alt taraftan üst tarafa çıkıp tekrar geri dönüyor
-      // 1 - t ile ilk hareket yukarı doğru başlasın
+      final t = (sin(localTime * b.verticalSpeed + b.wobble) + 1) / 2;
+
       final y = lerpDouble(
         b.maxYFactor * size.height,
         b.minYFactor * size.height,
@@ -484,7 +471,10 @@ class BubblePainter extends CustomPainter {
       )!;
 
       final x = b.x * size.width +
-          sin(timeSeconds * b.horizontalSpeed + b.wobble) * b.horizontalRange;
+          sin(localTime * b.horizontalSpeed + b.wobble) * b.horizontalRange;
+
+      final pulse = 0.92 + 0.08 * sin(localTime * b.pulseSpeed + b.wobble);
+      final radius = b.size * pulse;
 
       final color = _colors[b.colorIndex % _colors.length];
 
@@ -497,8 +487,8 @@ class BubblePainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 0.8;
 
-      canvas.drawCircle(Offset(x, y), b.size, fillPaint);
-      canvas.drawCircle(Offset(x, y), b.size, strokePaint);
+      canvas.drawCircle(Offset(x, y), radius, fillPaint);
+      canvas.drawCircle(Offset(x, y), radius, strokePaint);
     }
   }
 
@@ -519,6 +509,9 @@ class _Bubble {
   final double horizontalSpeed;
   final double horizontalRange;
 
+  final double timeOffset;
+  final double pulseSpeed;
+
   _Bubble({
     required this.x,
     required this.size,
@@ -529,6 +522,8 @@ class _Bubble {
     required this.verticalSpeed,
     required this.horizontalSpeed,
     required this.horizontalRange,
+    required this.timeOffset,
+    required this.pulseSpeed,
   });
 
   factory _Bubble.random(int seed) {
@@ -544,9 +539,11 @@ class _Bubble {
       colorIndex: rnd.nextInt(7),
       minYFactor: minY,
       maxYFactor: maxY,
-      verticalSpeed: 0.5 + rnd.nextDouble() * 0.7,
-      horizontalSpeed: 0.8 + rnd.nextDouble() * 0.8,
+      verticalSpeed: 0.35 + rnd.nextDouble() * 0.45,
+      horizontalSpeed: 0.45 + rnd.nextDouble() * 0.55,
       horizontalRange: 6 + rnd.nextDouble() * 10,
+      timeOffset: rnd.nextDouble() * 30,
+      pulseSpeed: 0.8 + rnd.nextDouble() * 1.0,
     );
   }
 }

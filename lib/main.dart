@@ -1,7 +1,16 @@
+import 'dart:io' show Platform;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'splash_page.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  if (!kIsWeb && Platform.isIOS) {
+    await Firebase.initializeApp();
+  }
+
   runApp(const LikoraApp());
 }
 

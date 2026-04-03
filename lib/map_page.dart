@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'game_page.dart';
 import 'map_theme.dart';
+import 'settings_page.dart';
 
 // ─────────────────────────────────────────────
 //  DIFFICULTY
@@ -798,11 +799,11 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
 
   void _handleTap() {
     if (!widget.data.isUnlocked) {
-      HapticFeedback.lightImpact();
+      SettingsPage.vibrateLight();
       _tapController.forward().then((_) => _tapController.reverse());
       return;
     }
-    HapticFeedback.mediumImpact();
+    SettingsPage.vibrateTap();
     _tapController
         .forward()
         .then((_) => _tapController.reverse())
@@ -1473,7 +1474,12 @@ class _GlassButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: onTap == null
+          ? null
+          : () async {
+              await SettingsPage.vibrateTap();
+              onTap?.call();
+            },
       child: Opacity(
         opacity: onTap == null ? 0.45 : 1.0,
         child: Container(

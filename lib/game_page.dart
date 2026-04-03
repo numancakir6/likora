@@ -1,12 +1,14 @@
 import 'dart:collection';
 import 'dart:math';
-import 'dart:ui' show lerpDouble;
+import 'dart:ui' show ImageFilter, lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'map_theme.dart';
 import 'puzzle_presets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'player_progress.dart';
+import 'settings_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ─────────────────────────────────────────────
 // OYUN SABİTLERİ
@@ -349,6 +351,14 @@ class GamePage extends StatefulWidget {
 }
 
 class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
+  Future<void> _vibrateTap() async {
+    await SettingsPage.vibrateTap();
+  }
+
+  Future<void> _vibrateLight() async {
+    await SettingsPage.vibrateLight();
+  }
+
   late final AnimationController _bgCtrl;
   late final MapTheme _theme;
 
@@ -376,6 +386,31 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   final Map<int, int> _undoSloshingTubes = {}; // tubeIdx → colorIdx
 
   static const int _jokerCost = 50;
+  static const String _tutorialSeenKey = 'likora_tutorial_seen_v1';
+
+  bool _showTutorial = false;
+  int _tutorialStepIndex = 0;
+  int? _tutorialFromIdx;
+  int? _tutorialToIdx;
+
+  late final List<_TutorialStep> _tutorialSteps = const [
+    _TutorialStep(
+      title: 'Bir tüp seç',
+      message: '',
+      bubbleAlignment: Alignment(0.0, -0.88),
+    ),
+    _TutorialStep(
+      title: '',
+      message:
+          'Seçtiğin tüpün en üst rengini bir boş tüpe veya en üst rengi aynı renge sahip, boş alanı olan bir başka tüpe dök.',
+      bubbleAlignment: Alignment(0.0, -0.88),
+    ),
+    _TutorialStep(
+      title: '',
+      message: 'Bir tüp ancak tam doluysa ve tek renkse tamamlanmış sayılır.',
+      bubbleAlignment: Alignment(0.0, -0.78),
+    ),
+  ];
 
   late int _coins;
   bool _jokerBusy = false;
@@ -396,6 +431,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _coins = widget.initialCoins;
     _loadProgress();
     _reset();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowTutorial();
+    });
   }
 
   Future<void> _loadProgress() async {
@@ -455,6 +493,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _history.clear();
     _undoSloshingTubes.clear();
     _adTubeUnlocked = false;
+    _showTutorial = false;
+    _tutorialStepIndex = 0;
+    _tutorialFromIdx = null;
+    _tutorialToIdx = null;
     setState(() {});
   }
 
@@ -955,61 +997,86 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   int get _levelReward =>
       PlayerProgress.rewardForDifficultyDots(widget.difficulty);
 
+  void _showBottomHint(String text) {
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        duration: const Duration(milliseconds: 1400),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(left: 24, right: 24, bottom: 28),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        backgroundColor: const Color(0xFF2A223D),
+        elevation: 0,
+      ),
+    );
+  }
+
   Future<bool> _showRewardedJokerAdGate() async {
     if (!mounted) return false;
 
-    final shouldGrant = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF161127),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-          title: const Text(
-            'Joker reklamı',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          content: const Text(
-            '50 oyun paran yetmediği için jokeri reklam izleyerek kullanabilirsin.',
-            style: TextStyle(
-              color: Colors.white70,
-              height: 1.35,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Vazgeç'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.of(context).pop(true),
-              icon: const Icon(Icons.ondemand_video_rounded),
-              label: const Text('Reklam İzle'),
-            ),
-          ],
-        );
-      },
-    );
+    // TODO: Gerçek rewarded reklam entegrasyonu gelince burayı bağla.
+    final bool adReady = false;
 
-    if (shouldGrant != true) return false;
+    if (!adReady) {
+      _vibrateLight();
+      _showBottomHint('Reklam şu anda hazır değil');
+      return false;
+    }
 
-    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    // TODO: Gerçek reklam gösterimi
+    // final rewarded = await _adsService.showRewardedJokerAd();
+    // if (rewarded != true) {
+    //   _vibrateLight();
+    //   _showBottomHint('Reklam tamamlanmadı');
+    //   return false;
+    // }
+
+    return false;
+  }
+
+  Future<bool> _tryUnlockAdTube() async {
+    if (!mounted) return false;
+
+    // TODO: Gerçek rewarded reklam entegrasyonu gelince burayı bağla.
+    final bool adReady = false;
+
+    if (!adReady) {
+      _vibrateLight();
+      _showBottomHint('Reklam şu anda hazır değil');
+      return false;
+    }
+
+    // TODO: Gerçek reklam gösterimi
+    // final rewarded = await _adsService.showRewardedTubeUnlockAd();
+    // if (rewarded != true) {
+    //   _vibrateLight();
+    //   _showBottomHint('Reklam tamamlanmadı');
+    //   return false;
+    // }
+
+    setState(() {
+      _adTubeUnlocked = true;
+    });
+
     return true;
   }
 
   Future<void> _useJokerWithEconomy() async {
     if (_jokerBusy || _activePlans.isNotEmpty || _gameWon) return;
-
-    final decision = _findSmartJokerDecision();
-    if (decision == null) {
-      HapticFeedback.lightImpact();
-      return;
-    }
 
     setState(() {
       _jokerBusy = true;
@@ -1029,6 +1096,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         return;
       }
 
+      final decision = _findSmartJokerDecision();
+      if (decision == null) {
+        _vibrateLight();
+        _showBottomHint('Joker için uygun hamle bulunamadı');
+        return;
+      }
+
       if (decision.rewindCount > 0) {
         await _rewindHistoryForJoker(decision.rewindCount);
       }
@@ -1043,19 +1117,144 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
   }
 
+  (int, int)? _findTutorialMove() {
+    final preferredSources = <int>[];
+    for (int i = 4; i < _tubes.length; i++) {
+      if (!_isLockedAdTubeIndex(i)) preferredSources.add(i);
+    }
+    for (int i = 0; i < min(4, _tubes.length); i++) {
+      if (!_isLockedAdTubeIndex(i)) preferredSources.add(i);
+    }
+
+    final lowerTargets = <int>[
+      for (int i = 4; i < _tubes.length; i++)
+        if (!_isLockedAdTubeIndex(i)) i,
+    ];
+    final allTargets = <int>[
+      for (int i = 0; i < _tubes.length; i++)
+        if (!_isLockedAdTubeIndex(i)) i,
+    ];
+
+    for (final from in preferredSources) {
+      if (_tubes[from].isEmpty) continue;
+      for (final to in lowerTargets) {
+        if (from == to) continue;
+        if (canPour(_tubes, from, to) && _tubes[to].isEmpty) {
+          return (from, to);
+        }
+      }
+    }
+
+    for (final from in preferredSources) {
+      if (_tubes[from].isEmpty) continue;
+      for (final to in allTargets) {
+        if (from == to) continue;
+        if (canPour(_tubes, from, to) && _tubes[to].isEmpty) {
+          return (from, to);
+        }
+      }
+    }
+
+    for (final from in preferredSources) {
+      if (_tubes[from].isEmpty) continue;
+      for (final to in lowerTargets) {
+        if (from == to) continue;
+        if (canPour(_tubes, from, to)) {
+          return (from, to);
+        }
+      }
+    }
+
+    for (final from in preferredSources) {
+      if (_tubes[from].isEmpty) continue;
+      for (final to in allTargets) {
+        if (from == to) continue;
+        if (canPour(_tubes, from, to)) {
+          return (from, to);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _maybeShowTutorial() async {
+    final prefs = await SharedPreferences.getInstance();
+    final alreadySeen = prefs.getBool(_tutorialSeenKey) ?? false;
+    final shouldShow =
+        !alreadySeen && widget.mapNumber == 1 && widget.level == 1;
+
+    if (!mounted || !shouldShow) return;
+
+    final move = _findTutorialMove();
+    if (move == null) return;
+
+    await Future.delayed(const Duration(milliseconds: 350));
+    if (!mounted) return;
+
+    setState(() {
+      _showTutorial = true;
+      _tutorialStepIndex = 0;
+      _tutorialFromIdx = move.$1;
+      _tutorialToIdx = move.$2;
+    });
+  }
+
+  Future<void> _completeTutorial({bool skipped = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_tutorialSeenKey, true);
+    if (!mounted) return;
+
+    setState(() {
+      _showTutorial = false;
+      _tutorialStepIndex = 0;
+      _tutorialFromIdx = null;
+      _tutorialToIdx = null;
+    });
+
+    if (!skipped) {
+      _vibrateLight();
+    }
+  }
+
   Future<void> _handleTap(int idx) async {
-    if (_isLockedAdTubeIndex(idx)) return;
+    if (_showTutorial) {
+      if (_tutorialStepIndex == 0) {
+        if (idx != _tutorialFromIdx) return;
+      } else if (_tutorialStepIndex == 1) {
+        if (idx != _tutorialToIdx) return;
+      } else if (_tutorialStepIndex >= 2) {
+        return;
+      }
+    }
+
+    if (_isLockedAdTubeIndex(idx)) {
+      final unlocked = await _tryUnlockAdTube();
+      if (!unlocked && mounted) {
+        setState(() => _selected = null);
+      }
+      return;
+    }
 
     final busy = _busyTubes;
 
     if (_selected == null) {
       if (busy.contains(idx)) return;
       if (_tubes[idx].isEmpty) return;
-      setState(() => _selected = idx);
+      _vibrateTap();
+      setState(() {
+        _selected = idx;
+        if (_showTutorial &&
+            _tutorialStepIndex == 0 &&
+            idx == _tutorialFromIdx) {
+          _tutorialStepIndex = 1;
+        }
+      });
       return;
     }
 
     if (_selected == idx) {
+      _vibrateTap();
       setState(() => _selected = null);
       return;
     }
@@ -1063,20 +1262,31 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final from = _selected!;
     final to = idx;
 
+    _vibrateTap();
     if (!canPour(_tubes, from, to)) {
       setState(() => _selected = null);
-      HapticFeedback.lightImpact();
       return;
     }
 
     if (_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) {
       setState(() => _selected = null);
-      HapticFeedback.lightImpact();
+      _vibrateLight();
       return;
     }
 
     if (!busy.contains(from) && !busy.contains(to)) {
       await _startPour(from, to);
+
+      if (_showTutorial &&
+          _tutorialStepIndex == 1 &&
+          from == _tutorialFromIdx &&
+          to == _tutorialToIdx) {
+        if (mounted) {
+          setState(() {
+            _tutorialStepIndex = 2;
+          });
+        }
+      }
       return;
     }
 
@@ -1086,13 +1296,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   Future<void> _startPour(int from, int to) async {
     if (!canPour(_tubes, from, to)) {
-      HapticFeedback.lightImpact();
+      _vibrateLight();
       return;
     }
 
     final count = pourCount(_tubes, from, to);
     if (count <= 0) {
-      HapticFeedback.lightImpact();
+      _vibrateLight();
       return;
     }
 
@@ -1119,8 +1329,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _selected = null;
       _activePlans.add(plan);
     });
-
-    HapticFeedback.mediumImpact();
 
     // Animasyon biter bitmez planı kaldır
     Future.delayed(kPourDuration, () {
@@ -1170,7 +1378,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   void _undo() {
     // Animasyon devam ediyorsa veya geçmiş yoksa işlem yapma
     if (_activePlans.isNotEmpty || _history.isEmpty) {
-      HapticFeedback.lightImpact();
+      _vibrateLight();
       return;
     }
 
@@ -1192,7 +1400,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _undoSloshingTubes[last.toIdx] = toColor;
     });
 
-    HapticFeedback.mediumImpact();
+    _vibrateTap();
 
     // Slosh animasyonu bitince temizle
     Future.delayed(const Duration(milliseconds: 700), () {
@@ -1328,7 +1536,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _levelRewardGranted = true;
     }
 
-    HapticFeedback.mediumImpact();
+    _vibrateTap();
     Navigator.pop(
       context,
       GamePageResult(
@@ -1340,7 +1548,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   void _lowerLevel() {
-    HapticFeedback.lightImpact();
+    _vibrateLight();
     Navigator.pop(
       context,
       GamePageResult(
@@ -1362,7 +1570,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             child: Column(
               children: [
                 _buildTopBar(),
-                const SizedBox(height: 30),
+                const SizedBox(height: 12),
                 Expanded(
                   child: Center(
                     child: Padding(
@@ -1391,13 +1599,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                         showLockedAdTube: _showLockedAdTube,
                                         celebratingDoneTubes:
                                             _celebratingDoneTubes,
+                                        tutorialActive: _showTutorial,
+                                        tutorialStepIndex: _tutorialStepIndex,
+                                        tutorialFromIdx: _tutorialFromIdx,
+                                        tutorialToIdx: _tutorialToIdx,
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 10),
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Row(
@@ -1432,35 +1644,196 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
               ],
             ),
           ),
           Positioned(
             right: 20,
             bottom: 20,
-            child: SafeArea(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _UndoButton(
-                    canUndo: _history.isNotEmpty &&
-                        _activePlans.isEmpty &&
-                        !_gameWon,
-                    accentColor: _theme.accentColor,
-                    onTap: _undo,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: _showTutorial ? 0.22 : 1.0,
+              child: IgnorePointer(
+                ignoring: _showTutorial,
+                child: SafeArea(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _UndoButton(
+                        canUndo: _history.isNotEmpty &&
+                            _activePlans.isEmpty &&
+                            !_gameWon,
+                        accentColor: _theme.accentColor,
+                        onTap: _undo,
+                      ),
+                      const SizedBox(width: 12),
+                      _JokerButton(
+                        enabled:
+                            !_gameWon && _activePlans.isEmpty && !_jokerBusy,
+                        busy: _jokerBusy,
+                        canBuy: _canBuyJoker,
+                        cost: _jokerCost,
+                        accentColor: _theme.accentColor,
+                        onTap: _useJokerWithEconomy,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  _JokerButton(
-                    enabled: !_gameWon && _activePlans.isEmpty && !_jokerBusy,
-                    busy: _jokerBusy,
-                    canBuy: _canBuyJoker,
-                    cost: _jokerCost,
-                    accentColor: _theme.accentColor,
-                    onTap: _useJokerWithEconomy,
+                ),
+              ),
+            ),
+          ),
+          if (_showTutorial) _buildTutorialOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTutorialOverlay() {
+    final stepIndex = _tutorialStepIndex.clamp(0, _tutorialSteps.length - 1);
+    final step = _tutorialSteps[stepIndex];
+    final bool isFinalStep = stepIndex == _tutorialSteps.length - 1;
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 220),
+      opacity: _showTutorial ? 1 : 0,
+      child: Stack(
+        children: [
+          IgnorePointer(
+            ignoring: true,
+            child: Container(
+              color: Colors.black.withOpacity(0.48),
+            ),
+          ),
+          Align(
+            alignment: step.bubbleAlignment,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: Container(
+                    width: 300,
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF12081F).withOpacity(0.82),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.10),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.26),
+                          blurRadius: 18,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _theme.accentColor.withOpacity(0.16),
+                              ),
+                              child: Icon(
+                                isFinalStep
+                                    ? Icons.check_circle_rounded
+                                    : Icons.touch_app_rounded,
+                                color: _theme.accentColor,
+                                size: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: step.title.isEmpty
+                                  ? const SizedBox()
+                                  : Text(
+                                      step.title,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                            ),
+                            Text(
+                              '${_tutorialStepIndex + 1}/${_tutorialSteps.length}',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.55),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          step.message,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.86),
+                            fontSize: 13.5,
+                            height: 1.30,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            if (!isFinalStep)
+                              TextButton(
+                                onPressed: () =>
+                                    _completeTutorial(skipped: true),
+                                child: Text(
+                                  'Geç',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.72),
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            const Spacer(),
+                            if (isFinalStep)
+                              GestureDetector(
+                                onTap: _completeTutorial,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _theme.accentColor.withOpacity(0.18),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color:
+                                          _theme.accentColor.withOpacity(0.42),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Tamam',
+                                    style: TextStyle(
+                                      color: _theme.accentColor,
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -1868,6 +2241,18 @@ class _LevelIconBtn extends StatelessWidget {
 // TÜPLER SAHNESİ
 // ─────────────────────────────────────────────
 
+class _TutorialStep {
+  final String title;
+  final String message;
+  final Alignment bubbleAlignment;
+
+  const _TutorialStep({
+    required this.title,
+    required this.message,
+    required this.bubbleAlignment,
+  });
+}
+
 class _TubeStage extends StatefulWidget {
   final List<List<int>> tubes;
   final int? selected;
@@ -1878,6 +2263,10 @@ class _TubeStage extends StatefulWidget {
   final Map<int, int> celebratingDoneTubes;
   final bool gameWon;
   final Map<int, int> undoSloshingTubes;
+  final bool tutorialActive;
+  final int tutorialStepIndex;
+  final int? tutorialFromIdx;
+  final int? tutorialToIdx;
 
   const _TubeStage({
     required this.tubes,
@@ -1889,6 +2278,10 @@ class _TubeStage extends StatefulWidget {
     required this.celebratingDoneTubes,
     this.gameWon = false,
     this.undoSloshingTubes = const {},
+    this.tutorialActive = false,
+    this.tutorialStepIndex = 0,
+    this.tutorialFromIdx,
+    this.tutorialToIdx,
   });
 
   @override
@@ -1969,6 +2362,10 @@ class _TubeStageState extends State<_TubeStage> {
     final hiddenSources = widget.activePlans.map((p) => p.fromIdx).toSet();
     final isLockedAdTube =
         widget.showLockedAdTube && idx == widget.lockedAdTubeIndex;
+    final bool tutorialTarget = widget.tutorialActive &&
+        ((widget.tutorialStepIndex == 0 && idx == widget.tutorialFromIdx) ||
+            (widget.tutorialStepIndex == 1 && idx == widget.tutorialToIdx));
+    final bool dimForTutorial = widget.tutorialActive && !tutorialTarget;
 
     final activeTargetPlan =
         widget.activePlans.cast<_TransferPlan?>().firstWhere(
@@ -2064,8 +2461,13 @@ class _TubeStageState extends State<_TubeStage> {
               alignment: Alignment.center,
               clipBehavior: Clip.none,
               children: [
-                Opacity(
-                  opacity: isLockedAdTube ? 0.30 : 1.0,
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  opacity: isLockedAdTube
+                      ? 0.20
+                      : dimForTutorial
+                          ? 0.16
+                          : 1.0,
                   child: tubeView,
                 ),
                 if (isLockedAdTube)
