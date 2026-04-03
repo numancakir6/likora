@@ -3,7 +3,6 @@ import 'dart:collection';
 import 'dart:math';
 import 'dart:ui' show ImageFilter, lerpDouble;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'map_theme.dart';
 import 'puzzle_presets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -600,21 +599,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     });
 
     if (locked != null) {
-      playable.add(locked!);
+      playable.add(locked);
     }
 
     return playable.join('|');
-  }
-
-  String _boardSignature(List<List<int>> tubes) {
-    return _canonicalBoardSignature(
-      tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
-    );
-  }
-
-  String _currentBoardSignature() {
-    return _boardSignature(_tubes);
   }
 
   List<int> _completedTubeColorsOf(List<List<int>> tubes) {
@@ -1104,21 +1092,15 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (!mounted) return false;
 
     // TODO: Gerçek rewarded reklam entegrasyonu gelince burayı bağla.
-    final bool adReady = false;
-
-    if (!adReady) {
-      _vibrateLight();
-      _showBottomHint('Reklam şu anda hazır değil');
-      return false;
-    }
+    _vibrateLight();
+    _showBottomHint('Reklam şu anda hazır değil');
 
     // TODO: Gerçek reklam gösterimi
+    // final adReady = await _adsService.isRewardedAdReady();
+    // if (!adReady) { _showBottomHint('Reklam şu anda hazır değil'); return false; }
     // final rewarded = await _adsService.showRewardedJokerAd();
-    // if (rewarded != true) {
-    //   _vibrateLight();
-    //   _showBottomHint('Reklam tamamlanmadı');
-    //   return false;
-    // }
+    // if (rewarded != true) { _showBottomHint('Reklam tamamlanmadı'); return false; }
+    // return true;
 
     return false;
   }
@@ -1127,28 +1109,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (!mounted) return false;
 
     // TODO: Gerçek rewarded reklam entegrasyonu gelince burayı bağla.
-    final bool adReady = false;
-
-    if (!adReady) {
-      _vibrateLight();
-      _showBottomHint('Reklam şu anda hazır değil');
-      return false;
-    }
+    _vibrateLight();
+    _showBottomHint('Reklam şu anda hazır değil');
 
     // TODO: Gerçek reklam gösterimi
+    // final adReady = await _adsService.isRewardedAdReady();
+    // if (!adReady) { _showBottomHint('Reklam şu anda hazır değil'); return false; }
     // final rewarded = await _adsService.showRewardedTubeUnlockAd();
-    // if (rewarded != true) {
-    //   _vibrateLight();
-    //   _showBottomHint('Reklam tamamlanmadı');
-    //   return false;
-    // }
+    // if (rewarded != true) { _showBottomHint('Reklam tamamlanmadı'); return false; }
+    // setState(() { _adTubeUnlocked = true; });
+    // _persistLevelState();
+    // return true;
 
-    setState(() {
-      _adTubeUnlocked = true;
-    });
-    _persistLevelState();
-
-    return true;
+    return false;
   }
 
   Future<void> _useJokerWithEconomy() async {
@@ -1587,10 +1560,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             decoration: BoxDecoration(
               color: Color.lerp(_theme.bgMid, Colors.black, 0.22),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.30),
+                  color: Colors.black.withValues(alpha: 0.30),
                   blurRadius: 24,
                   offset: const Offset(0, 12),
                 ),
@@ -1619,9 +1592,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
-                        color: const Color(0xFFFFD54F).withOpacity(0.14),
+                        color: const Color(0xFFFFD54F).withValues(alpha: 0.14),
                         border: Border.all(
-                          color: const Color(0xFFFFD54F).withOpacity(0.30),
+                          color:
+                              const Color(0xFFFFD54F).withValues(alpha: 0.30),
                         ),
                       ),
                       child: Text(
@@ -1640,8 +1614,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   width: double.infinity,
                   child: _BottomActionBtn(
                     label: 'Harika',
-                    color: _theme.accentColor.withOpacity(0.18),
-                    borderColor: _theme.accentColor.withOpacity(0.45),
+                    color: _theme.accentColor.withValues(alpha: 0.18),
+                    borderColor: _theme.accentColor.withValues(alpha: 0.45),
                     textColor: _theme.accentColor,
                     onTap: () {
                       Navigator.of(context).pop();
@@ -1711,10 +1685,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       );
     }
 
-    return WillPopScope(
-        onWillPop: () async {
+    return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (_, __) {
           _lowerLevel();
-          return false;
         },
         child: Scaffold(
           backgroundColor: _theme.bgDark,
@@ -1755,6 +1729,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                             showLockedAdTube: _showLockedAdTube,
                                             celebratingDoneTubes:
                                                 _celebratingDoneTubes,
+                                            gameWon: _gameWon,
+                                            undoSloshingTubes:
+                                                _undoSloshingTubes,
                                             tutorialActive: _showTutorial,
                                             tutorialStepIndex:
                                                 _tutorialStepIndex,
@@ -1776,9 +1753,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                         icon: Icons
                                             .keyboard_double_arrow_down_rounded,
                                         tooltip: 'Seviyeyi Düşür',
-                                        color: Colors.white.withOpacity(0.10),
-                                        borderColor:
-                                            Colors.white.withOpacity(0.18),
+                                        color: Colors.white
+                                            .withValues(alpha: 0.10),
+                                        borderColor: Colors.white
+                                            .withValues(alpha: 0.18),
                                         iconColor: Colors.white,
                                         onTap: _lowerLevel,
                                       ),
@@ -1788,9 +1766,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                             .keyboard_double_arrow_up_rounded,
                                         tooltip: 'Seviyeyi Geç',
                                         color: _theme.accentColor
-                                            .withOpacity(0.18),
+                                            .withValues(alpha: 0.18),
                                         borderColor: _theme.accentColor
-                                            .withOpacity(0.45),
+                                            .withValues(alpha: 0.45),
                                         iconColor: _theme.accentColor,
                                         onTap: _completeLevel,
                                       ),
@@ -1863,7 +1841,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           IgnorePointer(
             ignoring: true,
             child: Container(
-              color: Colors.black.withOpacity(0.48),
+              color: Colors.black.withValues(alpha: 0.48),
             ),
           ),
           Align(
@@ -1878,14 +1856,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     width: 300,
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF12081F).withOpacity(0.82),
+                      color: const Color(0xFF12081F).withValues(alpha: 0.82),
                       borderRadius: BorderRadius.circular(22),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.10),
+                        color: Colors.white.withValues(alpha: 0.10),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.26),
+                          color: Colors.black.withValues(alpha: 0.26),
                           blurRadius: 18,
                           offset: const Offset(0, 10),
                         ),
@@ -1902,7 +1880,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                               height: 30,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: _theme.accentColor.withOpacity(0.16),
+                                color:
+                                    _theme.accentColor.withValues(alpha: 0.16),
                               ),
                               child: Icon(
                                 isFinalStep
@@ -1928,7 +1907,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                             Text(
                               '${_tutorialStepIndex + 1}/${_tutorialSteps.length}',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.55),
+                                color: Colors.white.withValues(alpha: 0.55),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1939,7 +1918,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                         Text(
                           step.message,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.86),
+                            color: Colors.white.withValues(alpha: 0.86),
                             fontSize: 13.5,
                             height: 1.30,
                             fontWeight: FontWeight.w500,
@@ -1958,7 +1937,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                 child: Text(
                                   'Geç',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.72),
+                                    color: Colors.white.withValues(alpha: 0.72),
                                     fontSize: 13.5,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -1978,11 +1957,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                     vertical: 10,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: _theme.accentColor.withOpacity(0.18),
+                                    color: _theme.accentColor
+                                        .withValues(alpha: 0.18),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(
-                                      color:
-                                          _theme.accentColor.withOpacity(0.42),
+                                      color: _theme.accentColor
+                                          .withValues(alpha: 0.42),
                                     ),
                                   ),
                                   child: Text(
@@ -2036,10 +2016,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.08),
+                          color: Colors.white.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.14),
+                            color: Colors.white.withValues(alpha: 0.14),
                           ),
                         ),
                         child: const Icon(
@@ -2061,7 +2041,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                       letterSpacing: 1.8,
                       shadows: [
                         Shadow(
-                          color: _theme.primaryColor.withOpacity(0.6),
+                          color: _theme.primaryColor.withValues(alpha: 0.6),
                           blurRadius: 12,
                         ),
                       ],
@@ -2121,13 +2101,13 @@ class _AnimatedThemeBg extends StatelessWidget {
           final h = size.height;
           return Stack(children: [
             _glow(-90 + sin(t * pi) * 20, -120 + cos(t * pi) * 15, 270,
-                theme.primaryColor.withOpacity(0.18)),
+                theme.primaryColor.withValues(alpha: 0.18)),
             _glow(w - 170 + cos(t * pi) * 20, 120 + sin(t * pi) * 18, 250,
-                theme.secondaryColor.withOpacity(0.14)),
+                theme.secondaryColor.withValues(alpha: 0.14)),
             _glow(-80 + sin(t * pi * 1.3) * 16, h - 200 + cos(t * pi) * 20, 260,
-                theme.accentColor.withOpacity(0.12)),
+                theme.accentColor.withValues(alpha: 0.12)),
             _glow(w - 140 + cos(t * pi * 1.2) * 18, h - 180 + sin(t * pi) * 22,
-                230, theme.primaryColor.withOpacity(0.12)),
+                230, theme.primaryColor.withValues(alpha: 0.12)),
           ]);
         },
       ),
@@ -2142,7 +2122,7 @@ class _AnimatedThemeBg extends StatelessWidget {
           height: sz,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: RadialGradient(colors: [c, c.withOpacity(0)]),
+            gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)]),
           ),
         ),
       );
@@ -2187,18 +2167,18 @@ class _JokerButton extends StatelessWidget {
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: canBuy
-                    ? accentColor.withOpacity(0.60)
-                    : Colors.white.withOpacity(0.24),
+                    ? accentColor.withValues(alpha: 0.60)
+                    : Colors.white.withValues(alpha: 0.24),
                 width: 1.5,
               ),
               boxShadow: canBuy
                   ? [
                       BoxShadow(
-                        color: accentColor.withOpacity(0.22),
+                        color: accentColor.withValues(alpha: 0.22),
                         blurRadius: 14,
                         spreadRadius: 1,
                       ),
@@ -2272,18 +2252,18 @@ class _UndoButton extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: canUndo
-                    ? accentColor.withOpacity(0.45)
-                    : Colors.white.withOpacity(0.14),
+                    ? accentColor.withValues(alpha: 0.45)
+                    : Colors.white.withValues(alpha: 0.14),
                 width: 1.4,
               ),
               boxShadow: canUndo
                   ? [
                       BoxShadow(
-                        color: accentColor.withOpacity(0.18),
+                        color: accentColor.withValues(alpha: 0.18),
                         blurRadius: 12,
                         spreadRadius: 1,
                       ),
@@ -2293,7 +2273,9 @@ class _UndoButton extends StatelessWidget {
             child: Center(
               child: Icon(
                 Icons.undo_rounded,
-                color: canUndo ? accentColor : Colors.white.withOpacity(0.45),
+                color: canUndo
+                    ? accentColor
+                    : Colors.white.withValues(alpha: 0.45),
                 size: 24,
               ),
             ),
@@ -2538,7 +2520,7 @@ class _TubeStageState extends State<_TubeStage> {
 
     Widget tubeView;
     if (isTargetOfPlan) {
-      final plan = activeTargetPlan!;
+      final plan = activeTargetPlan;
       tubeView = TweenAnimationBuilder<double>(
         key: ValueKey('target_fill_${plan.fromIdx}_${plan.toIdx}'),
         tween: Tween(begin: 0.0, end: 1.0),
@@ -2635,8 +2617,8 @@ class _TubeStageState extends State<_TubeStage> {
                     right: -2,
                     bottom: 6,
                     child: IgnorePointer(
-                      child:
-                          _AdUnlockBadge(color: Colors.white.withOpacity(0.90)),
+                      child: _AdUnlockBadge(
+                          color: Colors.white.withValues(alpha: 0.90)),
                     ),
                   ),
                 if (widget.celebratingDoneTubes.containsKey(idx))
@@ -2747,9 +2729,9 @@ class _AdUnlockBadge extends StatelessWidget {
       width: 22,
       height: 22,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.45),
+        color: Colors.black.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withOpacity(0.16)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
       ),
       child: Icon(
         Icons.play_arrow_rounded,
@@ -2841,8 +2823,8 @@ class _TubeDoneBurstState extends State<_TubeDoneBurst>
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          color.withOpacity(0.55),
-                          color.withOpacity(0.0),
+                          color.withValues(alpha: 0.55),
+                          color.withValues(alpha: 0.0),
                         ],
                       ),
                     ),
@@ -2926,14 +2908,14 @@ class _BurstHexPainter extends CustomPainter {
     path.close();
 
     // Dolgu — rengin kendisi
-    canvas.drawPath(path, Paint()..color = color.withOpacity(0.95));
+    canvas.drawPath(path, Paint()..color = color.withValues(alpha: 0.95));
 
     // İç parlama (glowIntensity ile büyür)
     if (glowIntensity > 0.01) {
       canvas.drawPath(
         path,
         Paint()
-          ..color = Colors.white.withOpacity(0.35 * glowIntensity)
+          ..color = Colors.white.withValues(alpha: 0.35 * glowIntensity)
           ..maskFilter = MaskFilter.blur(
             BlurStyle.normal,
             isGameWin ? 4.0 * glowIntensity : 2.5 * glowIntensity,
@@ -2945,7 +2927,7 @@ class _BurstHexPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = Colors.white.withOpacity(0.25 + 0.35 * glowIntensity)
+        ..color = Colors.white.withValues(alpha: 0.25 + 0.35 * glowIntensity)
         ..style = PaintingStyle.stroke
         ..strokeWidth = isGameWin ? 1.6 : 1.2,
     );
@@ -3030,14 +3012,6 @@ class _FlyingTubeState extends State<_FlyingTube>
   }
 
   Offset _tubeMouthCenterLocal() => Offset(kWidgetW / 2, kCapBotY + 1.0);
-  Offset _tubeLipAnchorLocal() => Offset(kWidgetW / 2, kCapBotY + 1.0);
-  Offset _tubeMouthEntryLocal() => Offset(kWidgetW / 2, kMouthEntryY);
-
-  Offset _tubeSurfaceAnchorLocal(double units) {
-    final fillRatio = (units / kCap).clamp(0.0, 1.0);
-    final y = kLiquidBotY - (kLiquidBotY - kLiquidTopY) * fillRatio;
-    return Offset(kWidgetW / 2, y);
-  }
 
   Offset _tubeTopLeftToMatchMouth({
     required Offset targetMouth,
@@ -3306,7 +3280,7 @@ class _LiquidStreamPainter extends CustomPainter {
 
     final thickness = lerpDouble(3.6, 7.0, flowRate)!;
     final paint = Paint()
-      ..color = color.withOpacity(0.98)
+      ..color = color.withValues(alpha: 0.98)
       ..style = PaintingStyle.stroke
       ..strokeWidth = thickness
       ..strokeCap = StrokeCap.round;
@@ -3347,7 +3321,6 @@ class _TubeWidget extends StatelessWidget {
   final double receiveFlow;
 
   const _TubeWidget({
-    super.key,
     required this.tube,
     required this.isSelected,
     this.tilt = 0.0,
@@ -3436,172 +3409,6 @@ class _TubeWidget extends StatelessWidget {
       ),
     );
   }
-}
-
-class _TubeBodyPainter extends CustomPainter {
-  const _TubeBodyPainter();
-
-  // ── Renk sabitleri (SVG'den) ──────────────────────────────────────────────
-  static const Color _clrWallLeft = Color(0xFF5A5E7A); // fil0
-  static const Color _clrWallRight = Color(0xFF3E4258); // fil1
-  static const Color _clrCapTop = Color(0xFFA0A4C0); // id1 stop 0
-  static const Color _clrCapMid = Color(0xFF6E728E); // id1 stop 0.6
-  static const Color _clrCapBot = Color(0xFF4E5270); // id1 stop 1
-  static const Color _clrCapBorder = Color(0xFF9A9EBC); // str0
-  static const Color _clrUBot = Color(0xFF3A3E58); // id0 stop 1
-  static const Color _clrUTop = Color(0xFF7A7E9A); // id0 stop 0
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Koordinatlar – kWidgetW x kWidgetH canvas'ına ölçeklendi
-    // Tüm değerler SVG'den türetildi (getter'lar kullanılıyor)
-
-    final lx = kBodyLeftX; // sol duvar sol X  ≈ 5.78
-    final rx = kBodyRightX; // sağ duvar sağ X  ≈ 54.22
-    final il = kBodyInnerLeft; // iç alan sol X  ≈ 10.12
-    final ir = kBodyInnerRight; // iç alan sağ X  ≈ 49.88
-    final topY = kBodyTopY; // gövde üst Y    ≈ 7.11
-    final botY = kBodyBotY; // gövde alt Y    ≈ 113.1
-    final r = kTR; // alt daire r    ≈ 19.88
-    final capTop = kCapTopY; // kapak üst Y    ≈ 0.24
-    final capBot = kCapBotY; // kapak alt Y    ≈ 8.98
-    final capH = capBot - capTop;
-
-    // ── 1. Sol duvar ──────────────────────────────────────────────────────
-    canvas.drawRect(
-      Rect.fromLTWH(lx, topY, il - lx, botY - topY),
-      Paint()..color = _clrWallLeft,
-    );
-
-    // ── 2. Sağ duvar ──────────────────────────────────────────────────────
-    canvas.drawRect(
-      Rect.fromLTWH(ir, topY, rx - ir, botY - topY),
-      Paint()..color = _clrWallRight,
-    );
-
-    // ── 3. Alt U (dış duvar halkası – iç boşluk sıvıya açık) ────────────────
-    // SVG fil2: tüpün alt yuvarlak kısmı, dış duvarlar degrade gri
-    final outerR = (rx - lx) / 2;
-    final innerR = kBodyInnerW / 2; // iç boşluk yarıçapı
-    final uCx = (lx + rx) / 2; // merkez X
-    final uOuterRect = Rect.fromLTWH(lx, botY - outerR, rx - lx, outerR * 2);
-    final uInnerRect = Rect.fromLTWH(
-      uCx - innerR,
-      botY - innerR,
-      innerR * 2,
-      innerR * 2,
-    );
-    final uGrad = LinearGradient(
-      colors: [_clrUTop, _clrUBot],
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-    ).createShader(uOuterRect);
-
-    // saveLayer ile BlendMode.clear çalışsın — null yerine bounded rect kullan
-    // (null bounds RepaintBoundary ile birleşince beyaz flash üretir)
-    final layerRect = Rect.fromLTWH(0, botY - 1, size.width, outerR + 5);
-    canvas.saveLayer(layerRect, Paint());
-    canvas.clipRect(layerRect);
-    canvas.drawOval(uOuterRect, Paint()..shader = uGrad);
-    canvas.drawOval(uInnerRect, Paint()..blendMode = BlendMode.clear);
-    canvas.restore();
-
-    // ── 4. Kapak (tıpa) ──────────────────────────────────────────────────
-    // SVG fil3: yuvarlak köşeli dikdörtgen + kenarlık (str0)
-    final capW = rx - lx;
-    final capRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(lx, capTop, capW, capH),
-      Radius.circular(capH * 0.52),
-    );
-
-    final capGrad = LinearGradient(
-      colors: [_clrCapTop, _clrCapMid, _clrCapBot],
-      stops: const [0.0, 0.6, 1.0],
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-    ).createShader(Rect.fromLTWH(lx, capTop, capW, capH));
-
-    canvas.drawRRect(capRect, Paint()..shader = capGrad);
-
-    // Kapak kenarlığı (str0: #9A9EBC, thin)
-    canvas.drawRRect(
-      capRect,
-      Paint()
-        ..color = _clrCapBorder
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.45,
-    );
-
-    // ── 5. Kapak parlama oval (fil4: sol üst, %22 beyaz) ─────────────────
-    // SVG'de: x=486.46..2451.9, y=121.55..340.95 (sol kapakta)
-    // Normalize: x≈3.45..17.44, y≈0.87..2.43 → kapak içi sol üst oval
-    final capGlowLeft = kBodyLeftX + capW * 0.059; // ≈ 3.45
-    final capGlowRight = kBodyLeftX + capW * 0.30; // ≈ 17.4
-    final capGlowTop = capTop + capH * 0.14;
-    final capGlowBot = capTop + capH * 0.62;
-
-    canvas.drawOval(
-      Rect.fromLTWH(
-        capGlowLeft,
-        capGlowTop,
-        capGlowRight - capGlowLeft,
-        capGlowBot - capGlowTop,
-      ),
-      Paint()..color = Colors.white.withOpacity(0.22),
-    );
-
-    // ── 6. Sol içi parlama dikey oval (fil5: %5.9 beyaz) ─────────────────
-    // SVG: x=1905.95, y=1169.78, w=349.42, h=14063.28
-    // Normalize: x≈13.55, y≈8.35, w≈2.48, h≈100.4
-    final shineLeft = 1905.95 * _sx;
-    final shineTop = 1169.78 * _sy;
-    final shineW = (1949.62 + 305.75 - 1905.95) * _sx; // ≈ center+halfW
-    final shineH = (1169.78 + 13452.34 + 305.72) * _sy - shineTop;
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(shineLeft, shineTop, shineW.clamp(1.5, 3.5),
-            shineH.clamp(1, kWidgetH - shineTop - 2)),
-        const Radius.circular(6),
-      ),
-      Paint()..color = Colors.white.withOpacity(0.059),
-    );
-
-    // ── 7. Sol kenar çizgisi (str1: beyaz, %13 opaklık) ──────────────────
-    // SVG: x=945.06, y=1169.78..15495.66
-    // Normalize: x≈6.72, y≈8.35..110.6
-    final lineX = 945.06 * _sx;
-    final lineTopY = 1169.78 * _sy;
-    final lineBotY = 15495.66 * _sy;
-
-    canvas.drawLine(
-      Offset(lineX, lineTopY),
-      Offset(lineX, lineBotY),
-      Paint()
-        ..color = Colors.white.withOpacity(0.129)
-        ..strokeWidth = 78.62 * _sx
-        ..strokeCap = StrokeCap.round,
-    );
-
-    // ── 8. Sağ içi gölge oval (fil8: %3.1 beyaz) ─────────────────────────
-    // SVG: x=6710.36, w=262.04, y=1169.78..14933.54
-    final shadowX = 6710.36 * _sx;
-    final shadowW = 262.04 * _sx;
-    final shadowTopY = 1169.78 * _sy;
-    final shadowH = (13801.76 + 131.01 + 131.04) * _sy;
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(shadowX, shadowTopY, shadowW.clamp(1, 2.5),
-            shadowH.clamp(1, kWidgetH - shadowTopY - 2)),
-        const Radius.circular(4),
-      ),
-      Paint()..color = Colors.white.withOpacity(0.031),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _TubeBodyPainter oldDelegate) => false;
 }
 
 // ─────────────────────────────────────────────
@@ -3750,34 +3557,6 @@ class _LiquidPainter extends CustomPainter {
       ..quadraticBezierTo(_il + _iw / 2, s.cY, _ir, s.rY);
   }
 
-  Path _tongue(double tilt, double vol, double bias) {
-    if (bias <= 0.001 || vol <= 0.001) return Path();
-    final s = _surface(vol, tilt, 0);
-    final thick = lerpDouble(1.8, 4.3, bias)!;
-    const ni = 1.8;
-    final mY = _it + 1.2;
-    final path = Path();
-
-    if (tilt < 0) {
-      final rX = _ir - 6, rY = s.rY, tX = _ir + ni, tY = mY;
-      path
-        ..moveTo(rX, rY - thick * 0.45)
-        ..cubicTo(_ir - 2, rY - 2, _ir + 0.4, tY - 1.3, tX, tY - thick * 0.45)
-        ..lineTo(tX, tY + thick * 0.45)
-        ..cubicTo(_ir + 0.4, tY + 1.3, _ir - 2, rY + 2, rX, rY + thick * 0.45)
-        ..close();
-    } else {
-      final rX = _il + 6, rY = s.lY, tX = _il - ni, tY = mY;
-      path
-        ..moveTo(rX, rY - thick * 0.45)
-        ..cubicTo(_il + 2, rY - 2, _il - 0.4, tY - 1.3, tX, tY - thick * 0.45)
-        ..lineTo(tX, tY + thick * 0.45)
-        ..cubicTo(_il - 0.4, tY + 1.3, _il + 2, rY + 2, rX, rY + thick * 0.45)
-        ..close();
-    }
-    return path;
-  }
-
   List<_VisualLayer> _buildLayers() {
     final layers = <_VisualLayer>[];
     for (final c in tube) {
@@ -3846,9 +3625,9 @@ class _LiquidPainter extends CustomPainter {
         Paint()
           ..shader = LinearGradient(
             colors: [
-              Colors.white.withOpacity(0.05),
+              Colors.white.withValues(alpha: 0.05),
               Colors.transparent,
-              Colors.black.withOpacity(0.05),
+              Colors.black.withValues(alpha: 0.05),
             ],
             stops: const [0.0, 0.35, 1.0],
             begin: Alignment.topCenter,
@@ -3863,7 +3642,7 @@ class _LiquidPainter extends CustomPainter {
       canvas.drawPath(
         _surfaceLine(totalVol, tilt, slosh),
         Paint()
-          ..color = Colors.white.withOpacity(0.18)
+          ..color = Colors.white.withValues(alpha: 0.18)
           ..strokeWidth = 1.0
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round,
@@ -3880,7 +3659,7 @@ class _LiquidPainter extends CustomPainter {
             width: lerpDouble(3.0, 6.0, splash)!,
             height: lerpDouble(0.8, 1.5, splash)!,
           ),
-          Paint()..color = Colors.white.withOpacity(0.08 * splash),
+          Paint()..color = Colors.white.withValues(alpha: 0.08 * splash),
         );
       }
     }
@@ -3890,16 +3669,16 @@ class _LiquidPainter extends CustomPainter {
       final s = _surface(totalVol, tilt, slosh * 0.25);
 
       final bubbleFill = Paint()
-        ..color = Colors.white.withOpacity(0.55 * bubbleBurst)
+        ..color = Colors.white.withValues(alpha: 0.55 * bubbleBurst)
         ..style = PaintingStyle.fill;
 
       final bubbleStroke = Paint()
-        ..color = Colors.white.withOpacity(0.95 * bubbleBurst)
+        ..color = Colors.white.withValues(alpha: 0.95 * bubbleBurst)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0;
 
       final highlightPaint = Paint()
-        ..color = Colors.white.withOpacity(0.95 * bubbleBurst)
+        ..color = Colors.white.withValues(alpha: 0.95 * bubbleBurst)
         ..style = PaintingStyle.fill;
 
       final driftUp = lerpDouble(0.0, 7.0, bubbleBurst)!;

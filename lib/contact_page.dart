@@ -294,7 +294,7 @@ class _ContactPageState extends State<ContactPage>
       context: context,
       barrierDismissible: true,
       barrierLabel: 'contact_result',
-      barrierColor: Colors.black.withOpacity(0.55),
+      barrierColor: Colors.black.withValues(alpha: 0.55),
       transitionDuration: const Duration(milliseconds: 180),
       pageBuilder: (ctx, _, __) {
         return Center(
@@ -311,13 +311,14 @@ class _ContactPageState extends State<ContactPage>
                     borderRadius: BorderRadius.circular(24),
                     gradient: LinearGradient(
                       colors: [
-                        Colors.white.withOpacity(0.13),
-                        Colors.white.withOpacity(0.05),
+                        Colors.white.withValues(alpha: 0.13),
+                        Colors.white.withValues(alpha: 0.05),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.12)),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -327,11 +328,12 @@ class _ContactPageState extends State<ContactPage>
                         height: 68,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(18),
-                          color: accent.withOpacity(0.18),
-                          border: Border.all(color: accent.withOpacity(0.35)),
+                          color: accent.withValues(alpha: 0.18),
+                          border:
+                              Border.all(color: accent.withValues(alpha: 0.35)),
                           boxShadow: [
                             BoxShadow(
-                              color: accent.withOpacity(0.14),
+                              color: accent.withValues(alpha: 0.14),
                               blurRadius: 18,
                               offset: const Offset(0, 6),
                             ),
@@ -361,7 +363,7 @@ class _ContactPageState extends State<ContactPage>
                         message,
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.72),
+                          color: Colors.white.withValues(alpha: 0.72),
                           fontSize: 13.5,
                           height: 1.45,
                           fontWeight: FontWeight.w600,
@@ -582,7 +584,7 @@ class _ContactPageState extends State<ContactPage>
                                 children: [
                                   Icon(
                                     Icons.history_rounded,
-                                    color: Colors.white.withOpacity(0.92),
+                                    color: Colors.white.withValues(alpha: 0.92),
                                     size: 18,
                                   ),
                                   const SizedBox(width: 8),
@@ -628,9 +630,9 @@ class _ContactPageState extends State<ContactPage>
             height: 52,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: const Color(0xFFD500F9).withOpacity(0.16),
+              color: const Color(0xFFD500F9).withValues(alpha: 0.16),
               border: Border.all(
-                color: const Color(0xFFD500F9).withOpacity(0.30),
+                color: const Color(0xFFD500F9).withValues(alpha: 0.30),
               ),
             ),
             child: const Icon(
@@ -644,7 +646,7 @@ class _ContactPageState extends State<ContactPage>
             child: Text(
               'Hata, öneri veya diğer mesajlarını buradan bize iletebilirsin.',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.82),
+                color: Colors.white.withValues(alpha: 0.82),
                 fontSize: 13.5,
                 height: 1.45,
                 fontWeight: FontWeight.w600,
@@ -668,9 +670,9 @@ class _ContactPageState extends State<ContactPage>
                 height: 42,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
-                  color: _typeColor(_type).withOpacity(0.18),
-                  border:
-                      Border.all(color: _typeColor(_type).withOpacity(0.30)),
+                  color: _typeColor(_type).withValues(alpha: 0.18),
+                  border: Border.all(
+                      color: _typeColor(_type).withValues(alpha: 0.30)),
                 ),
                 child: Icon(
                   _typeIcon(_type),
@@ -727,22 +729,22 @@ class _ContactPageState extends State<ContactPage>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              color: Colors.white.withOpacity(0.05),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
+              color: Colors.white.withValues(alpha: 0.05),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Row(
               children: [
                 Icon(
                   Icons.phone_android_rounded,
                   size: 16,
-                  color: Colors.white.withOpacity(0.70),
+                  color: Colors.white.withValues(alpha: 0.70),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Cihaz bilgisi eklensin',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.78),
+                      color: Colors.white.withValues(alpha: 0.78),
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -756,7 +758,7 @@ class _ContactPageState extends State<ContactPage>
                     if (!mounted) return;
                     setState(() => _includeDeviceInfo = v);
                   },
-                  activeColor: Colors.white,
+                  activeThumbColor: Colors.white,
                   activeTrackColor: const Color(0xFF2979FF),
                   inactiveThumbColor: Colors.white70,
                   inactiveTrackColor: Colors.white24,
@@ -809,7 +811,7 @@ class _ContactPageState extends State<ContactPage>
           child: Text(
             'Henüz gönderilmiş mesaj yok.',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.62),
+              color: Colors.white.withValues(alpha: 0.62),
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -837,13 +839,13 @@ class _ContactPageState extends State<ContactPage>
             borderRadius: BorderRadius.circular(20),
             gradient: LinearGradient(
               colors: [
-                Colors.white.withOpacity(0.11),
-                Colors.white.withOpacity(0.04),
+                Colors.white.withValues(alpha: 0.11),
+                Colors.white.withValues(alpha: 0.04),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            border: Border.all(color: Colors.white.withOpacity(0.10)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -866,7 +868,7 @@ class _ContactPageState extends State<ContactPage>
                   Text(
                     _formatDate(item.ts),
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.46),
+                      color: Colors.white.withValues(alpha: 0.46),
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                     ),
@@ -886,7 +888,7 @@ class _ContactPageState extends State<ContactPage>
               Text(
                 item.message,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.72),
+                  color: Colors.white.withValues(alpha: 0.72),
                   fontSize: 13,
                   height: 1.45,
                   fontWeight: FontWeight.w600,
@@ -900,9 +902,9 @@ class _ContactPageState extends State<ContactPage>
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(14),
-                    color: const Color(0xFF00E676).withOpacity(0.10),
+                    color: const Color(0xFF00E676).withValues(alpha: 0.10),
                     border: Border.all(
-                      color: const Color(0xFF00E676).withOpacity(0.22),
+                      color: const Color(0xFF00E676).withValues(alpha: 0.22),
                     ),
                   ),
                   child: Row(
@@ -945,8 +947,8 @@ class _ContactPageState extends State<ContactPage>
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        color: color.withOpacity(0.13),
-        border: Border.all(color: color.withOpacity(0.24)),
+        color: color.withValues(alpha: 0.13),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -971,7 +973,7 @@ class _ContactPageState extends State<ContactPage>
     return Text(
       label,
       style: TextStyle(
-        color: Colors.white.withOpacity(0.52),
+        color: Colors.white.withValues(alpha: 0.52),
         fontSize: 11,
         fontWeight: FontWeight.w800,
         letterSpacing: 1.5,
@@ -990,16 +992,16 @@ class _ContactPageState extends State<ContactPage>
             borderRadius: BorderRadius.circular(20),
             gradient: LinearGradient(
               colors: [
-                Colors.white.withOpacity(0.13),
-                Colors.white.withOpacity(0.05),
+                Colors.white.withValues(alpha: 0.13),
+                Colors.white.withValues(alpha: 0.05),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            border: Border.all(color: Colors.white.withOpacity(0.12)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFD500F9).withOpacity(0.08),
+                color: const Color(0xFFD500F9).withValues(alpha: 0.08),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
@@ -1059,12 +1061,12 @@ class _TypeSelector extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
                   color: isSelected
-                      ? item.$4.withOpacity(0.18)
-                      : Colors.white.withOpacity(0.05),
+                      ? item.$4.withValues(alpha: 0.18)
+                      : Colors.white.withValues(alpha: 0.05),
                   border: Border.all(
                     color: isSelected
-                        ? item.$4.withOpacity(0.34)
-                        : Colors.white.withOpacity(0.10),
+                        ? item.$4.withValues(alpha: 0.34)
+                        : Colors.white.withValues(alpha: 0.10),
                     width: isSelected ? 1.4 : 1,
                   ),
                 ),
@@ -1075,7 +1077,7 @@ class _TypeSelector extends StatelessWidget {
                       size: 18,
                       color: isSelected
                           ? Colors.white
-                          : Colors.white.withOpacity(0.62),
+                          : Colors.white.withValues(alpha: 0.62),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -1083,7 +1085,7 @@ class _TypeSelector extends StatelessWidget {
                       style: TextStyle(
                         color: isSelected
                             ? Colors.white
-                            : Colors.white.withOpacity(0.68),
+                            : Colors.white.withValues(alpha: 0.68),
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1126,22 +1128,22 @@ class _StyledTextField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
-          color: Colors.white.withOpacity(0.30),
+          color: Colors.white.withValues(alpha: 0.30),
           fontWeight: FontWeight.w500,
           fontSize: 14,
         ),
         counterText: '',
         filled: true,
-        fillColor: Colors.white.withOpacity(0.04),
+        fillColor: Colors.white.withValues(alpha: 0.04),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.10)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.10)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -1215,9 +1217,9 @@ class _ContactBackgroundPainter extends CustomPainter {
       final paint = Paint()
         ..shader = RadialGradient(
           colors: [
-            orb.color.withOpacity(0.20),
-            orb.color.withOpacity(0.05),
-            orb.color.withOpacity(0.0),
+            orb.color.withValues(alpha: 0.20),
+            orb.color.withValues(alpha: 0.05),
+            orb.color.withValues(alpha: 0.0),
           ],
           stops: const [0.0, 0.55, 1.0],
         ).createShader(
@@ -1242,7 +1244,7 @@ class _ContactBackgroundPainter extends CustomPainter {
         const Color(0xFFFFFFFF),
       ][i % 4];
 
-      final dotPaint = Paint()..color = color.withOpacity(0.14);
+      final dotPaint = Paint()..color = color.withValues(alpha: 0.14);
       canvas.drawCircle(Offset(x, y), r, dotPaint);
     }
   }

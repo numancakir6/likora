@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'game_page.dart';
 import 'map_theme.dart';
 import 'player_progress.dart';
@@ -311,12 +310,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     return unlocked;
   }
 
-  static bool _isMapFullyCompleted(int mapNumber) {
-    final layout = getMapLayout(mapNumber);
-    final completed = _mapCompletedLevels[mapNumber] ?? <int>{};
-    return completed.length >= layout.totalLevels;
-  }
-
   static bool _isMapPlayableStatic(int mapNumber) {
     if (mapNumber <= 1) return true;
     return mapNumber <= PlayerProgress.latestUnlockedMap;
@@ -480,7 +473,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             letterSpacing: 1.8,
             shadows: [
               Shadow(
-                color: _theme.primaryColor.withOpacity(0.6),
+                color: _theme.primaryColor.withValues(alpha: 0.6),
                 blurRadius: 12,
               )
             ],
@@ -504,7 +497,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             _GlassButton(
               accentColor: canBack
                   ? _theme.primaryColor
-                  : Colors.white.withOpacity(0.12),
+                  : Colors.white.withValues(alpha: 0.12),
               onTap: canBack ? _goToPreviousMap : null,
               child: Icon(Icons.chevron_left_rounded,
                   color: canBack ? Colors.white : Colors.white38, size: 22),
@@ -516,12 +509,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(16),
                 gradient: LinearGradient(
                   colors: [
-                    Colors.white.withOpacity(0.10),
-                    Colors.white.withOpacity(0.04),
+                    Colors.white.withValues(alpha: 0.10),
+                    Colors.white.withValues(alpha: 0.04),
                   ],
                 ),
-                border:
-                    Border.all(color: _theme.primaryColor.withOpacity(0.28)),
+                border: Border.all(
+                    color: _theme.primaryColor.withValues(alpha: 0.28)),
               ),
               child: Text(
                 '$_mapNumber / $_maxMapCount',
@@ -537,7 +530,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             _GlassButton(
               accentColor: canForward
                   ? _theme.primaryColor
-                  : Colors.white.withOpacity(0.12),
+                  : Colors.white.withValues(alpha: 0.12),
               onTap: canForward ? _goToNextMap : null,
               child: Icon(Icons.chevron_right_rounded,
                   color: canForward ? Colors.white : Colors.white38, size: 22),
@@ -560,21 +553,22 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             borderRadius: BorderRadius.circular(34),
             gradient: LinearGradient(
               colors: [
-                Colors.white.withOpacity(0.07),
-                Colors.white.withOpacity(0.025),
+                Colors.white.withValues(alpha: 0.07),
+                Colors.white.withValues(alpha: 0.025),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            border: Border.all(color: _theme.primaryColor.withOpacity(0.18)),
+            border:
+                Border.all(color: _theme.primaryColor.withValues(alpha: 0.18)),
             boxShadow: [
               BoxShadow(
-                color: _theme.primaryColor.withOpacity(0.12),
+                color: _theme.primaryColor.withValues(alpha: 0.12),
                 blurRadius: 32,
                 offset: const Offset(0, 10),
               ),
               BoxShadow(
-                color: Colors.black.withOpacity(0.40),
+                color: Colors.black.withValues(alpha: 0.40),
                 blurRadius: 24,
                 offset: const Offset(0, 18),
               ),
@@ -813,17 +807,17 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
     if (isCompleted) {
       topColor = widget.theme.nodeCompletedTop;
       bottomColor = widget.theme.nodeCompletedBottom;
-      rimColor = widget.theme.nodeCompletedTop.withOpacity(0.50);
+      rimColor = widget.theme.nodeCompletedTop.withValues(alpha: 0.50);
       glowColor = widget.theme.nodeCompletedTop;
     } else if (isPlayable) {
       topColor = widget.theme.nodeActiveTop;
       bottomColor = widget.theme.nodeActiveBottom;
-      rimColor = widget.theme.nodeActiveTop.withOpacity(0.40);
+      rimColor = widget.theme.nodeActiveTop.withValues(alpha: 0.40);
       glowColor = widget.theme.primaryColor;
     } else {
       topColor = const Color(0xFF3A3248);
       bottomColor = const Color(0xFF1A1525);
-      rimColor = Colors.white.withOpacity(0.08);
+      rimColor = Colors.white.withValues(alpha: 0.08);
       glowColor = const Color(0xFF433A52);
     }
 
@@ -853,8 +847,8 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: RadialGradient(colors: [
-                        glowColor.withOpacity(isCompleted ? 0.22 : 0.32),
-                        glowColor.withOpacity(0.0),
+                        glowColor.withValues(alpha: isCompleted ? 0.22 : 0.32),
+                        glowColor.withValues(alpha: 0.0),
                       ]),
                     ),
                   );
@@ -880,7 +874,7 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
                 isLocked: isLocked,
                 difficultyCount: widget.data.difficulty.dotCount,
                 difficultyColor: isLocked
-                    ? Colors.white.withOpacity(0.16)
+                    ? Colors.white.withValues(alpha: 0.16)
                     : _adaptiveDifficultyRingColor(
                         themeColor: widget.theme.primaryColor,
                         topColor: topColor,
@@ -895,7 +889,7 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
                 child: Container(
                   width: 72,
                   height: 72,
-                  color: Colors.black.withOpacity(0.38),
+                  color: Colors.black.withValues(alpha: 0.38),
                 ),
               ),
             SizedBox(
@@ -971,7 +965,7 @@ class _ThemedBranchMapPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = Colors.black.withOpacity(0.30)
+        ..color = Colors.black.withValues(alpha: 0.30)
         ..style = PaintingStyle.stroke
         ..strokeWidth = isActive ? 12 : 8
         ..strokeCap = StrokeCap.round
@@ -983,7 +977,7 @@ class _ThemedBranchMapPainter extends CustomPainter {
         canvas,
         path,
         Paint()
-          ..color = Colors.white.withOpacity(0.10)
+          ..color = Colors.white.withValues(alpha: 0.10)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.5
           ..strokeCap = StrokeCap.round,
@@ -997,7 +991,7 @@ class _ThemedBranchMapPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = theme.accentColor.withOpacity(0.20)
+        ..color = theme.accentColor.withValues(alpha: 0.20)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 18
         ..strokeCap = StrokeCap.round
@@ -1021,7 +1015,7 @@ class _ThemedBranchMapPainter extends CustomPainter {
       canvas,
       path,
       Paint()
-        ..color = Colors.white.withOpacity(0.28)
+        ..color = Colors.white.withValues(alpha: 0.28)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.8
         ..strokeCap = StrokeCap.round,
@@ -1062,13 +1056,13 @@ class _ThemedBranchMapPainter extends CustomPainter {
     canvas.drawCircle(
       tangent.position,
       3.5,
-      Paint()..color = Colors.white.withOpacity(0.45),
+      Paint()..color = Colors.white.withValues(alpha: 0.45),
     );
     canvas.drawCircle(
       tangent.position,
       6,
       Paint()
-        ..color = Colors.white.withOpacity(0.10)
+        ..color = Colors.white.withValues(alpha: 0.10)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
   }
@@ -1114,25 +1108,25 @@ class _ThemedFullBackground extends StatelessWidget {
               -90 + sin(t * pi) * 20,
               -120 + cos(t * pi) * 15,
               270,
-              theme.primaryColor.withOpacity(0.14),
+              theme.primaryColor.withValues(alpha: 0.14),
             ),
             _glow(
               w - 170 + cos(t * pi) * 20,
               120 + sin(t * pi) * 18,
               250,
-              theme.secondaryColor.withOpacity(0.10),
+              theme.secondaryColor.withValues(alpha: 0.10),
             ),
             _glow(
               -80 + sin(t * pi * 1.3) * 16,
               h - 200 + cos(t * pi) * 20,
               260,
-              theme.accentColor.withOpacity(0.08),
+              theme.accentColor.withValues(alpha: 0.08),
             ),
             _glow(
               w - 140 + cos(t * pi * 1.2) * 18,
               h - 180 + sin(t * pi) * 22,
               230,
-              theme.primaryColor.withOpacity(0.09),
+              theme.primaryColor.withValues(alpha: 0.09),
             ),
           ]);
         },
@@ -1148,7 +1142,7 @@ class _ThemedFullBackground extends StatelessWidget {
           height: sz,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: RadialGradient(colors: [c, c.withOpacity(0)]),
+            gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)]),
           ),
         ),
       );
@@ -1182,21 +1176,21 @@ class _MapStarsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final s in _starDefs) {
-      final phase = s[3] as double;
+      final phase = s[3];
       final t = sin((twinkle + phase) * pi);
       final opacity = 0.10 + t.abs() * 0.25;
-      final r = s[2] as double;
+      final r = s[2];
       final pos = Offset(size.width * s[0], size.height * s[1]);
       canvas.drawCircle(
         pos,
         r,
-        Paint()..color = color.withOpacity(opacity * 0.8),
+        Paint()..color = color.withValues(alpha: opacity * 0.8),
       );
       canvas.drawCircle(
         pos,
         r * 3.5,
         Paint()
-          ..color = color.withOpacity(opacity * 0.12)
+          ..color = color.withValues(alpha: opacity * 0.12)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
       );
     }
@@ -1227,13 +1221,13 @@ class _MapGlowDecor extends StatelessWidget {
     final quarter = values[values.length > 3 ? 3 : values.length - 1];
     return Stack(children: [
       _orb(last.dx - 100, last.dy - 130, 200,
-          theme.accentColor.withOpacity(0.11)),
+          theme.accentColor.withValues(alpha: 0.11)),
       _orb(mid.dx - 120, mid.dy - 80, 180,
-          theme.secondaryColor.withOpacity(0.09)),
+          theme.secondaryColor.withValues(alpha: 0.09)),
       _orb(quarter.dx - 80, quarter.dy - 110, 170,
-          theme.primaryColor.withOpacity(0.09)),
+          theme.primaryColor.withValues(alpha: 0.09)),
       _orb(first.dx - 90, first.dy - 90, 160,
-          theme.nodeCompletedTop.withOpacity(0.07)),
+          theme.nodeCompletedTop.withValues(alpha: 0.07)),
     ]);
   }
 
@@ -1245,7 +1239,7 @@ class _MapGlowDecor extends StatelessWidget {
           height: sz,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: RadialGradient(colors: [c, c.withOpacity(0)]),
+            gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)]),
           ),
         ),
       );
@@ -1272,7 +1266,7 @@ class _OrbitRingPainter extends CustomPainter {
           center.dy + sin(angle) * radius,
         ),
         i.isEven ? 2.5 : 1.5,
-        Paint()..color = color.withOpacity((i / dotCount) * 0.9 + 0.1),
+        Paint()..color = color.withValues(alpha: (i / dotCount) * 0.9 + 0.1),
       );
     }
   }
@@ -1370,7 +1364,7 @@ class _HexBadgePainter extends CustomPainter {
       canvas.drawPath(
         ring,
         Paint()
-          ..color = difficultyColor.withOpacity(opacity.clamp(0.0, 0.95))
+          ..color = difficultyColor.withValues(alpha: opacity.clamp(0.0, 0.95))
           ..style = PaintingStyle.stroke
           ..strokeWidth = strokeWidth,
       );
@@ -1379,8 +1373,8 @@ class _HexBadgePainter extends CustomPainter {
         canvas.drawPath(
           ring,
           Paint()
-            ..color =
-                difficultyColor.withOpacity((opacity * 0.18).clamp(0.0, 0.24))
+            ..color = difficultyColor.withValues(
+                alpha: (opacity * 0.18).clamp(0.0, 0.24))
             ..style = PaintingStyle.stroke
             ..strokeWidth = strokeWidth + 1.1
             ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.2),
@@ -1398,13 +1392,13 @@ class _HexBadgePainter extends CustomPainter {
     canvas.drawPath(
       _hexPath(center.translate(0, 5), radius * 0.92),
       Paint()
-        ..color = Colors.black.withOpacity(0.45)
+        ..color = Colors.black.withValues(alpha: 0.45)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
     );
 
     canvas.drawPath(
       _hexPath(center.translate(0, 6), radius * 0.92),
-      Paint()..color = bottomColor.withOpacity(0.55),
+      Paint()..color = bottomColor.withValues(alpha: 0.55),
     );
 
     canvas.drawPath(
@@ -1422,7 +1416,7 @@ class _HexBadgePainter extends CustomPainter {
     canvas.drawPath(
       hex,
       Paint()
-        ..color = Colors.black.withOpacity(0.18)
+        ..color = Colors.black.withValues(alpha: 0.18)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3.5,
     );
@@ -1472,10 +1466,10 @@ class _GlassButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             gradient: LinearGradient(colors: [
-              Colors.white.withOpacity(0.10),
-              Colors.white.withOpacity(0.04),
+              Colors.white.withValues(alpha: 0.10),
+              Colors.white.withValues(alpha: 0.04),
             ]),
-            border: Border.all(color: accentColor.withOpacity(0.25)),
+            border: Border.all(color: accentColor.withValues(alpha: 0.25)),
           ),
           child: Center(child: child),
         ),

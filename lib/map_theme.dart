@@ -1024,11 +1024,11 @@ class _CosmicNebulaPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
     _drawGlowOrb(canvas, Offset(w * 0.2 + _s(t) * 18, h * 0.25 + _c(t) * 12),
-        h * 0.25, theme.primaryColor.withOpacity(0.10));
+        h * 0.25, theme.primaryColor.withValues(alpha: 0.10));
     _drawGlowOrb(canvas, Offset(w * 0.8 + _c(t) * 14, h * 0.6 + _s(t) * 16),
-        h * 0.22, theme.secondaryColor.withOpacity(0.12));
+        h * 0.22, theme.secondaryColor.withValues(alpha: 0.12));
     _drawGlowOrb(canvas, Offset(w * 0.5, h * 0.1 + _s(t * 1.3) * 10), h * 0.18,
-        theme.accentColor.withOpacity(0.08));
+        theme.accentColor.withValues(alpha: 0.08));
   }
 
   @override
@@ -1065,16 +1065,16 @@ class _DeepOceanPainter extends CustomPainter {
       canvas.drawPath(
         path,
         Paint()
-          ..color = theme.primaryColor.withOpacity(0.03 + i * 0.008)
+          ..color = theme.primaryColor.withValues(alpha: 0.03 + i * 0.008)
           ..style = PaintingStyle.fill,
       );
     }
 
     // Derin glow orbs
     _drawGlowOrb(canvas, Offset(w * 0.3, h * 0.7), h * 0.3,
-        theme.accentColor.withOpacity(0.08));
+        theme.accentColor.withValues(alpha: 0.08));
     _drawGlowOrb(canvas, Offset(w * 0.75, h * 0.3), h * 0.2,
-        theme.primaryColor.withOpacity(0.07));
+        theme.primaryColor.withValues(alpha: 0.07));
   }
 
   @override
@@ -1110,7 +1110,7 @@ class _VolcanicForgePainter extends CustomPainter {
       canvas.drawPath(
         path,
         Paint()
-          ..color = theme.accentColor.withOpacity(pulse)
+          ..color = theme.accentColor.withValues(alpha: pulse)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.5
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
@@ -1119,9 +1119,9 @@ class _VolcanicForgePainter extends CustomPainter {
 
     // Alt yanardağ parlaması
     _drawGlowOrb(canvas, Offset(w * 0.5, h * 1.1), h * 0.45,
-        theme.primaryColor.withOpacity(0.18));
+        theme.primaryColor.withValues(alpha: 0.18));
     _drawGlowOrb(canvas, Offset(w * 0.2, h * 0.8), h * 0.2,
-        theme.secondaryColor.withOpacity(0.12));
+        theme.secondaryColor.withValues(alpha: 0.12));
   }
 
   @override
@@ -1158,16 +1158,16 @@ class _FrozenTundraPainter extends CustomPainter {
           center,
           Offset(center.dx + cos(angle) * len, center.dy + sin(angle) * len),
           Paint()
-            ..color = theme.accentColor.withOpacity(pulse)
+            ..color = theme.accentColor.withValues(alpha: pulse)
             ..strokeWidth = 1.0,
         );
       }
     }
 
     _drawGlowOrb(canvas, Offset(w * 0.5, h * 0.1), h * 0.35,
-        theme.primaryColor.withOpacity(0.07));
+        theme.primaryColor.withValues(alpha: 0.07));
     _drawGlowOrb(canvas, Offset(w * 0.8, h * 0.8), h * 0.25,
-        theme.accentColor.withOpacity(0.06));
+        theme.accentColor.withValues(alpha: 0.06));
   }
 
   @override
@@ -1198,7 +1198,7 @@ class _AncientForestPainter extends CustomPainter {
         start,
         end,
         Paint()
-          ..color = theme.primaryColor.withOpacity(pulse)
+          ..color = theme.primaryColor.withValues(alpha: pulse)
           ..strokeWidth = depth * 0.6,
       );
       drawVein(end, angle - 0.45, len * 0.65, depth - 1);
@@ -1210,7 +1210,7 @@ class _AncientForestPainter extends CustomPainter {
     drawVein(Offset(w * 0.8, h), -pi / 1.85, h * 0.18, 4);
 
     _drawGlowOrb(canvas, Offset(w * 0.5, h * 0.5), h * 0.3,
-        theme.accentColor.withOpacity(0.07));
+        theme.accentColor.withValues(alpha: 0.07));
   }
 
   @override
@@ -1246,7 +1246,7 @@ class _StormCloudsPainter extends CustomPainter {
       canvas.drawPath(
         path,
         Paint()
-          ..color = theme.accentColor.withOpacity(flash * 0.5)
+          ..color = theme.accentColor.withValues(alpha: flash * 0.5)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.0
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
@@ -1255,9 +1255,9 @@ class _StormCloudsPainter extends CustomPainter {
 
     // Fırtına bulutu kütleleri
     _drawGlowOrb(canvas, Offset(w * 0.3, h * 0.1), h * 0.25,
-        theme.secondaryColor.withOpacity(0.14));
+        theme.secondaryColor.withValues(alpha: 0.14));
     _drawGlowOrb(canvas, Offset(w * 0.7, h * 0.08), h * 0.22,
-        theme.secondaryColor.withOpacity(0.12));
+        theme.secondaryColor.withValues(alpha: 0.12));
   }
 
   @override
@@ -1291,13 +1291,13 @@ class _DesertMiragePainter extends CustomPainter {
       path.close();
       canvas.drawPath(
         path,
-        Paint()..color = theme.primaryColor.withOpacity(0.04 + i * 0.006),
+        Paint()..color = theme.primaryColor.withValues(alpha: 0.04 + i * 0.006),
       );
     }
 
     // Sıcak ufuk parlaması
     _drawGlowOrb(canvas, Offset(w * 0.5, h * 1.0), h * 0.5,
-        theme.secondaryColor.withOpacity(0.12));
+        theme.secondaryColor.withValues(alpha: 0.12));
   }
 
   @override
@@ -1321,7 +1321,6 @@ class _ShadowRealmPainter extends CustomPainter {
     for (int i = 0; i < 4; i++) {
       final r = w * (0.15 + i * 0.12);
       final angle = t * pi * 2 * (i.isEven ? 1 : -1) + i * pi / 4;
-      final rect = Rect.fromCenter(center: center, width: r * 2, height: r * 2);
       final path = Path()
         ..addPolygon(
           List.generate(
@@ -1336,14 +1335,14 @@ class _ShadowRealmPainter extends CustomPainter {
       canvas.drawPath(
         path,
         Paint()
-          ..color = theme.primaryColor.withOpacity(0.04 + i * 0.015)
+          ..color = theme.primaryColor.withValues(alpha: 0.04 + i * 0.015)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 0.8,
       );
     }
 
     _drawGlowOrb(canvas, Offset(w * 0.5, h * 0.5), h * 0.35,
-        theme.accentColor.withOpacity(0.06));
+        theme.accentColor.withValues(alpha: 0.06));
   }
 
   @override
@@ -1383,7 +1382,7 @@ class _CrystalCavesPainter extends CustomPainter {
         path,
         Paint()
           ..color = (i.isEven ? theme.primaryColor : theme.accentColor)
-              .withOpacity(pulse)
+              .withValues(alpha: pulse)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.2,
       );
@@ -1391,13 +1390,13 @@ class _CrystalCavesPainter extends CustomPainter {
         path,
         Paint()
           ..color = (i.isEven ? theme.primaryColor : theme.accentColor)
-              .withOpacity(pulse * 0.3)
+              .withValues(alpha: pulse * 0.3)
           ..style = PaintingStyle.fill,
       );
     }
 
     _drawGlowOrb(canvas, Offset(w * 0.5, h * 0.5), h * 0.4,
-        theme.primaryColor.withOpacity(0.06));
+        theme.primaryColor.withValues(alpha: 0.06));
   }
 
   @override
@@ -1434,7 +1433,7 @@ class _GoldenTemplePainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = theme.primaryColor.withOpacity(0.10)
+        ..color = theme.primaryColor.withValues(alpha: 0.10)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 0.8,
     );
@@ -1448,11 +1447,12 @@ class _GoldenTemplePainter extends CustomPainter {
     ];
     for (final corner in corners) {
       _drawGlowOrb(
-          canvas, corner, w * 0.06, theme.accentColor.withOpacity(0.12),
+          canvas, corner, w * 0.06, theme.accentColor.withValues(alpha: 0.12),
           blur: 15);
     }
 
-    _drawGlowOrb(canvas, center, h * 0.3, theme.primaryColor.withOpacity(0.08));
+    _drawGlowOrb(
+        canvas, center, h * 0.3, theme.primaryColor.withValues(alpha: 0.08));
   }
 
   @override
@@ -1481,7 +1481,7 @@ class _NeonCityPainter extends CustomPainter {
         Offset(x, h),
         vanish,
         Paint()
-          ..color = theme.primaryColor.withOpacity(pulse)
+          ..color = theme.primaryColor.withValues(alpha: pulse)
           ..strokeWidth = 0.8,
       );
     }
@@ -1495,13 +1495,13 @@ class _NeonCityPainter extends CustomPainter {
         Offset(xLeft, y),
         Offset(xRight, y),
         Paint()
-          ..color = theme.primaryColor.withOpacity(pulse)
+          ..color = theme.primaryColor.withValues(alpha: pulse)
           ..strokeWidth = 0.7,
       );
     }
 
     _drawGlowOrb(canvas, Offset(w * 0.5, h * 0.0), h * 0.3,
-        theme.accentColor.withOpacity(0.08));
+        theme.accentColor.withValues(alpha: 0.08));
   }
 
   @override
@@ -1525,13 +1525,13 @@ class _BloodMoonPainter extends CustomPainter {
     canvas.drawCircle(
       Offset(w * 0.5, h * 0.1 + sin(t * pi) * h * 0.03),
       w * 0.14,
-      Paint()..color = theme.primaryColor.withOpacity(moonPulse),
+      Paint()..color = theme.primaryColor.withValues(alpha: moonPulse),
     );
     canvas.drawCircle(
       Offset(w * 0.5, h * 0.1 + sin(t * pi) * h * 0.03),
       w * 0.22,
       Paint()
-        ..color = theme.primaryColor.withOpacity(moonPulse * 0.3)
+        ..color = theme.primaryColor.withValues(alpha: moonPulse * 0.3)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 25),
     );
 
@@ -1542,7 +1542,7 @@ class _BloodMoonPainter extends CustomPainter {
         canvas,
         Offset(w * (0.2 + i * 0.3) + drift, h * (0.5 + i * 0.15)),
         h * 0.18,
-        theme.secondaryColor.withOpacity(0.10),
+        theme.secondaryColor.withValues(alpha: 0.10),
       );
     }
   }
@@ -1578,7 +1578,7 @@ class _ArcticAuroraPainter extends CustomPainter {
         path,
         Paint()
           ..color = (i.isEven ? theme.primaryColor : theme.accentColor)
-              .withOpacity(opacity)
+              .withValues(alpha: opacity)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 3.0
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
@@ -1613,16 +1613,16 @@ class _SacredLightPainter extends CustomPainter {
         center,
         Offset(center.dx + cos(angle) * len, center.dy + sin(angle) * len),
         Paint()
-          ..color = theme.primaryColor.withOpacity(opacity)
+          ..color = theme.primaryColor.withValues(alpha: opacity)
           ..strokeWidth = 1.5
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
       );
     }
 
     _drawGlowOrb(
-        canvas, center, h * 0.18, theme.primaryColor.withOpacity(0.12));
+        canvas, center, h * 0.18, theme.primaryColor.withValues(alpha: 0.12));
     _drawGlowOrb(canvas, Offset(w * 0.5, h * 0.5), h * 0.4,
-        theme.primaryColor.withOpacity(0.04));
+        theme.primaryColor.withValues(alpha: 0.04));
   }
 
   @override
@@ -1651,7 +1651,7 @@ class _VoidAbyssPainter extends CustomPainter {
         center,
         radius,
         Paint()
-          ..color = theme.primaryColor.withOpacity(opacity)
+          ..color = theme.primaryColor.withValues(alpha: opacity)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5,
       );
@@ -1659,9 +1659,9 @@ class _VoidAbyssPainter extends CustomPainter {
 
     // Merkez parlama
     _drawGlowOrb(canvas, center, h * 0.08,
-        theme.primaryColor.withOpacity(0.18 + sin(t * pi * 2) * 0.08));
+        theme.primaryColor.withValues(alpha: 0.18 + sin(t * pi * 2) * 0.08));
     _drawGlowOrb(
-        canvas, center, h * 0.25, theme.primaryColor.withOpacity(0.05));
+        canvas, center, h * 0.25, theme.primaryColor.withValues(alpha: 0.05));
   }
 
   @override

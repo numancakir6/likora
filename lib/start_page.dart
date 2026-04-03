@@ -212,7 +212,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
                   child: Text(
                     "v1.0.0 · Likora",
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.18),
+                      color: Colors.white.withValues(alpha: 0.18),
                       fontSize: 11,
                       letterSpacing: 1.5,
                     ),
@@ -266,7 +266,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: glowColor.withOpacity(0.38),
+                color: glowColor.withValues(alpha: 0.38),
                 blurRadius: 20,
                 offset: const Offset(0, 6),
               ),
@@ -299,17 +299,17 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Colors.white.withOpacity(0.18),
-                Colors.white.withOpacity(0.08),
+                Colors.white.withValues(alpha: 0.18),
+                Colors.white.withValues(alpha: 0.08),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.25)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
             boxShadow: [
               BoxShadow(
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white.withValues(alpha: 0.06),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -340,10 +340,10 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 17),
           decoration: BoxDecoration(
-            color: const Color(0xFFD500F9).withOpacity(0.12),
+            color: const Color(0xFFD500F9).withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(16),
-            border:
-                Border.all(color: const Color(0xFFD500F9).withOpacity(0.22)),
+            border: Border.all(
+                color: const Color(0xFFD500F9).withValues(alpha: 0.22)),
           ),
           child: Center(
             child: Text(
@@ -379,7 +379,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
             color: color,
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(color: color.withOpacity(0.6), blurRadius: 6),
+              BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 6),
             ],
           ),
         );
@@ -414,9 +414,9 @@ class OrbPainter extends CustomPainter {
       final paint = Paint()
         ..shader = RadialGradient(
           colors: [
-            o.color.withOpacity(0.72),
-            o.color.withOpacity(0.18),
-            o.color.withOpacity(0.0),
+            o.color.withValues(alpha: 0.72),
+            o.color.withValues(alpha: 0.18),
+            o.color.withValues(alpha: 0.0),
           ],
           stops: const [0.0, 0.5, 1.0],
         ).createShader(
@@ -482,11 +482,11 @@ class BubblePainter extends CustomPainter {
       final color = _colors[b.colorIndex % _colors.length];
 
       final fillPaint = Paint()
-        ..color = color.withOpacity(0.14)
+        ..color = color.withValues(alpha: 0.14)
         ..style = PaintingStyle.fill;
 
       final strokePaint = Paint()
-        ..color = color.withOpacity(0.30)
+        ..color = color.withValues(alpha: 0.30)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 0.8;
 

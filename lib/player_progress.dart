@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -259,21 +258,22 @@ class _CoinPillBody extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
           colors: [
-            const Color(0xFFFFE082).withOpacity(0.22),
-            Colors.white.withOpacity(0.07),
+            const Color(0xFFFFE082).withValues(alpha: 0.22),
+            Colors.white.withValues(alpha: 0.07),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        border: Border.all(color: const Color(0xFFFFD54F).withOpacity(0.34)),
+        border:
+            Border.all(color: const Color(0xFFFFD54F).withValues(alpha: 0.34)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFFC107).withOpacity(0.12),
+            color: const Color(0xFFFFC107).withValues(alpha: 0.12),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(0.18),
+            color: Colors.black.withValues(alpha: 0.18),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
@@ -294,7 +294,7 @@ class _CoinPillBody extends StatelessWidget {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFFFC107).withOpacity(0.34),
+                  color: const Color(0xFFFFC107).withValues(alpha: 0.34),
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
