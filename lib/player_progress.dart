@@ -1,8 +1,23 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class InProgressLevelState {
+  final List<List<int>> tubes;
+  final int lockedAdTubeIndex;
+  final bool adTubeUnlocked;
+  final int coins;
+
+  const InProgressLevelState({
+    required this.tubes,
+    required this.lockedAdTubeIndex,
+    required this.adTubeUnlocked,
+    required this.coins,
+  });
+}
 
 class PlayerProgress {
   static const String _coinsKey = 'player_coins';
@@ -55,6 +70,9 @@ class PlayerProgress {
   static String _mapCompletedKey(int mapNumber) =>
       'map_${mapNumber}_completed_levels';
 
+  static String _levelStateKey(int mapNumber, int levelId) =>
+      'map_${mapNumber}_level_${levelId}_in_progress';
+
   static Future<Set<int>> getCompletedLevels(int mapNumber) async {
     await ensureLoaded();
 
@@ -95,6 +113,71 @@ class PlayerProgress {
     await setCompletedLevels(mapNumber, levels);
   }
 
+  static Future<void> saveInProgressLevelState({
+    required int mapNumber,
+    required int levelId,
+    required List<List<int>> tubes,
+    required int lockedAdTubeIndex,
+    required bool adTubeUnlocked,
+    required int coinsValue,
+  }) async {
+    await ensureLoaded();
+
+    final payload = <String, dynamic>{
+      'tubes': tubes.map((t) => List<int>.from(t)).toList(growable: false),
+      'lockedAdTubeIndex': lockedAdTubeIndex,
+      'adTubeUnlocked': adTubeUnlocked,
+      'coins': coinsValue,
+    };
+
+    await _prefs!.setString(
+      _levelStateKey(mapNumber, levelId),
+      jsonEncode(payload),
+    );
+  }
+
+  static Future<InProgressLevelState?> getInProgressLevelState(
+    int mapNumber,
+    int levelId,
+  ) async {
+    await ensureLoaded();
+
+    final raw = _prefs!.getString(_levelStateKey(mapNumber, levelId));
+    if (raw == null || raw.isEmpty) return null;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+
+      final tubesRaw = decoded['tubes'];
+      if (tubesRaw is! List) return null;
+
+      final tubes = tubesRaw
+          .map((tube) => (tube as List)
+              .map((cell) => (cell as num).toInt())
+              .toList(growable: true))
+          .toList(growable: true);
+
+      return InProgressLevelState(
+        tubes: tubes,
+        lockedAdTubeIndex: (decoded['lockedAdTubeIndex'] as num?)?.toInt() ??
+            (tubes.isEmpty ? 0 : tubes.length - 1),
+        adTubeUnlocked: decoded['adTubeUnlocked'] == true,
+        coins: (decoded['coins'] as num?)?.toInt() ?? coins.value,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> clearInProgressLevelState(
+    int mapNumber,
+    int levelId,
+  ) async {
+    await ensureLoaded();
+    await _prefs!.remove(_levelStateKey(mapNumber, levelId));
+  }
+
   static Future<void> clearMapProgress(int mapNumber) async {
     await ensureLoaded();
     _completedLevelsCache.remove(mapNumber);
@@ -107,7 +190,8 @@ class PlayerProgress {
     final keys = _prefs!.getKeys().where((k) =>
         k == _coinsKey ||
         k == _latestUnlockedMapKey ||
-        (k.startsWith('map_') && k.endsWith('_completed_levels')));
+        (k.startsWith('map_') && k.endsWith('_completed_levels')) ||
+        (k.startsWith('map_') && k.endsWith('_in_progress')));
 
     for (final key in keys.toList()) {
       await _prefs!.remove(key);

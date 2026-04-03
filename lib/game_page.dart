@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:math';
 import 'dart:ui' show ImageFilter, lerpDouble;
@@ -416,6 +417,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _jokerBusy = false;
   bool _adTubeUnlocked = false;
   bool _levelRewardGranted = false;
+  bool _restoringLevelState = true;
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
 
   bool get _canBuyJoker => _coins >= _jokerCost;
@@ -429,23 +431,42 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       duration: const Duration(seconds: 10),
     )..repeat(reverse: true);
     _coins = widget.initialCoins;
-    _loadProgress();
-    _reset();
+    _restoreOrResetLevel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowTutorial();
     });
   }
 
-  Future<void> _loadProgress() async {
+  Future<void> _restoreOrResetLevel() async {
     await PlayerProgress.ensureLoaded();
+
     final syncedCoins = widget.initialCoins > 0
         ? widget.initialCoins
         : PlayerProgress.coins.value;
+    final saved = await PlayerProgress.getInProgressLevelState(
+      widget.mapNumber,
+      widget.level,
+    );
+
+    if (!mounted) return;
+
+    if (saved != null && saved.tubes.isNotEmpty) {
+      _applyLevelState(
+        tubes: saved.tubes,
+        lockedAdTubeIndex: saved.lockedAdTubeIndex,
+        adTubeUnlocked: saved.adTubeUnlocked,
+        coinsValue: saved.coins,
+      );
+    } else {
+      _reset(coinsOverride: syncedCoins);
+    }
+
+    PlayerProgress.setCoins(_coins);
+
     if (!mounted) return;
     setState(() {
-      _coins = syncedCoins;
+      _restoringLevelState = false;
     });
-    PlayerProgress.setCoins(syncedCoins);
   }
 
   @override
@@ -468,23 +489,31 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return s;
   }
 
-  void _reset() {
+  List<List<int>> _buildInitialTubes() {
     _preset = PuzzlePresets.getOrNull(
       mapNumber: widget.mapNumber,
       levelId: widget.level,
     );
 
-    final initialTubes = (_preset?.tubes ??
+    return (_preset?.tubes ??
             _legacyGenerateTubes(
               level: widget.level,
               difficulty: widget.difficulty,
             ))
         .map((t) => List<int>.of(t, growable: true))
         .toList(growable: true);
+  }
 
-    _tubes = initialTubes;
-    _lockedAdTubeIndex = (_preset?.lockedAdTubeIndex ?? (_tubes.length - 1))
-        .clamp(0, _tubes.length - 1);
+  void _applyLevelState({
+    required List<List<int>> tubes,
+    required int lockedAdTubeIndex,
+    required bool adTubeUnlocked,
+    required int coinsValue,
+  }) {
+    _tubes = tubes
+        .map((t) => List<int>.of(t, growable: true))
+        .toList(growable: true);
+    _lockedAdTubeIndex = lockedAdTubeIndex.clamp(0, _tubes.length - 1);
     _activePlans.clear();
     _selected = null;
     _gameWon = false;
@@ -492,12 +521,50 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _commandQueue.clear();
     _history.clear();
     _undoSloshingTubes.clear();
-    _adTubeUnlocked = false;
+    _adTubeUnlocked = adTubeUnlocked;
     _showTutorial = false;
     _tutorialStepIndex = 0;
     _tutorialFromIdx = null;
     _tutorialToIdx = null;
+    _coins = coinsValue;
+    _levelRewardGranted = false;
     setState(() {});
+  }
+
+  void _reset({int? coinsOverride, bool clearSavedState = true}) {
+    final initialTubes = _buildInitialTubes();
+    final initialLockedAdTubeIndex =
+        (_preset?.lockedAdTubeIndex ?? (initialTubes.length - 1))
+            .clamp(0, initialTubes.length - 1);
+
+    _applyLevelState(
+      tubes: initialTubes,
+      lockedAdTubeIndex: initialLockedAdTubeIndex,
+      adTubeUnlocked: false,
+      coinsValue: coinsOverride ?? _coins,
+    );
+
+    if (clearSavedState) {
+      PlayerProgress.clearInProgressLevelState(widget.mapNumber, widget.level);
+    }
+  }
+
+  Future<void> _persistLevelState() async {
+    if (_restoringLevelState) return;
+    if (_gameWon) {
+      await PlayerProgress.clearInProgressLevelState(
+          widget.mapNumber, widget.level);
+      return;
+    }
+
+    await PlayerProgress.saveInProgressLevelState(
+      mapNumber: widget.mapNumber,
+      levelId: widget.level,
+      tubes: _tubes,
+      lockedAdTubeIndex: _lockedAdTubeIndex,
+      adTubeUnlocked: _adTubeUnlocked,
+      coinsValue: _coins,
+    );
   }
 
   String _canonicalBoardSignature(
@@ -984,6 +1051,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _coins = max(0, _coins - amount);
     });
     PlayerProgress.setCoins(_coins);
+    _persistLevelState();
   }
 
   void _addCoins(int amount) {
@@ -992,6 +1060,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _coins += amount;
     });
     PlayerProgress.setCoins(_coins);
+    _persistLevelState();
   }
 
   int get _levelReward =>
@@ -1071,6 +1140,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     setState(() {
       _adTubeUnlocked = true;
     });
+    _persistLevelState();
 
     return true;
   }
@@ -1329,6 +1399,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _selected = null;
       _activePlans.add(plan);
     });
+    _persistLevelState();
 
     // Animasyon biter bitmez planı kaldır
     Future.delayed(kPourDuration, () {
@@ -1399,6 +1470,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _undoSloshingTubes[last.fromIdx] = fromColor;
       _undoSloshingTubes[last.toIdx] = toColor;
     });
+    _persistLevelState();
 
     _vibrateTap();
 
@@ -1473,15 +1545,16 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       builder: (context) {
         return Dialog(
           backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 32),
           child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
             decoration: BoxDecoration(
-              color: Color.lerp(_theme.bgMid, Colors.black, 0.18),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: _theme.accentColor.withOpacity(0.28)),
+              color: Color.lerp(_theme.bgMid, Colors.black, 0.22),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: Colors.white.withOpacity(0.10)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.28),
+                  color: Colors.black.withOpacity(0.30),
                   blurRadius: 24,
                   offset: const Offset(0, 12),
                 ),
@@ -1490,25 +1563,53 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'Tebrikler!',
-                  style: TextStyle(
-                    color: _theme.accentColor,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                  ),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Tebrikler',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        color: const Color(0xFFFFD54F).withOpacity(0.14),
+                        border: Border.all(
+                          color: const Color(0xFFFFD54F).withOpacity(0.30),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.toll_rounded,
+                            color: Color(0xFFFFD54F),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '+$_levelReward',
+                            style: const TextStyle(
+                              color: Color(0xFFFFF3C2),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  'Seviyeyi geçtiniz. +$_levelReward oyun parası kazandın.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.92),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
                   child: _BottomActionBtn(
@@ -1530,6 +1631,25 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
   }
 
+  Future<void> _exitLevel({required bool completed}) async {
+    if (completed) {
+      await PlayerProgress.clearInProgressLevelState(
+          widget.mapNumber, widget.level);
+    } else {
+      await _persistLevelState();
+    }
+
+    if (!mounted) return;
+    Navigator.pop(
+      context,
+      GamePageResult(
+        completed: completed,
+        coinsAfterLevel: _coins,
+        earnedCoins: completed ? _levelReward : 0,
+      ),
+    );
+  }
+
   void _completeLevel() {
     if (!_levelRewardGranted) {
       _addCoins(_levelReward);
@@ -1537,157 +1657,169 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     _vibrateTap();
-    Navigator.pop(
-      context,
-      GamePageResult(
-        completed: true,
-        coinsAfterLevel: _coins,
-        earnedCoins: _levelReward,
-      ),
-    );
+    _exitLevel(completed: true);
   }
 
   void _lowerLevel() {
     _vibrateLight();
-    Navigator.pop(
-      context,
-      GamePageResult(
-        completed: false,
-        coinsAfterLevel: _coins,
-        earnedCoins: 0,
-      ),
-    );
+    _exitLevel(completed: false);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _theme.bgDark,
-      body: Stack(
-        children: [
-          _AnimatedThemeBg(controller: _bgCtrl, theme: _theme),
-          SafeArea(
-            child: Column(
-              children: [
-                _buildTopBar(),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.topCenter,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(top: 0),
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
+    if (_restoringLevelState) {
+      return Scaffold(
+        backgroundColor: _theme.bgDark,
+        body: const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.2,
+              color: Colors.white70,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return WillPopScope(
+        onWillPop: () async {
+          _lowerLevel();
+          return false;
+        },
+        child: Scaffold(
+          backgroundColor: _theme.bgDark,
+          body: Stack(
+            children: [
+              _AnimatedThemeBg(controller: _bgCtrl, theme: _theme),
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildTopBar(),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: Align(
                                     alignment: Alignment.topCenter,
-                                    child: SizedBox(
-                                      width: kStageW,
-                                      height: kStageH,
-                                      child: _TubeStage(
-                                        tubes: _tubes,
-                                        selected: _selected,
-                                        activePlans: _activePlans,
-                                        onTap: _handleTap,
-                                        lockedAdTubeIndex: _lockedAdTubeIndex,
-                                        showLockedAdTube: _showLockedAdTube,
-                                        celebratingDoneTubes:
-                                            _celebratingDoneTubes,
-                                        tutorialActive: _showTutorial,
-                                        tutorialStepIndex: _tutorialStepIndex,
-                                        tutorialFromIdx: _tutorialFromIdx,
-                                        tutorialToIdx: _tutorialToIdx,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(top: 0),
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.topCenter,
+                                        child: SizedBox(
+                                          width: kStageW,
+                                          height: kStageH,
+                                          child: _TubeStage(
+                                            tubes: _tubes,
+                                            selected: _selected,
+                                            activePlans: _activePlans,
+                                            onTap: _handleTap,
+                                            lockedAdTubeIndex:
+                                                _lockedAdTubeIndex,
+                                            showLockedAdTube: _showLockedAdTube,
+                                            celebratingDoneTubes:
+                                                _celebratingDoneTubes,
+                                            tutorialActive: _showTutorial,
+                                            tutorialStepIndex:
+                                                _tutorialStepIndex,
+                                            tutorialFromIdx: _tutorialFromIdx,
+                                            tutorialToIdx: _tutorialToIdx,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _LevelIconBtn(
-                                    icon: Icons
-                                        .keyboard_double_arrow_down_rounded,
-                                    tooltip: 'Seviyeyi Düşür',
-                                    color: Colors.white.withOpacity(0.10),
-                                    borderColor: Colors.white.withOpacity(0.18),
-                                    iconColor: Colors.white,
-                                    onTap: _lowerLevel,
+                                const SizedBox(height: 10),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _LevelIconBtn(
+                                        icon: Icons
+                                            .keyboard_double_arrow_down_rounded,
+                                        tooltip: 'Seviyeyi Düşür',
+                                        color: Colors.white.withOpacity(0.10),
+                                        borderColor:
+                                            Colors.white.withOpacity(0.18),
+                                        iconColor: Colors.white,
+                                        onTap: _lowerLevel,
+                                      ),
+                                      const SizedBox(width: 20),
+                                      _LevelIconBtn(
+                                        icon: Icons
+                                            .keyboard_double_arrow_up_rounded,
+                                        tooltip: 'Seviyeyi Geç',
+                                        color: _theme.accentColor
+                                            .withOpacity(0.18),
+                                        borderColor: _theme.accentColor
+                                            .withOpacity(0.45),
+                                        iconColor: _theme.accentColor,
+                                        onTap: _completeLevel,
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 20),
-                                  _LevelIconBtn(
-                                    icon:
-                                        Icons.keyboard_double_arrow_up_rounded,
-                                    tooltip: 'Seviyeyi Geç',
-                                    color: _theme.accentColor.withOpacity(0.18),
-                                    borderColor:
-                                        _theme.accentColor.withOpacity(0.45),
-                                    iconColor: _theme.accentColor,
-                                    onTap: _completeLevel,
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+              Positioned(
+                right: 20,
+                bottom: 20,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  opacity: _showTutorial ? 0.22 : 1.0,
+                  child: IgnorePointer(
+                    ignoring: _showTutorial,
+                    child: SafeArea(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _UndoButton(
+                            canUndo: _history.isNotEmpty &&
+                                _activePlans.isEmpty &&
+                                !_gameWon,
+                            accentColor: _theme.accentColor,
+                            onTap: _undo,
+                          ),
+                          const SizedBox(width: 12),
+                          _JokerButton(
+                            enabled: !_gameWon &&
+                                _activePlans.isEmpty &&
+                                !_jokerBusy,
+                            busy: _jokerBusy,
+                            canBuy: _canBuyJoker,
+                            cost: _jokerCost,
+                            accentColor: _theme.accentColor,
+                            onTap: _useJokerWithEconomy,
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-          Positioned(
-            right: 20,
-            bottom: 20,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 180),
-              opacity: _showTutorial ? 0.22 : 1.0,
-              child: IgnorePointer(
-                ignoring: _showTutorial,
-                child: SafeArea(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      _UndoButton(
-                        canUndo: _history.isNotEmpty &&
-                            _activePlans.isEmpty &&
-                            !_gameWon,
-                        accentColor: _theme.accentColor,
-                        onTap: _undo,
-                      ),
-                      const SizedBox(width: 12),
-                      _JokerButton(
-                        enabled:
-                            !_gameWon && _activePlans.isEmpty && !_jokerBusy,
-                        busy: _jokerBusy,
-                        canBuy: _canBuyJoker,
-                        cost: _jokerCost,
-                        accentColor: _theme.accentColor,
-                        onTap: _useJokerWithEconomy,
-                      ),
-                    ],
-                  ),
-                ),
               ),
-            ),
+              if (_showTutorial) _buildTutorialOverlay(),
+            ],
           ),
-          if (_showTutorial) _buildTutorialOverlay(),
-        ],
-      ),
-    );
+        ));
   }
 
   Widget _buildTutorialOverlay() {
@@ -1864,14 +1996,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
-                      onTap: () => Navigator.pop(
-                        context,
-                        GamePageResult(
-                          completed: false,
-                          coinsAfterLevel: _coins,
-                          earnedCoins: 0,
-                        ),
-                      ),
+                      onTap: _lowerLevel,
                       child: Ink(
                         width: 42,
                         height: 42,

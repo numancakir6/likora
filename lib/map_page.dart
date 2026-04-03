@@ -343,14 +343,14 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       };
 
   Future<void> _navigateToLevel(int levelId) async {
-    final result = await Navigator.push<bool>(
+    final result = await Navigator.push<GamePageResult>(
       context,
       MaterialPageRoute(
         builder: (_) => GamePage(level: levelId, mapNumber: _mapNumber),
       ),
     );
 
-    if (result == true && mounted) {
+    if (result?.completed == true && mounted) {
       final updatedCompleted = {...completedLevels, levelId};
 
       setState(() {
