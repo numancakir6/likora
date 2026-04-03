@@ -95,43 +95,24 @@ double get kStageH => (kWidgetH * 4) + (kRowGap * 3) + 18.0;
 const Duration kPourDuration = Duration(milliseconds: 1800);
 
 const List<Map<String, dynamic>> kColors = [
-  // 🔴 KIRMIZI GRUBU (zıt)
-  {'name': 'Kırmızı Açık', 'fill': Color(0xFFFF4D4D)},
-  {'name': 'Kırmızı Koyu', 'fill': Color(0xFF8B0000)},
+  // 🎯 ANA RENKLER (SAF - TEK)
+  {'name': 'Kırmızı', 'fill': Color(0xFFFF0000)},
+  {'name': 'Turuncu', 'fill': Color(0xFFFF7A00)},
+  {'name': 'Sarı', 'fill': Color(0xFFFFFF00)},
+  {'name': 'Yeşil', 'fill': Color(0xFF00C853)},
+  {'name': 'Mavi', 'fill': Color(0xFF0000FF)},
 
-  // 🟠 TURUNCU
-  {'name': 'Turuncu Açık', 'fill': Color(0xFFFFA500)},
-  {'name': 'Turuncu Koyu', 'fill': Color(0xFFCC5500)},
+  // ⚡ UÇUK / NEON / FARKLI RENKLER
+  {'name': 'Fuşya', 'fill': Color(0xFFFF00FF)},
+  {'name': 'Neon Yeşil', 'fill': Color.fromARGB(255, 76, 252, 45)},
+  {'name': 'Camgöbeği', 'fill': Color(0xFF00FFFF)},
+  {'name': 'Elektrik Mavi', 'fill': Color(0xFF2979FF)},
+  {'name': 'Pembe', 'fill': Color(0xFFFF1493)},
+  {'name': 'Açık Mor (Neon)', 'fill': Color(0xFFB266FF)},
 
-  // 🟡 SARI
-  {'name': 'Sarı Açık', 'fill': Color(0xFFFFFF66)},
-
-  // 🟢 YEŞİL
-  {'name': 'Yeşil Açık', 'fill': Color(0xFF66FF66)},
-  {'name': 'Yeşil Koyu', 'fill': Color(0xFF006400)},
-
-  // 🔵 MAVİ
-  {'name': 'Mavi Açık', 'fill': Color(0xFF66B2FF)},
-  {'name': 'Mavi Koyu', 'fill': Color(0xFF00008B)},
-
-  // 🟣 MOR
-  {'name': 'Mor Açık', 'fill': Color(0xFFCC66FF)},
-  {'name': 'Mor Koyu', 'fill': Color(0xFF4B0082)},
-
-  // 🌸 PEMBE
-  {'name': 'Pembe Açık', 'fill': Color(0xFFFF99CC)},
-  {'name': 'Pembe Koyu', 'fill': Color(0xFFC71585)},
-
-  // 🟤 KAHVERENGİ
-  {'name': 'Kahverengi Açık', 'fill': Color(0xFFD2B48C)},
-  {'name': 'Kahverengi Koyu', 'fill': Color(0xFF5A2E0C)},
-
-  // ⚫⚪ NÖTR (en uç)
+  // ⚫⚪ KONTRAST RENKLER
   {'name': 'Beyaz', 'fill': Color(0xFFFFFFFF)},
   {'name': 'Siyah', 'fill': Color(0xFF000000)},
-  // 🔵 EKSTRA ZIT (tekli güçlü renkler)
-  {'name': 'Camgöbeği', 'fill': Color(0xFF00FFFF)}, // cyan (tek başına)
-  {'name': 'Neon Yeşil', 'fill': Color(0xFF39FF14)},
 ];
 
 // _MapTheme ve _themeForMap kaldırıldı — MapTheme artık map_theme.dart'tan geliyor.
