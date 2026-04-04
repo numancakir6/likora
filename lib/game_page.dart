@@ -10,6 +10,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'player_progress.dart';
 import 'settings_page.dart';
 import 'audio_service.dart';
+import 'daily_puzzle_progress.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ─────────────────────────────────────────────
@@ -464,12 +465,32 @@ class GamePage extends StatefulWidget {
   final int difficulty;
   final int initialCoins;
 
+  final List<List<int>>? customPuzzleTubes;
+  final int? customLockedAdTubeIndex;
+  final StageLayout? customStageLayout;
+
+  final bool isDailyPuzzleMode;
+  final String? dailyPuzzleDateKey;
+  final int? dailyRewardCoins;
+  final DailyPuzzleSaveState? restoredDailyState;
+  final String? customTitle;
+  final List<Color>? customBackground;
+
   const GamePage({
     super.key,
     required this.level,
     required this.mapNumber,
     this.difficulty = 1,
     this.initialCoins = 0,
+    this.customPuzzleTubes,
+    this.customLockedAdTubeIndex,
+    this.customStageLayout,
+    this.isDailyPuzzleMode = false,
+    this.dailyPuzzleDateKey,
+    this.dailyRewardCoins,
+    this.restoredDailyState,
+    this.customTitle,
+    this.customBackground,
   });
 
   @override
@@ -559,15 +580,29 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
 
   bool get _canBuyJoker => _coins >= _jokerCost;
+  bool get _isDailyMode =>
+      widget.isDailyPuzzleMode && widget.dailyPuzzleDateKey != null;
 
   _ResolvedStageLayout get _stageLayout => resolveStageLayout(
-        layout: _preset?.layout,
+        layout: widget.customStageLayout ?? _preset?.layout,
         tubeCount: _tubes.length,
       );
 
   Future<void> _returnToMapPage() async {
     await _persistLevelState();
     if (!mounted) return;
+
+    if (_isDailyMode) {
+      Navigator.of(context).pop(
+        GamePageResult(
+          completed: _gameWon,
+          coinsAfterLevel: _coins,
+          earnedCoins: _gameWon ? _levelReward : 0,
+        ),
+      );
+      return;
+    }
+
     await Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => MapPage(mapNumber: widget.mapNumber),
@@ -596,6 +631,57 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final syncedCoins = widget.initialCoins > 0
         ? widget.initialCoins
         : PlayerProgress.coins.value;
+
+    if (_isDailyMode) {
+      final isAlreadyCompleted =
+          await DailyPuzzleProgress.isCompleted(widget.dailyPuzzleDateKey!);
+
+      if (isAlreadyCompleted) {
+        _applyCompletedLevelState(coinsOverride: syncedCoins);
+        PlayerProgress.setCoins(_coins);
+
+        if (!mounted) return;
+        setState(() {
+          _restoringLevelState = false;
+        });
+        return;
+      }
+
+      final saved = widget.restoredDailyState;
+
+      if (!mounted) return;
+
+      final expectedTubeCount = widget.customPuzzleTubes?.length;
+      final savedTubeCount = saved?.tubes.length;
+      final countMismatch = expectedTubeCount != null &&
+          savedTubeCount != null &&
+          expectedTubeCount != savedTubeCount;
+
+      if (saved != null && saved.tubes.isNotEmpty && !countMismatch) {
+        _applyLevelState(
+          tubes: saved.tubes,
+          lockedAdTubeIndex: saved.lockedAdTubeIndex,
+          adTubeUnlocked: saved.adTubeUnlocked,
+          coinsValue: syncedCoins,
+        );
+
+        _visibleLayerCounts = _normalizeVisibleLayerCounts(
+          saved.visibleLayerCounts,
+          _tubes,
+        );
+      } else {
+        _reset(coinsOverride: syncedCoins);
+      }
+
+      PlayerProgress.setCoins(_coins);
+
+      if (!mounted) return;
+      setState(() {
+        _restoringLevelState = false;
+      });
+      return;
+    }
+
     final completedLevels =
         await PlayerProgress.getCompletedLevels(widget.mapNumber);
     final isAlreadyCompleted = completedLevels.contains(widget.level);
@@ -769,6 +855,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   List<List<int>> _buildInitialTubes() {
+    if (widget.customPuzzleTubes != null) {
+      _preset = null;
+      return widget.customPuzzleTubes!
+          .map((t) => List<int>.of(t, growable: true))
+          .toList(growable: true);
+    }
+
     _preset = PuzzlePresets.getOrNull(
       mapNumber: widget.mapNumber,
       levelId: widget.level,
@@ -816,7 +909,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final initialTubes = _buildInitialTubes();
     // Preset'ten gelen lockedAdTubeIndex tubes listesi içinde kalmalı.
     // Eğer preset yoksa son tüp reklam tüpü olsun.
-    final rawAdIdx = _preset?.lockedAdTubeIndex ?? (initialTubes.length - 1);
+    final rawAdIdx = widget.customLockedAdTubeIndex ??
+        _preset?.lockedAdTubeIndex ??
+        (initialTubes.length - 1);
     final initialLockedAdTubeIndex = rawAdIdx.clamp(0, initialTubes.length - 1);
 
     _applyLevelState(
@@ -827,7 +922,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
 
     if (clearSavedState) {
-      PlayerProgress.clearInProgressLevelState(widget.mapNumber, widget.level);
+      if (_isDailyMode) {
+        DailyPuzzleProgress.clearInProgressState();
+      } else {
+        PlayerProgress.clearInProgressLevelState(
+            widget.mapNumber, widget.level);
+      }
       _clearBlindVisibilityState();
     }
   }
@@ -870,7 +970,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   void _applyCompletedLevelState({int? coinsOverride}) {
     final initialTubes = _buildInitialTubes();
-    final rawAdIdx = _preset?.lockedAdTubeIndex ?? (initialTubes.length - 1);
+    final rawAdIdx = widget.customLockedAdTubeIndex ??
+        _preset?.lockedAdTubeIndex ??
+        (initialTubes.length - 1);
     final initialLockedAdTubeIndex = rawAdIdx.clamp(0, initialTubes.length - 1);
 
     _applyLevelState(
@@ -893,6 +995,25 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   Future<void> _persistLevelState() async {
     if (_restoringLevelState) return;
+
+    if (_isDailyMode) {
+      if (_gameWon) {
+        await DailyPuzzleProgress.clearInProgressState();
+        await _clearBlindVisibilityState();
+        return;
+      }
+
+      await DailyPuzzleProgress.saveInProgressState(
+        dateKey: widget.dailyPuzzleDateKey!,
+        tubes: _tubes,
+        lockedAdTubeIndex: _lockedAdTubeIndex,
+        adTubeUnlocked: _adTubeUnlocked,
+        visibleLayerCounts: _blindModeEnabled ? _visibleLayerCounts : null,
+      );
+      await _persistBlindVisibilityState();
+      return;
+    }
+
     if (_gameWon) {
       await PlayerProgress.clearInProgressLevelState(
           widget.mapNumber, widget.level);
@@ -1397,6 +1518,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   int get _levelReward =>
+      widget.dailyRewardCoins ??
       PlayerProgress.rewardForDifficultyDots(widget.difficulty);
 
   void _showBottomHint(String text) {
@@ -2030,6 +2152,25 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _exitLevel({required bool completed}) async {
+    if (_isDailyMode) {
+      if (completed) {
+        await DailyPuzzleProgress.clearInProgressState();
+      } else {
+        await _persistLevelState();
+      }
+
+      if (!mounted) return;
+      Navigator.pop(
+        context,
+        GamePageResult(
+          completed: completed,
+          coinsAfterLevel: _coins,
+          earnedCoins: completed ? _levelReward : 0,
+        ),
+      );
+      return;
+    }
+
     if (completed) {
       await PlayerProgress.clearInProgressLevelState(
           widget.mapNumber, widget.level);
@@ -2092,7 +2233,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           backgroundColor: _theme.bgDark,
           body: Stack(
             children: [
-              _AnimatedThemeBg(controller: _bgCtrl, theme: _theme),
+              _AnimatedThemeBg(
+                  controller: _bgCtrl,
+                  theme: _theme,
+                  customBackground: widget.customBackground),
               if (_gameWon)
                 Positioned(
                   top: 20,
@@ -2442,7 +2586,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 ),
                 Center(
                   child: Text(
-                    _theme.name,
+                    widget.customTitle ?? _theme.name,
                     style: TextStyle(
                       color: _theme.primaryColor,
                       fontSize: 20,
@@ -2508,8 +2652,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 class _AnimatedThemeBg extends StatelessWidget {
   final Animation<double> controller;
   final MapTheme theme;
+  final List<Color>? customBackground;
 
-  const _AnimatedThemeBg({required this.controller, required this.theme});
+  const _AnimatedThemeBg(
+      {required this.controller, required this.theme, this.customBackground});
 
   @override
   Widget build(BuildContext context) {
@@ -2519,7 +2665,8 @@ class _AnimatedThemeBg extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [theme.bgDark, theme.bgMid, theme.bgLight, theme.bgDark],
+              colors: customBackground ??
+                  [theme.bgDark, theme.bgMid, theme.bgLight, theme.bgDark],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
