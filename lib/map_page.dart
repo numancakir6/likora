@@ -202,6 +202,7 @@ class MapPage extends StatefulWidget {
 
 class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const int _maxMapCount = 15;
+  static const int _playableMapCount = 2;
   static const double _swipeVelocityThreshold = 250;
   static const double _swipeDistanceThreshold = 24;
   static const double _nodeWidgetSize = 72;
@@ -314,6 +315,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   }
 
   static bool _isMapPlayableStatic(int mapNumber) {
+    if (mapNumber > _playableMapCount) return false;
     if (mapNumber <= 1) return true;
     return mapNumber <= PlayerProgress.latestUnlockedMap;
   }
@@ -331,9 +333,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   }
 
   bool _isMapPlayable(int mapNumber) {
+    if (mapNumber > _playableMapCount) return false;
     if (mapNumber <= 1) return true;
     return mapNumber <= PlayerProgress.latestUnlockedMap;
   }
+
+  bool _isComingSoonMap(int mapNumber) => mapNumber > _playableMapCount;
 
   Map<int, Offset> _levelPositions(double w, double h) {
     final raw = <int, Offset>{
@@ -450,7 +455,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       final isMapFullyCompleted =
           updatedCompleted.length >= _layout.totalLevels;
 
-      if (isMapFullyCompleted && _mapNumber < _maxMapCount) {
+      if (isMapFullyCompleted &&
+          _mapNumber < _maxMapCount &&
+          _mapNumber < _playableMapCount) {
         await PlayerProgress.unlockMap(_mapNumber + 1);
 
         Future.delayed(const Duration(milliseconds: 250), () {
@@ -673,38 +680,52 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
               final h = constraints.maxHeight;
               final positions = _levelPositions(w, h);
 
+              final isComingSoon = _isComingSoonMap(_mapNumber);
+
               return Stack(children: [
                 Positioned.fill(
-                  child: AnimatedBuilder(
-                    animation: _bgController,
-                    builder: (_, __) => CustomPaint(
-                      painter: buildMapBgPainter(_theme, _bgController.value),
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: AnimatedBuilder(
-                    animation: _bgController,
-                    builder: (_, __) => CustomPaint(
-                      painter: _MapStarsPainter(
-                        twinkle: _bgController.value,
-                        color: _theme.accentColor,
+                  child: Opacity(
+                    opacity: isComingSoon ? 0.42 : 1.0,
+                    child: AnimatedBuilder(
+                      animation: _bgController,
+                      builder: (_, __) => CustomPaint(
+                        painter: buildMapBgPainter(_theme, _bgController.value),
                       ),
                     ),
                   ),
                 ),
                 Positioned.fill(
-                  child: _AnimatedPathLayer(
-                    positions: positions,
-                    connections: _layout.connections,
-                    completedLevels: completedLevels,
-                    unlockedLevels: _unlocked,
-                    theme: _theme,
+                  child: Opacity(
+                    opacity: isComingSoon ? 0.35 : 1.0,
+                    child: AnimatedBuilder(
+                      animation: _bgController,
+                      builder: (_, __) => CustomPaint(
+                        painter: _MapStarsPainter(
+                          twinkle: _bgController.value,
+                          color: _theme.accentColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: isComingSoon ? 0.40 : 1.0,
+                    child: _AnimatedPathLayer(
+                      positions: positions,
+                      connections: _layout.connections,
+                      completedLevels: completedLevels,
+                      unlockedLevels: _unlocked,
+                      theme: _theme,
+                    ),
                   ),
                 ),
                 Positioned.fill(
                   child: IgnorePointer(
-                    child: _MapGlowDecor(positions: positions, theme: _theme),
+                    child: Opacity(
+                      opacity: isComingSoon ? 0.28 : 1.0,
+                      child: _MapGlowDecor(positions: positions, theme: _theme),
+                    ),
                   ),
                 ),
                 for (final level in _levels)
@@ -718,6 +739,37 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                         data: level,
                         theme: _theme,
                         onTap: () => _navigateToLevel(level.id),
+                      ),
+                    ),
+                  ),
+                if (isComingSoon)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Center(
+                        child: Container(
+                          width: 132,
+                          height: 132,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black.withValues(alpha: 0.22),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.16),
+                              width: 2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.26),
+                                blurRadius: 28,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.lock_rounded,
+                            size: 72,
+                            color: Colors.white.withValues(alpha: 0.88),
+                          ),
+                        ),
                       ),
                     ),
                   ),

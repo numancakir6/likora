@@ -596,6 +596,21 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final syncedCoins = widget.initialCoins > 0
         ? widget.initialCoins
         : PlayerProgress.coins.value;
+    final completedLevels =
+        await PlayerProgress.getCompletedLevels(widget.mapNumber);
+    final isAlreadyCompleted = completedLevels.contains(widget.level);
+
+    if (isAlreadyCompleted) {
+      _applyCompletedLevelState(coinsOverride: syncedCoins);
+      PlayerProgress.setCoins(_coins);
+
+      if (!mounted) return;
+      setState(() {
+        _restoringLevelState = false;
+      });
+      return;
+    }
+
     final saved = await PlayerProgress.getInProgressLevelState(
       widget.mapNumber,
       widget.level,
@@ -815,6 +830,65 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       PlayerProgress.clearInProgressLevelState(widget.mapNumber, widget.level);
       _clearBlindVisibilityState();
     }
+  }
+
+  List<List<int>> _buildCompletedTubesFromInitial(
+      List<List<int>> initialTubes) {
+    final colorCounts = <int, int>{};
+    for (final tube in initialTubes) {
+      for (final color in tube) {
+        colorCounts[color] = (colorCounts[color] ?? 0) + 1;
+      }
+    }
+
+    final solvedColors = colorCounts.keys.toList()..sort();
+    final solvedTubes = solvedColors
+        .map((color) => List<int>.filled(kCap, color, growable: true))
+        .toList(growable: true);
+
+    final result = <List<int>>[];
+    var solvedIndex = 0;
+    for (final tube in initialTubes) {
+      if (tube.isEmpty) {
+        result.add(<int>[]);
+      } else {
+        if (solvedIndex < solvedTubes.length) {
+          result.add(List<int>.from(solvedTubes[solvedIndex], growable: true));
+          solvedIndex++;
+        } else {
+          result.add(<int>[]);
+        }
+      }
+    }
+
+    while (result.length < initialTubes.length) {
+      result.add(<int>[]);
+    }
+
+    return result;
+  }
+
+  void _applyCompletedLevelState({int? coinsOverride}) {
+    final initialTubes = _buildInitialTubes();
+    final rawAdIdx = _preset?.lockedAdTubeIndex ?? (initialTubes.length - 1);
+    final initialLockedAdTubeIndex = rawAdIdx.clamp(0, initialTubes.length - 1);
+
+    _applyLevelState(
+      tubes: _buildCompletedTubesFromInitial(initialTubes),
+      lockedAdTubeIndex: initialLockedAdTubeIndex,
+      adTubeUnlocked: false,
+      coinsValue: coinsOverride ?? _coins,
+    );
+
+    _visibleLayerCounts = List<int>.generate(
+      _tubes.length,
+      (i) => _tubes[i].length,
+      growable: true,
+    );
+    _gameWon = true;
+    _levelRewardGranted = true;
+    _showTutorial = false;
+    _selected = null;
   }
 
   Future<void> _persistLevelState() async {
@@ -1535,6 +1609,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _handleTap(int idx) async {
+    if (_gameWon) return;
+
     if (_showTutorial) {
       if (_tutorialStepIndex == 0) {
         if (idx != _tutorialFromIdx) return;
@@ -2017,6 +2093,43 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           body: Stack(
             children: [
               _AnimatedThemeBg(controller: _bgCtrl, theme: _theme),
+              if (_gameWon)
+                Positioned(
+                  top: 20,
+                  right: 20,
+                  child: SafeArea(
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF00E676), Color(0xFF00C853)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x6600E676),
+                              blurRadius: 14,
+                              spreadRadius: 1,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.28),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               SafeArea(
                 child: Column(
                   children: [
@@ -2069,38 +2182,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _LevelIconBtn(
-                                        icon: Icons
-                                            .keyboard_double_arrow_down_rounded,
-                                        tooltip: 'Seviyeyi Düşür',
-                                        color: Colors.white
-                                            .withValues(alpha: 0.10),
-                                        borderColor: Colors.white
-                                            .withValues(alpha: 0.18),
-                                        iconColor: Colors.white,
-                                        onTap: _returnToMapPage,
-                                      ),
-                                      const SizedBox(width: 20),
-                                      _LevelIconBtn(
-                                        icon: Icons
-                                            .keyboard_double_arrow_up_rounded,
-                                        tooltip: 'Seviyeyi Geç',
-                                        color: _theme.accentColor
-                                            .withValues(alpha: 0.18),
-                                        borderColor: _theme.accentColor
-                                            .withValues(alpha: 0.45),
-                                        iconColor: _theme.accentColor,
-                                        onTap: _completeLevel,
-                                      ),
-                                    ],
                                   ),
                                 ),
                               ],
@@ -2693,55 +2774,6 @@ class _BottomActionBtn extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────
-// SEVİYE İKON BUTONU
-// ─────────────────────────────────────────────
-
-class _LevelIconBtn extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final Color color;
-  final Color borderColor;
-  final Color iconColor;
-  final VoidCallback onTap;
-
-  const _LevelIconBtn({
-    required this.icon,
-    required this.tooltip,
-    required this.color,
-    required this.borderColor,
-    required this.iconColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Ink(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor, width: 1.5),
-            ),
-            child: Center(
-              child: Icon(icon, color: iconColor, size: 26),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ─────────────────────────────────────────────
 // TÜPLER SAHNESİ
 // ─────────────────────────────────────────────
