@@ -765,9 +765,28 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
       duration: const Duration(milliseconds: 160),
     );
 
-    if (widget.data.isUnlocked && !widget.data.isCompleted) {
-      _pulseController.repeat(reverse: true);
-      _rotateController.repeat();
+    _syncAnimations();
+  }
+
+  @override
+  void didUpdateWidget(PremiumLevelNodeWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Level state değiştiğinde (tamamlandı veya kilidi açıldı)
+    // orbit ve pulse animasyonlarını güncelle.
+    if (oldWidget.data.isUnlocked != widget.data.isUnlocked ||
+        oldWidget.data.isCompleted != widget.data.isCompleted) {
+      _syncAnimations();
+    }
+  }
+
+  void _syncAnimations() {
+    final shouldAnimate = widget.data.isUnlocked && !widget.data.isCompleted;
+    if (shouldAnimate) {
+      if (!_pulseController.isAnimating) _pulseController.repeat(reverse: true);
+      if (!_rotateController.isAnimating) _rotateController.repeat();
+    } else {
+      _pulseController.stop();
+      _rotateController.stop();
     }
   }
 

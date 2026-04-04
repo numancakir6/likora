@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:ui' show ImageFilter, lerpDouble;
 import 'package:flutter/material.dart';
 import 'map_theme.dart';
+import 'map_page.dart';
 import 'puzzle_presets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'player_progress.dart';
@@ -16,13 +17,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 // ─────────────────────────────────────────────
 
 const int kCap = 4;
-const int kNColors = 17;
+const int kNColors = 18;
 const int kEmpty = 2;
 const String kTubeSvgAsset = 'assets/likora/test_tube.svg';
 
 // Widget boyutları – SVG oranına göre ayarlandı (84.4 x 182 mm → 60 x 130 px)
 const double kTW = 72.0;
-const double kTH = 150.0;
+const double kTH = 155.0;
 
 // ── SVG oranları (viewBox: 8442.66 x 18197.8) ──────────────────────────────
 // Normalize faktör:
@@ -82,9 +83,9 @@ double get kUCenterY => kBodyBotY; // daire merkezi tam gövde altında
 double get kLiquidLeft => kBodyInnerLeft + 3;
 double get kLiquidRight => kBodyInnerRight - 3;
 double get kLiquidW => kLiquidRight - kLiquidLeft;
-double get kLiquidTopY => kCapBotY + 22.0;
+double get kLiquidTopY => kCapBotY + 19.0;
 double get kMouthEntryY => kCapBotY + 4.0;
-double get kLiquidBotY => kBodyBotY + kTR - 12;
+double get kLiquidBotY => kBodyBotY + kTR - 14;
 
 // Widget toplam yüksekliği
 // Alt U'nun en altı: SVG'de y=18197.8 → kTH
@@ -95,17 +96,118 @@ const double kRowGap = 18.0;
 
 double get kStageW => (kWidgetW * 5) + (kTubeGap * 4) + 12.0;
 double get kStageH => (kWidgetH * 4) + (kRowGap * 3) + 18.0;
+
+class _ResolvedStageLayout {
+  final StageLayout modeLayout;
+  final List<List<int>> rows;
+  final List<double> rowTopPaddings;
+  final List<StageTubePosition> positions;
+  final double tubeGap;
+  final double rowGap;
+  final double topOffset;
+  final double width;
+  final double height;
+
+  const _ResolvedStageLayout({
+    required this.modeLayout,
+    required this.rows,
+    required this.rowTopPaddings,
+    required this.positions,
+    required this.tubeGap,
+    required this.rowGap,
+    required this.topOffset,
+    required this.width,
+    required this.height,
+  });
+}
+
+_ResolvedStageLayout resolveStageLayout({
+  required StageLayout? layout,
+  required int tubeCount,
+}) {
+  final effective = layout ?? StageLayout.standardForTubeCount(tubeCount);
+
+  if (effective.mode == StageLayoutMode.manual &&
+      effective.positions.isNotEmpty) {
+    final positions = effective.positions
+        .where((p) => p.index >= 0 && p.index < tubeCount)
+        .toList(growable: false);
+
+    final maxRight = positions.isEmpty
+        ? kWidgetW
+        : positions.map((p) => p.x + kWidgetW).reduce(max);
+    final maxBottom = positions.isEmpty
+        ? kWidgetH
+        : positions.map((p) => p.y + kWidgetH).reduce(max);
+
+    return _ResolvedStageLayout(
+      modeLayout: effective,
+      rows: const [],
+      rowTopPaddings: const [],
+      positions: positions,
+      tubeGap: effective.tubeGap,
+      rowGap: effective.rowGap,
+      topOffset: effective.topOffset,
+      width: max((effective.canvasWidth ?? maxRight) + 12.0, kWidgetW + 12.0),
+      height: max(
+          (effective.canvasHeight ?? maxBottom) + effective.topOffset + 18.0,
+          kWidgetH + 18.0),
+    );
+  }
+
+  var rows = effective.rows
+      .map((row) => row
+          .where((idx) => idx >= 0 && idx < tubeCount)
+          .toList(growable: false))
+      .where((row) => row.isNotEmpty)
+      .toList(growable: false);
+
+  if (rows.isEmpty) {
+    rows = StageLayout.standardForTubeCount(tubeCount).rows;
+  }
+
+  final rowTopPaddings = List<double>.generate(
+    rows.length,
+    (i) =>
+        i < effective.rowTopPaddings.length ? effective.rowTopPaddings[i] : 0.0,
+    growable: false,
+  );
+
+  final maxRowCount = rows.fold<int>(0, (m, row) => max(m, row.length));
+  final width = (maxRowCount * kWidgetW) +
+      (max(0, maxRowCount - 1) * effective.tubeGap) +
+      12.0;
+  final totalPads = rowTopPaddings.fold<double>(0.0, (a, b) => a + b);
+  final height = effective.topOffset +
+      (rows.length * kWidgetH) +
+      totalPads +
+      (max(0, rows.length - 1) * effective.rowGap) +
+      18.0;
+
+  return _ResolvedStageLayout(
+    modeLayout: effective,
+    rows: rows,
+    rowTopPaddings: rowTopPaddings,
+    positions: const [],
+    tubeGap: effective.tubeGap,
+    rowGap: effective.rowGap,
+    topOffset: effective.topOffset,
+    width: width,
+    height: height,
+  );
+}
+
 const Duration kPourDuration = Duration(milliseconds: 1800);
 
 const List<Map<String, dynamic>> kColors = [
-  // 🎯 ANA RENKLER (SAF - TEK)
+  // 🎯 ANA RENKLER (SAF - TEK) — index 0..4
   {'name': 'Kırmızı', 'fill': Color(0xFFFF0000)},
   {'name': 'Turuncu', 'fill': Color(0xFFFF7A00)},
   {'name': 'Sarı', 'fill': Color(0xFFFFFF00)},
   {'name': 'Yeşil', 'fill': Color(0xFF00C853)},
   {'name': 'Mavi', 'fill': Color(0xFF0000FF)},
 
-  // ⚡ UÇUK / NEON / FARKLI RENKLER
+  // ⚡ UÇUK / NEON / FARKLI RENKLER — index 5..10
   {'name': 'Fuşya', 'fill': Color(0xFFFF00FF)},
   {'name': 'Neon Yeşil', 'fill': Color.fromARGB(255, 76, 252, 45)},
   {'name': 'Camgöbeği', 'fill': Color(0xFF00FFFF)},
@@ -113,9 +215,32 @@ const List<Map<String, dynamic>> kColors = [
   {'name': 'Pembe', 'fill': Color(0xFFFF1493)},
   {'name': 'Açık Mor (Neon)', 'fill': Color(0xFFB266FF)},
 
-  // ⚫⚪ KONTRAST RENKLER
+  // ⚫⚪ KONTRAST RENKLER — index 11..12
   {'name': 'Beyaz', 'fill': Color(0xFFFFFFFF)},
   {'name': 'Siyah', 'fill': Color(0xFF000000)},
+
+  // 🆕 YENİ RENKLER — index 13..17
+  // Mevcut paletten en uzak: koyu zeytin, altın/amber, derin teal, kızıl kahve, çilek/mercan
+  {
+    'name': 'Zeytin',
+    'fill': Color(0xFF8BC34A)
+  }, // sarı-yeşil arası, mevcut hiçbiriyle çakışmıyor
+  {
+    'name': 'Amber',
+    'fill': Color(0xFFFFAB00)
+  }, // koyu sarı-turuncu arası; mevcut turuncu ve sarıdan belirgin farklı ton
+  {
+    'name': 'Teal',
+    'fill': Color(0xFF00897B)
+  }, // koyu yeşil-mavi; camgöbeği ve yeşilden çok uzak
+  {
+    'name': 'Kiremit',
+    'fill': Color(0xFFBF360C)
+  }, // koyu kırmızı-turuncu; kırmızıdan ve turuncudan belirgin farklı
+  {
+    'name': 'Leylak',
+    'fill': Color(0xFF7B1FA2)
+  }, // koyu mor; açık mor (neon) ve maviden çok uzak
 ];
 
 // _MapTheme ve _themeForMap kaldırıldı — MapTheme artık map_theme.dart'tan geliyor.
@@ -426,6 +551,21 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   bool get _canBuyJoker => _coins >= _jokerCost;
 
+  _ResolvedStageLayout get _stageLayout => resolveStageLayout(
+        layout: _preset?.layout,
+        tubeCount: _tubes.length,
+      );
+
+  Future<void> _returnToMapPage() async {
+    await _persistLevelState();
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => MapPage(mapNumber: widget.mapNumber),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -455,12 +595,26 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (!mounted) return;
 
     if (saved != null && saved.tubes.isNotEmpty) {
-      _applyLevelState(
-        tubes: saved.tubes,
-        lockedAdTubeIndex: saved.lockedAdTubeIndex,
-        adTubeUnlocked: saved.adTubeUnlocked,
-        coinsValue: saved.coins,
-      );
+      // Preset ile kayıtlı state tüp sayısı uyuşmuyorsa sıfırla.
+      // Bu, lockedAdTubeIndex kayması ve renk index hataları yaratır.
+      final presetTubeCount = PuzzlePresets.getOrNull(
+        mapNumber: widget.mapNumber,
+        levelId: widget.level,
+      )?.tubes.length;
+      final savedTubeCount = saved.tubes.length;
+      final countMismatch =
+          presetTubeCount != null && savedTubeCount != presetTubeCount;
+
+      if (countMismatch) {
+        _reset(coinsOverride: syncedCoins);
+      } else {
+        _applyLevelState(
+          tubes: saved.tubes,
+          lockedAdTubeIndex: saved.lockedAdTubeIndex,
+          adTubeUnlocked: saved.adTubeUnlocked,
+          coinsValue: saved.coins,
+        );
+      }
     } else {
       _reset(coinsOverride: syncedCoins);
     }
@@ -518,6 +672,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _tubes = tubes
         .map((t) => List<int>.of(t, growable: true))
         .toList(growable: true);
+    // lockedAdTubeIndex'in geçerli tubes aralığında olduğundan emin ol.
     _lockedAdTubeIndex = lockedAdTubeIndex.clamp(0, _tubes.length - 1);
     _activePlans.clear();
     _selected = null;
@@ -538,9 +693,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   void _reset({int? coinsOverride, bool clearSavedState = true}) {
     final initialTubes = _buildInitialTubes();
-    final initialLockedAdTubeIndex =
-        (_preset?.lockedAdTubeIndex ?? (initialTubes.length - 1))
-            .clamp(0, initialTubes.length - 1);
+    // Preset'ten gelen lockedAdTubeIndex tubes listesi içinde kalmalı.
+    // Eğer preset yoksa son tüp reklam tüpü olsun.
+    final rawAdIdx = _preset?.lockedAdTubeIndex ?? (initialTubes.length - 1);
+    final initialLockedAdTubeIndex = rawAdIdx.clamp(0, initialTubes.length - 1);
 
     _applyLevelState(
       tubes: initialTubes,
@@ -1738,7 +1894,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return PopScope(
         canPop: false,
         onPopInvokedWithResult: (_, __) {
-          _lowerLevel();
+          _returnToMapPage();
         },
         child: Scaffold(
           backgroundColor: _theme.bgDark,
@@ -1767,9 +1923,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.topCenter,
                                         child: SizedBox(
-                                          width: kStageW,
-                                          height: kStageH,
+                                          width: _stageLayout.width,
+                                          height: _stageLayout.height,
                                           child: _TubeStage(
+                                            stageLayout: _stageLayout,
                                             tubes: _tubes,
                                             selected: _selected,
                                             activePlans: _activePlans,
@@ -1808,7 +1965,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                         borderColor: Colors.white
                                             .withValues(alpha: 0.18),
                                         iconColor: Colors.white,
-                                        onTap: _lowerLevel,
+                                        onTap: _returnToMapPage,
                                       ),
                                       const SizedBox(width: 20),
                                       _LevelIconBtn(
@@ -2095,6 +2252,41 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                           blurRadius: 12,
                         ),
                       ],
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () async {
+                        await _playClick();
+                        await _vibrateTap();
+                        if (!mounted) return;
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsPage(),
+                          ),
+                        );
+                      },
+                      child: Ink(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.14),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.settings_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -2446,6 +2638,7 @@ class _TutorialStep {
 }
 
 class _TubeStage extends StatefulWidget {
+  final _ResolvedStageLayout stageLayout;
   final List<List<int>> tubes;
   final int? selected;
   final List<_TransferPlan> activePlans;
@@ -2461,6 +2654,7 @@ class _TubeStage extends StatefulWidget {
   final int? tutorialToIdx;
 
   const _TubeStage({
+    required this.stageLayout,
     required this.tubes,
     required this.selected,
     required this.activePlans,
@@ -2694,9 +2888,44 @@ class _TubeStageState extends State<_TubeStage> {
       children: [
         for (final idx in indices) ...[
           _tubeItem(idx, topPadding: topPadding),
-          if (idx != indices.last) const SizedBox(width: kTubeGap),
+          if (idx != indices.last) SizedBox(width: widget.stageLayout.tubeGap),
         ],
       ],
+    );
+  }
+
+  Widget _buildRowsLayout() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(height: widget.stageLayout.topOffset),
+        for (int i = 0; i < widget.stageLayout.rows.length; i++) ...[
+          _row(
+            widget.stageLayout.rows[i],
+            topPadding: widget.stageLayout.rowTopPaddings[i],
+          ),
+          if (i != widget.stageLayout.rows.length - 1)
+            SizedBox(height: widget.stageLayout.rowGap),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildManualLayout() {
+    return SizedBox(
+      width: widget.stageLayout.width,
+      height: widget.stageLayout.height,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (final pos in widget.stageLayout.positions)
+            Positioned(
+              left: pos.x,
+              top: pos.y + widget.stageLayout.topOffset,
+              child: _tubeItem(pos.index),
+            ),
+        ],
+      ),
     );
   }
 
@@ -2708,49 +2937,9 @@ class _TubeStageState extends State<_TubeStage> {
         Positioned.fill(
           child: Align(
             alignment: Alignment.topCenter,
-            child: Builder(
-              builder: (context) {
-                final count = widget.tubes.length;
-                final rows = <List<int>>[];
-                int cursor = 0;
-
-                if (cursor < count) {
-                  final take = min(4, count - cursor);
-                  rows.add(List<int>.generate(take, (i) => cursor + i));
-                  cursor += take;
-                }
-
-                if (cursor < count) {
-                  final take = min(5, count - cursor);
-                  rows.add(List<int>.generate(take, (i) => cursor + i));
-                  cursor += take;
-                }
-
-                if (cursor < count) {
-                  final take = min(3, count - cursor);
-                  rows.add(List<int>.generate(take, (i) => cursor + i));
-                  cursor += take;
-                }
-
-                if (cursor < count) {
-                  rows.add(
-                      List<int>.generate(count - cursor, (i) => cursor + i));
-                }
-
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (int i = 0; i < rows.length; i++) ...[
-                      _row(
-                        rows[i],
-                        topPadding: i >= 2 ? 4 : 0,
-                      ),
-                      if (i != rows.length - 1) const SizedBox(height: kRowGap),
-                    ],
-                  ],
-                );
-              },
-            ),
+            child: widget.stageLayout.modeLayout.mode == StageLayoutMode.manual
+                ? _buildManualLayout()
+                : _buildRowsLayout(),
           ),
         ),
         // Paralel animasyonlar — her aktif plan için ayrı FlyingTube
@@ -3111,7 +3300,7 @@ class _FlyingTubeState extends State<_FlyingTube>
 // Seçili tüp zaten sahnede -15 px yukarı kalkmış görünüyor.
 // FlyingTube da aynı kalkık pozisyondan başlamalı ki
 // önce aşağı inip sonra hedefe gitmeye çalışmasın.
-    final liftedFromPos = fromPos;
+    final liftedFromPos = fromPos.translate(0, -15.0);
     final targetLip = targetMouthEntry.translate(0, -_extraHoverLift);
 
     final fromMidX = liftedFromPos.dx + (kWidgetW / 2);
@@ -3421,7 +3610,7 @@ class _TubeWidget extends StatelessWidget {
               child: IgnorePointer(
                 child: SvgPicture.asset(
                   kTubeSvgAsset,
-                  fit: BoxFit.fill,
+                  fit: BoxFit.contain,
                 ),
               ),
             ),
@@ -3663,7 +3852,8 @@ class _LiquidPainter extends CustomPainter {
       final layer = layers[i];
       final vBot = accum;
       final vTop = accum + layer.volume;
-      final fill = kColors[layer.colorIdx]['fill'] as Color;
+      final safeIdx = layer.colorIdx.clamp(0, kColors.length - 1);
+      final fill = kColors[safeIdx]['fill'] as Color;
       final isTop = i == layers.length - 1;
 
       final bandPath = _band(vBot, vTop, tilt, isTop ? slosh : slosh * 0.45);
