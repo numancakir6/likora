@@ -511,7 +511,16 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   final Map<int, int> _celebratingDoneTubes = <int, int>{};
 
   // Geri alma geçmişi
-  final List<({List<List<int>> tubes, int fromIdx, int toIdx})> _history = [];
+  final List<
+      ({
+        List<List<int>> tubes,
+        List<int> visibleLayerCounts,
+        int fromIdx,
+        int toIdx,
+      })> _history = [];
+
+  late List<int> _visibleLayerCounts;
+  final Map<int, int> _blindRevealFlashTicks = <int, int>{};
   // Geri alma animasyonu — hangi tüpler sloshing yapıyor
   final Map<int, int> _undoSloshingTubes = {}; // tubeIdx → colorIdx
 
@@ -614,6 +623,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           adTubeUnlocked: saved.adTubeUnlocked,
           coinsValue: saved.coins,
         );
+        await _restoreBlindVisibilityState();
       }
     } else {
       _reset(coinsOverride: syncedCoins);
@@ -635,8 +645,103 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   bool get _showLockedAdTube => !_adTubeUnlocked;
+  bool get _blindModeEnabled => widget.mapNumber == 2;
+
+  String get _blindVisibilityPrefsKey =>
+      'likora_blind_visibility_${widget.mapNumber}_${widget.level}';
+
   bool _isLockedAdTubeIndex(int idx) =>
       _showLockedAdTube && idx == _lockedAdTubeIndex;
+
+  List<int> _defaultVisibleLayerCountsFor(List<List<int>> tubes) {
+    if (!_blindModeEnabled) {
+      return List<int>.generate(
+        tubes.length,
+        (i) => tubes[i].length,
+        growable: true,
+      );
+    }
+
+    return List<int>.generate(
+      tubes.length,
+      (i) => tubes[i].isEmpty ? 0 : 1,
+      growable: true,
+    );
+  }
+
+  List<int> _normalizeVisibleLayerCounts(
+    List<int>? raw,
+    List<List<int>> tubes,
+  ) {
+    final fallback = _defaultVisibleLayerCountsFor(tubes);
+    if (raw == null || raw.length != tubes.length) return fallback;
+
+    return List<int>.generate(
+      tubes.length,
+      (i) => raw[i].clamp(0, tubes[i].length),
+      growable: true,
+    );
+  }
+
+  Future<void> _restoreBlindVisibilityState() async {
+    if (!_blindModeEnabled) {
+      _visibleLayerCounts = _defaultVisibleLayerCountsFor(_tubes);
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList(_blindVisibilityPrefsKey);
+    final parsed =
+        saved?.map((e) => int.tryParse(e) ?? 0).toList(growable: true);
+
+    _visibleLayerCounts = _normalizeVisibleLayerCounts(parsed, _tubes);
+  }
+
+  Future<void> _persistBlindVisibilityState() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!_blindModeEnabled) {
+      await prefs.remove(_blindVisibilityPrefsKey);
+      return;
+    }
+
+    await prefs.setStringList(
+      _blindVisibilityPrefsKey,
+      _visibleLayerCounts.map((e) => e.toString()).toList(growable: false),
+    );
+  }
+
+  Future<void> _clearBlindVisibilityState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_blindVisibilityPrefsKey);
+  }
+
+  void _triggerBlindRevealFlash(int idx) {
+    final nextTick = (_blindRevealFlashTicks[idx] ?? 0) + 1;
+    setState(() {
+      _blindRevealFlashTicks[idx] = nextTick;
+    });
+  }
+
+  void _updateBlindVisibilityAfterPour(int from, int to) {
+    if (!_blindModeEnabled) return;
+
+    final oldFromVisible = _visibleLayerCounts[from];
+
+    if (_tubes[from].isEmpty) {
+      _visibleLayerCounts[from] = 0;
+    } else {
+      // Kaynak tüpte sadece yeni üst katman açılsın.
+      _visibleLayerCounts[from] = 1;
+    }
+
+    // Hedef tüp oyun içinde sıvı aldıysa açık kalsın.
+    _visibleLayerCounts[to] = _tubes[to].length;
+
+    if (_visibleLayerCounts[from] > oldFromVisible) {
+      _triggerBlindRevealFlash(from);
+    }
+  }
 
   // Hangi tüpler şu an aktif animasyonda meşgul
   Set<int> get _busyTubes {
@@ -672,6 +777,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _tubes = tubes
         .map((t) => List<int>.of(t, growable: true))
         .toList(growable: true);
+    _visibleLayerCounts = _defaultVisibleLayerCountsFor(_tubes);
     // lockedAdTubeIndex'in geçerli tubes aralığında olduğundan emin ol.
     _lockedAdTubeIndex = lockedAdTubeIndex.clamp(0, _tubes.length - 1);
     _activePlans.clear();
@@ -707,6 +813,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     if (clearSavedState) {
       PlayerProgress.clearInProgressLevelState(widget.mapNumber, widget.level);
+      _clearBlindVisibilityState();
     }
   }
 
@@ -715,6 +822,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (_gameWon) {
       await PlayerProgress.clearInProgressLevelState(
           widget.mapNumber, widget.level);
+      await _clearBlindVisibilityState();
       return;
     }
 
@@ -726,6 +834,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       adTubeUnlocked: _adTubeUnlocked,
       coinsValue: _coins,
     );
+    await _persistBlindVisibilityState();
   }
 
   String _canonicalBoardSignature(
@@ -1526,6 +1635,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     // Hamleyi geçmişe kaydet (doPour öncesi snapshot)
     _history.add((
       tubes: _tubes.map((t) => List<int>.from(t)).toList(),
+      visibleLayerCounts: List<int>.from(_visibleLayerCounts),
       fromIdx: from,
       toIdx: to,
     ));
@@ -1558,6 +1668,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     Future.delayed(kPourDuration, () {
       if (!mounted) return;
 
+      _updateBlindVisibilityAfterPour(from, to);
+
       final newlyDone = <int, int>{};
       for (final i in [from, to]) {
         if (!_isLockedAdTubeIndex(i) && isTubeDone(_tubes[i])) {
@@ -1570,6 +1682,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         _activePlans.remove(plan);
         _gameWon = didWin;
       });
+      _persistLevelState();
 
       if (_activePlans.isEmpty) {
         SfxService.stopWater();
@@ -1620,9 +1733,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     setState(() {
       _tubes = last.tubes;
+      _visibleLayerCounts = List<int>.from(last.visibleLayerCounts);
       _selected = null;
       _gameWon = false;
       _commandQueue.clear();
+      _blindRevealFlashTicks.remove(last.fromIdx);
+      _blindRevealFlashTicks.remove(last.toIdx);
       // Etkilenen tüplere slosh animasyonu ver
       _undoSloshingTubes[last.fromIdx] = fromColor;
       _undoSloshingTubes[last.toIdx] = toColor;
@@ -1944,6 +2060,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                                 _tutorialStepIndex,
                                             tutorialFromIdx: _tutorialFromIdx,
                                             tutorialToIdx: _tutorialToIdx,
+                                            blindMode: _blindModeEnabled,
+                                            visibleLayerCounts:
+                                                _visibleLayerCounts,
+                                            blindRevealFlashTicks:
+                                                _blindRevealFlashTicks,
                                           ),
                                         ),
                                       ),
@@ -2652,6 +2773,9 @@ class _TubeStage extends StatefulWidget {
   final int tutorialStepIndex;
   final int? tutorialFromIdx;
   final int? tutorialToIdx;
+  final bool blindMode;
+  final List<int> visibleLayerCounts;
+  final Map<int, int> blindRevealFlashTicks;
 
   const _TubeStage({
     required this.stageLayout,
@@ -2668,6 +2792,9 @@ class _TubeStage extends StatefulWidget {
     this.tutorialStepIndex = 0,
     this.tutorialFromIdx,
     this.tutorialToIdx,
+    this.blindMode = false,
+    this.visibleLayerCounts = const [],
+    this.blindRevealFlashTicks = const {},
   });
 
   @override
@@ -2802,6 +2929,9 @@ class _TubeStageState extends State<_TubeStage> {
             pourProgress: incomingPhase,
             bubbleBurst: receiveBubbleBurst,
             receiveFlow: receiveFlow,
+            blindMode: widget.blindMode,
+            visibleLayerCount: widget.visibleLayerCounts[idx],
+            revealGlowTick: widget.blindRevealFlashTicks[idx] ?? 0,
           );
         },
       );
@@ -2823,6 +2953,9 @@ class _TubeStageState extends State<_TubeStage> {
             bubbleBurst: bubble,
             incomingColorIdx: null,
             incomingVolume: 0.0,
+            blindMode: widget.blindMode,
+            visibleLayerCount: widget.visibleLayerCounts[idx],
+            revealGlowTick: widget.blindRevealFlashTicks[idx] ?? 0,
           );
         },
       );
@@ -2832,6 +2965,9 @@ class _TubeStageState extends State<_TubeStage> {
         isSelected: showSelected,
         incomingColorIdx: null,
         incomingVolume: 0.0,
+        blindMode: widget.blindMode,
+        visibleLayerCount: widget.visibleLayerCounts[idx],
+        revealGlowTick: widget.blindRevealFlashTicks[idx] ?? 0,
       );
     }
 
@@ -2951,6 +3087,11 @@ class _TubeStageState extends State<_TubeStage> {
             getAnchor: _anchorPos,
             getRealTargetMouth: _realTargetMouthPos,
             getRealTargetSurface: _realTargetSurfacePos,
+            blindMode: widget.blindMode,
+            visibleLayerCount: plan.fromSnapshot.isEmpty
+                ? 0
+                : min(1, plan.fromSnapshot.length),
+            revealGlowTick: 0,
           ),
       ],
     );
@@ -3188,6 +3329,9 @@ class _FlyingTube extends StatefulWidget {
   final Offset? Function(int idx, Offset local) getAnchor;
   final Offset? Function(int idx) getRealTargetMouth;
   final Offset? Function(int idx, double units) getRealTargetSurface;
+  final bool blindMode;
+  final int visibleLayerCount;
+  final int revealGlowTick;
 
   const _FlyingTube({
     super.key,
@@ -3196,6 +3340,9 @@ class _FlyingTube extends StatefulWidget {
     required this.getAnchor,
     required this.getRealTargetMouth,
     required this.getRealTargetSurface,
+    this.blindMode = false,
+    this.visibleLayerCount = kCap,
+    this.revealGlowTick = 0,
   });
 
   @override
@@ -3465,6 +3612,8 @@ class _FlyingTubeState extends State<_FlyingTube>
                 tilt: bottleAngle,
                 slosh: sourceSlosh,
                 bubbleBurst: sourceBubbleBurst,
+                blindMode: widget.blindMode,
+                visibleLayerCount: widget.visibleLayerCount,
               ),
             ),
           ],
@@ -3558,6 +3707,9 @@ class _TubeWidget extends StatelessWidget {
   final double pourProgress;
   final double bubbleBurst;
   final double receiveFlow;
+  final bool blindMode;
+  final int visibleLayerCount;
+  final int revealGlowTick;
 
   const _TubeWidget({
     required this.tube,
@@ -3571,6 +3723,9 @@ class _TubeWidget extends StatelessWidget {
     this.pourProgress = 0.0,
     this.bubbleBurst = 0.0,
     this.receiveFlow = 0.0,
+    this.blindMode = false,
+    this.visibleLayerCount = kCap,
+    this.revealGlowTick = 0,
   });
 
   Alignment _pivotAlignment() {
@@ -3604,6 +3759,9 @@ class _TubeWidget extends StatelessWidget {
                 pourProgress: pourProgress,
                 bubbleBurst: bubbleBurst,
                 receiveFlow: receiveFlow,
+                blindMode: blindMode,
+                visibleLayerCount: visibleLayerCount,
+                revealGlowTick: revealGlowTick,
               ),
             ),
             Positioned.fill(
@@ -3665,6 +3823,9 @@ class _LiquidPainter extends CustomPainter {
   final double pourProgress;
   final double bubbleBurst;
   final double receiveFlow;
+  final bool blindMode;
+  final int visibleLayerCount;
+  final int revealGlowTick;
 
   const _LiquidPainter({
     required this.tube,
@@ -3677,6 +3838,9 @@ class _LiquidPainter extends CustomPainter {
     required this.pourProgress,
     required this.bubbleBurst,
     required this.receiveFlow,
+    required this.revealGlowTick,
+    this.blindMode = false,
+    this.visibleLayerCount = kCap,
   });
 
   // İç alan sınırları
@@ -3796,14 +3960,24 @@ class _LiquidPainter extends CustomPainter {
       ..quadraticBezierTo(_il + _iw / 2, s.cY, _ir, s.rY);
   }
 
+  // blindMode=false → normal (ardışık aynı renk birleşir)
+  // blindMode=true  → her eleman ayrı katman (alt katmanlar gizlensin diye)
   List<_VisualLayer> _buildLayers() {
     final layers = <_VisualLayer>[];
-    for (final c in tube) {
-      if (layers.isNotEmpty && layers.last.colorIdx == c) {
-        final l = layers.removeLast();
-        layers.add(l.copyWith(volume: l.volume + 1));
-      } else {
+
+    if (blindMode) {
+      // Blind modda her elemanı ayrı tut — birleştirme
+      for (final c in tube) {
         layers.add(_VisualLayer(colorIdx: c, volume: 1));
+      }
+    } else {
+      for (final c in tube) {
+        if (layers.isNotEmpty && layers.last.colorIdx == c) {
+          final l = layers.removeLast();
+          layers.add(l.copyWith(volume: l.volume + 1));
+        } else {
+          layers.add(_VisualLayer(colorIdx: c, volume: 1));
+        }
       }
     }
 
@@ -3822,7 +3996,9 @@ class _LiquidPainter extends CustomPainter {
       final cur = layers.fold<double>(0, (s, e) => s + e.volume);
       final add = min(incomingVolume, kCap - cur);
       if (add > 0.0001) {
-        if (layers.isNotEmpty && layers.last.colorIdx == incomingColorIdx) {
+        if (!blindMode &&
+            layers.isNotEmpty &&
+            layers.last.colorIdx == incomingColorIdx) {
           final l = layers.removeLast();
           layers.add(l.copyWith(volume: l.volume + add));
         } else {
@@ -3853,8 +4029,15 @@ class _LiquidPainter extends CustomPainter {
       final vBot = accum;
       final vTop = accum + layer.volume;
       final safeIdx = layer.colorIdx.clamp(0, kColors.length - 1);
-      final fill = kColors[safeIdx]['fill'] as Color;
       final isTop = i == layers.length - 1;
+      final safeVisibleCount = visibleLayerCount.clamp(0, layers.length);
+      final hiddenBelow =
+          blindMode ? max(0, layers.length - safeVisibleCount) : 0;
+      final isHidden = blindMode && i < hiddenBelow;
+
+      final fill = isHidden
+          ? const Color(0xFF2A2535)
+          : kColors[safeIdx]['fill'] as Color;
 
       final bandPath = _band(vBot, vTop, tilt, isTop ? slosh : slosh * 0.45);
       canvas.drawPath(bandPath, Paint()..color = fill);
@@ -3874,6 +4057,73 @@ class _LiquidPainter extends CustomPainter {
             end: Alignment.bottomCenter,
           ).createShader(liquidRect),
       );
+
+      final revealLayerIndex = blindMode && safeVisibleCount > 0
+          ? max(0, layers.length - safeVisibleCount)
+          : -1;
+      final isRevealLayer = blindMode && !isHidden && i == revealLayerIndex;
+
+      if (isRevealLayer && revealGlowTick > 0) {
+        final revealPulse = 1.0;
+        canvas.drawPath(
+          bandPath,
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.18 * revealPulse)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0),
+        );
+        canvas.drawPath(
+          bandPath,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0
+            ..color = Colors.white.withValues(alpha: 0.24 * revealPulse),
+        );
+      }
+
+      // blindMode: gri katmanlar arası ince ayırıcı çizgi + ortasına '?'
+      if (isHidden) {
+        // Katmanlar arası ince çizgi (üst kenar)
+        if (i < layers.length - 2) {
+          // üstteki katmanın alt yüzeyi = bu katmanın üst yüzeyi
+          final divSurface = _surface(vTop, tilt, slosh * 0.2);
+          canvas.drawPath(
+            Path()
+              ..moveTo(_il, divSurface.lY)
+              ..quadraticBezierTo(
+                  _il + _iw / 2, divSurface.cY, _ir, divSurface.rY),
+            Paint()
+              ..color = Colors.white.withValues(alpha: 0.18)
+              ..strokeWidth = 0.8
+              ..style = PaintingStyle.stroke
+              ..strokeCap = StrokeCap.round,
+          );
+        }
+
+        // Katmanın ortasına '?' çiz
+        final midVol = (vBot + vTop) / 2;
+        final midSurface = _surface(midVol, 0, 0);
+        final midY = midSurface.cY;
+        final midX = (_il + _ir) / 2;
+
+        final textPainter = TextPainter(
+          text: const TextSpan(
+            text: '?',
+            style: TextStyle(
+              color: Color(0xAAFFFFFF),
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              height: 1.0,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        textPainter.paint(
+          canvas,
+          Offset(midX - textPainter.width / 2, midY - textPainter.height / 2),
+        );
+      }
+
       accum = vTop;
     }
 
@@ -3969,5 +4219,8 @@ class _LiquidPainter extends CustomPainter {
       old.splash != splash ||
       old.pourProgress != pourProgress ||
       old.bubbleBurst != bubbleBurst ||
-      old.receiveFlow != receiveFlow;
+      old.receiveFlow != receiveFlow ||
+      old.blindMode != blindMode ||
+      old.visibleLayerCount != visibleLayerCount ||
+      old.revealGlowTick != revealGlowTick;
 }

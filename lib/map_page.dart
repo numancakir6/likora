@@ -204,6 +204,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const int _maxMapCount = 15;
   static const double _swipeVelocityThreshold = 250;
   static const double _swipeDistanceThreshold = 24;
+  static const double _nodeWidgetSize = 72;
+  static const double _nodeHalfSize = _nodeWidgetSize / 2;
+  static const double _nodeMinCenterDistance = 80;
 
   static final Map<int, Set<int>> _mapCompletedLevels = {
     for (var i = 1; i <= _maxMapCount; i++) i: <int>{},
@@ -332,10 +335,99 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     return mapNumber <= PlayerProgress.latestUnlockedMap;
   }
 
-  Map<int, Offset> _levelPositions(double w, double h) => {
-        for (final node in _layout.nodes)
-          node.id: Offset(w * node.x, h * node.y),
-      };
+  Map<int, Offset> _levelPositions(double w, double h) {
+    final raw = <int, Offset>{
+      for (final node in _layout.nodes) node.id: Offset(w * node.x, h * node.y),
+    };
+
+    final adjusted = <int, Offset>{
+      for (final entry in raw.entries) entry.key: entry.value
+    };
+
+    final rows = <List<int>>[];
+    final sortedNodes = _layout.nodes.toList()
+      ..sort((a, b) => a.y.compareTo(b.y));
+    for (final node in sortedNodes) {
+      if (rows.isEmpty) {
+        rows.add([node.id]);
+        continue;
+      }
+
+      final currentRow = rows.last;
+      final currentAverageY = currentRow
+              .map((id) => _layout.nodes.firstWhere((n) => n.id == id).y)
+              .reduce((a, b) => a + b) /
+          currentRow.length;
+
+      if ((node.y - currentAverageY).abs() <= 0.07) {
+        currentRow.add(node.id);
+      } else {
+        rows.add([node.id]);
+      }
+    }
+
+    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      final row = rows[rowIndex]
+        ..sort((a, b) => adjusted[a]!.dx.compareTo(adjusted[b]!.dx));
+
+      final horizontalStrength = min(16.0, w * 0.026);
+      final verticalStrength = min(8.0, h * 0.013);
+      final rowSign = rowIndex.isEven ? 1.0 : -1.0;
+
+      for (var i = 0; i < row.length; i++) {
+        final id = row[i];
+        final p = adjusted[id]!;
+        final normalized =
+            row.length == 1 ? 0.0 : (i / (row.length - 1)) * 2 - 1;
+        final horizontalOffset = normalized * horizontalStrength * 0.55 +
+            rowSign * (i.isEven ? 1 : -1) * horizontalStrength * 0.22;
+        final verticalOffset = ((i % 3) - 1) * verticalStrength * 0.65;
+        adjusted[id] = Offset(p.dx + horizontalOffset, p.dy + verticalOffset);
+      }
+    }
+
+    final minX = _nodeHalfSize + 10;
+    final maxX = w - _nodeHalfSize - 10;
+    final minY = _nodeHalfSize + 10;
+    final maxY = h - _nodeHalfSize - 10;
+
+    for (var iteration = 0; iteration < 10; iteration++) {
+      for (var i = 0; i < _layout.nodes.length; i++) {
+        for (var j = i + 1; j < _layout.nodes.length; j++) {
+          final idA = _layout.nodes[i].id;
+          final idB = _layout.nodes[j].id;
+          final a = adjusted[idA]!;
+          final b = adjusted[idB]!;
+          final delta = b - a;
+          final distance = delta.distance;
+
+          if (distance == 0 || distance >= _nodeMinCenterDistance) continue;
+
+          final push = (_nodeMinCenterDistance - distance) / 2;
+          final direction = delta / distance;
+          final shift = direction * push;
+
+          adjusted[idA] = Offset(
+            (a.dx - shift.dx).clamp(minX, maxX),
+            (a.dy - shift.dy).clamp(minY, maxY),
+          );
+          adjusted[idB] = Offset(
+            (b.dx + shift.dx).clamp(minX, maxX),
+            (b.dy + shift.dy).clamp(minY, maxY),
+          );
+        }
+      }
+    }
+
+    for (final entry in adjusted.entries.toList()) {
+      adjusted[entry.key] = Offset(
+        entry.value.dx.clamp(minX, maxX),
+        entry.value.dy.clamp(minY, maxY),
+      );
+    }
+
+    return adjusted;
+  }
 
   Future<void> _navigateToLevel(int levelId) async {
     final result = await Navigator.push<GamePageResult>(
@@ -617,8 +709,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 ),
                 for (final level in _levels)
                   Positioned(
-                    left: positions[level.id]!.dx - 42,
-                    top: positions[level.id]!.dy - 42,
+                    left: positions[level.id]!.dx - _nodeHalfSize,
+                    top: positions[level.id]!.dy - _nodeHalfSize,
                     child: _StaggeredNodeEntry(
                       index: level.id - 1,
                       controller: _entryController,
@@ -851,15 +943,15 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
           return Transform.scale(scale: pulse * tapScale, child: child);
         },
         child: SizedBox(
-          width: 84,
-          height: 84,
+          width: 72,
+          height: 72,
           child: Stack(alignment: Alignment.center, children: [
             if (!isLocked)
               AnimatedBuilder(
                 animation: _pulseController,
                 builder: (_, __) {
                   final sz =
-                      isPlayable ? 84 + _pulseController.value * 18.0 : 80.0;
+                      isPlayable ? 72 + _pulseController.value * 14.0 : 68.0;
                   return Container(
                     width: sz,
                     height: sz,
@@ -879,13 +971,13 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
                 builder: (_, __) => Transform.rotate(
                   angle: _rotateController.value * 2 * pi,
                   child: CustomPaint(
-                    size: const Size(78, 78),
+                    size: const Size(68, 68),
                     painter: _OrbitRingPainter(color: glowColor),
                   ),
                 ),
               ),
             CustomPaint(
-              size: const Size(72, 72),
+              size: const Size(62, 62),
               painter: _HexBadgePainter(
                 topColor: topColor,
                 bottomColor: bottomColor,
@@ -906,14 +998,14 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
               ClipPath(
                 clipper: _HexClipper(),
                 child: Container(
-                  width: 72,
-                  height: 72,
+                  width: 62,
+                  height: 62,
                   color: Colors.black.withValues(alpha: 0.38),
                 ),
               ),
             SizedBox(
-              width: 72,
-              height: 72,
+              width: 62,
+              height: 62,
               child: Center(
                 child: isLocked
                     ? const Icon(Icons.lock_rounded,
