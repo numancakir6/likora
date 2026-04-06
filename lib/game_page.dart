@@ -251,6 +251,17 @@ const List<Map<String, dynamic>> kColors = [
   }, // koyu mor; açık mor (neon) ve maviden çok uzak
 ];
 
+const int kLavaColorIndex = 16; // Kiremit -> Map 3 lav hedef rengi
+const Color kLavaDark = Color(0xFF4A0B00);
+const Color kLavaRed = Color(0xFFC62828);
+const Color kLavaOrange = Color(0xFFFF6F00);
+const Color kLavaGlow = Color(0xFFFFD54F);
+const Color kLavaCore = Color(0xFFFFF59D);
+
+bool _isLavaColorIndex(int colorIdx) => colorIdx == kLavaColorIndex;
+Color _solidColorForIndex(int colorIdx) =>
+    kColors[colorIdx.clamp(0, kColors.length - 1).toInt()]['fill'] as Color;
+
 // _MapTheme ve _themeForMap kaldırıldı — MapTheme artık map_theme.dart'tan geliyor.
 
 // ─────────────────────────────────────────────
@@ -624,9 +635,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
   }
 
-  bool get _isCenterTubeMode => false;
+  bool get _isCenterTubeMode =>
+      (_preset?.mode ?? PuzzleMode.standard) == PuzzleMode.centerTubeCollection;
 
-  CenterTubeConfig? get _centerTubeConfig => null;
+  CenterTubeConfig? get _centerTubeConfig =>
+      _isCenterTubeMode ? _preset?.centerTube : null;
 
   int _tubeCapacityIn(List<List<int>> tubes, int idx) {
     final center = _centerTubeConfig;
@@ -2234,23 +2247,26 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       mountainLayers: _mountainLayers.map((l) => l.copyWith()).toList(),
     ));
 
-    for (int i = 0; i < count; i++) {
-      _tubes[from].removeLast();
-    }
-    _tryRefillSourceTube(from);
-
-    if (_mountainLayers.isNotEmpty &&
-        _mountainLayers.last.colorIdx == colorIdx) {
-      _mountainLayers[_mountainLayers.length - 1] =
-          _mountainLayers.last.copyWith(
-        volume: _mountainLayers.last.volume + count.toDouble(),
-      );
-    } else {
-      _mountainLayers
-          .add(_VisualLayer(colorIdx: colorIdx, volume: count.toDouble()));
-    }
-
     setState(() {
+      // Yeni liste referansı — shouldRepaint(old.tube != tube) tetiklensin
+      final updated = List<int>.from(_tubes[from]);
+      for (int i = 0; i < count; i++) {
+        updated.removeLast();
+      }
+      _tubes[from] = updated;
+      _tryRefillSourceTube(from);
+
+      if (_mountainLayers.isNotEmpty &&
+          _mountainLayers.last.colorIdx == colorIdx) {
+        _mountainLayers[_mountainLayers.length - 1] =
+            _mountainLayers.last.copyWith(
+          volume: _mountainLayers.last.volume + count.toDouble(),
+        );
+      } else {
+        _mountainLayers
+            .add(_VisualLayer(colorIdx: colorIdx, volume: count.toDouble()));
+      }
+
       _selected = null;
       _mountainFillUnits += count;
       _activePlans.add(plan);
@@ -2915,7 +2931,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 ),
               ),
               Positioned(
-                right: 20,
+                right: 0,
                 bottom: 20,
                 child: AnimatedOpacity(
                   duration: const Duration(milliseconds: 180),
@@ -2923,16 +2939,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   child: IgnorePointer(
                     ignoring: _showTutorial,
                     child: SafeArea(
-                      child: Row(
+                      child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          _TestLevelButton(
-                            enabled: !_gameWon && _activePlans.isEmpty,
-                            accentColor: _theme.accentColor,
-                            onTap: _debugCompleteLevel,
-                          ),
-                          const SizedBox(width: 12),
                           _UndoButton(
                             canUndo: _history.isNotEmpty &&
                                 _activePlans.isEmpty &&
@@ -2940,7 +2950,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                             accentColor: _theme.accentColor,
                             onTap: _undo,
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(height: 8),
                           _JokerButton(
                             enabled: !_gameWon &&
                                 _activePlans.isEmpty &&
@@ -3133,6 +3143,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           Row(
             children: [
               CoinPill(coinsValue: _coins),
+              const Spacer(),
+              _TestLevelButton(
+                enabled: !_gameWon && _activePlans.isEmpty,
+                accentColor: _theme.accentColor,
+                onTap: _debugCompleteLevel,
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -3335,14 +3351,16 @@ class _JokerButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius:
+              const BorderRadius.horizontal(left: Radius.circular(14)),
           onTap: enabled ? onTap : null,
           child: Ink(
-            width: 58,
-            height: 58,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(14)),
               border: Border.all(
                 color: canBuy
                     ? accentColor.withValues(alpha: 0.60)
@@ -3380,7 +3398,7 @@ class _JokerButton extends StatelessWidget {
                             ? Icons.auto_fix_high_rounded
                             : Icons.ondemand_video_rounded,
                         color: canBuy ? accentColor : Colors.white,
-                        size: 22,
+                        size: 18,
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -3420,14 +3438,16 @@ class _UndoButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius:
+              const BorderRadius.horizontal(left: Radius.circular(14)),
           onTap: canUndo ? onTap : null,
           child: Ink(
-            width: 52,
-            height: 52,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(14)),
               border: Border.all(
                 color: canUndo
                     ? accentColor.withValues(alpha: 0.45)
@@ -3450,7 +3470,7 @@ class _UndoButton extends StatelessWidget {
                 color: canUndo
                     ? accentColor
                     : Colors.white.withValues(alpha: 0.45),
-                size: 24,
+                size: 20,
               ),
             ),
           ),
@@ -3479,14 +3499,14 @@ class _TestLevelButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(10),
           onTap: enabled ? onTap : null,
           child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+            height: 34,
             decoration: BoxDecoration(
               color: accentColor.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: enabled
                     ? accentColor.withValues(alpha: 0.52)
@@ -3511,16 +3531,16 @@ class _TestLevelButton extends StatelessWidget {
                   color: enabled
                       ? accentColor
                       : Colors.white.withValues(alpha: 0.45),
-                  size: 21,
+                  size: 16,
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 Text(
                   'TEST',
                   style: TextStyle(
                     color: enabled
                         ? accentColor
                         : Colors.white.withValues(alpha: 0.45),
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.35,
                   ),
@@ -3655,7 +3675,9 @@ class _TubeStageState extends State<_TubeStage> {
   late List<GlobalKey> _keys;
   final GlobalKey _mountainKey = GlobalKey();
 
-  bool get _showMountainReservoir => widget.mapNumber == 3;
+  bool get _showMountainReservoir =>
+      widget.mapNumber == 3 &&
+      !widget.tubeStyles.values.contains(PuzzleTubeStyle.largeCollector);
 
   Offset? _mountainAnchorPos(Offset localAnchor) {
     final box = _mountainKey.currentContext?.findRenderObject() as RenderBox?;
@@ -3667,28 +3689,46 @@ class _TubeStageState extends State<_TubeStage> {
   }
 
   Offset? _mountainMouthPos() {
-    final box = _mountainKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return null;
-    return _mountainAnchorPos(
-        Offset(box.size.width / 2, box.size.height * 0.10));
+    final targetCtx = _mountainKey.currentContext;
+    final stageBox = context.findRenderObject() as RenderBox?;
+    final mountainBox = targetCtx?.findRenderObject() as RenderBox?;
+
+    if (targetCtx == null || stageBox == null || mountainBox == null)
+      return null;
+    if (!stageBox.hasSize || !mountainBox.hasSize) return null;
+
+    // SVG'nin ağız merkezi: üst orta
+    final localMouth = Offset(
+      mountainBox.size.width / 2,
+      mountainBox.size.height * 0.11,
+    );
+
+    return mountainBox.localToGlobal(localMouth, ancestor: stageBox);
   }
 
   Offset? _mountainSurfacePos(double units) {
-    final box = _mountainKey.currentContext?.findRenderObject() as RenderBox?;
+    final targetCtx = _mountainKey.currentContext;
     final stageBox = context.findRenderObject() as RenderBox?;
-    if (box == null || stageBox == null || !box.hasSize || !stageBox.hasSize) {
-      return null;
-    }
+    final mountainBox = targetCtx?.findRenderObject() as RenderBox?;
 
-    final fillRatio =
-        (units / max(1, widget.mountainCapacity)).clamp(0.0, 1.0).toDouble();
-    final usableBottom = box.size.height * 0.84;
-    final usableTop = box.size.height * 0.28;
-    final localY = usableBottom - (usableBottom - usableTop) * fillRatio;
-    return box.localToGlobal(
-      Offset(box.size.width / 2, localY),
-      ancestor: stageBox,
-    );
+    if (targetCtx == null || stageBox == null || mountainBox == null)
+      return null;
+    if (!stageBox.hasSize || !mountainBox.hasSize) return null;
+
+    final h = mountainBox.size.height;
+    final w = mountainBox.size.width;
+
+    final fillRatio = (units / widget.mountainCapacity).clamp(0.0, 1.0);
+
+    // İç dolgu alanı: SVG’ye daha uygun dar bölge
+    final topInset = h * 0.24;
+    final bottomInset = h * 0.12;
+    final usableHeight = h - topInset - bottomInset;
+
+    final localY = h - bottomInset - usableHeight * fillRatio;
+    final localSurface = Offset(w / 2, localY);
+
+    return mountainBox.localToGlobal(localSurface, ancestor: stageBox);
   }
 
   @override
@@ -4048,7 +4088,11 @@ class _TubeStageState extends State<_TubeStage> {
   }
 }
 
-class MountainTubeReservoir extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+// VOLKAN REZERVUARI — animasyonlu sıvı (slosh + dalga yüzeyi + katmanlar)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MountainTubeReservoir extends StatefulWidget {
   final double width;
   final double height;
   final double fillPercent;
@@ -4071,46 +4115,75 @@ class MountainTubeReservoir extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final p = fillPercent.clamp(0.0, 1.0);
+  State<MountainTubeReservoir> createState() => _MountainTubeReservoirState();
+}
 
+class _MountainTubeReservoirState extends State<MountainTubeReservoir>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  double _slosh = 0.0;
+  double _sloshVel = 0.0;
+  double _prevFill = 0.0;
+
+  static const double _sloshDecay = 0.965;
+  static const double _sloshSpring = 0.010;
+
+  @override
+  void initState() {
+    super.initState();
+    _prevFill = widget.fillPercent;
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+    _ctrl.addListener(_tick);
+  }
+
+  @override
+  void didUpdateWidget(MountainTubeReservoir old) {
+    super.didUpdateWidget(old);
+    if (widget.fillPercent > _prevFill + 0.005) {
+      final impulse = 0.20 + (widget.fillPercent - _prevFill) * 1.2;
+      _sloshVel += impulse * ((_ctrl.value > 0.5) ? 1.0 : -1.0);
+    }
+    _prevFill = widget.fillPercent;
+  }
+
+  void _tick() {
+    _sloshVel += -_sloshSpring * _slosh;
+    _sloshVel *= _sloshDecay;
+    _slosh = (_slosh + _sloshVel).clamp(-1.0, 1.0);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.removeListener(_tick);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return SizedBox(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onTap: onTap,
+        onTap: widget.onTap,
         child: Stack(
           alignment: Alignment.bottomCenter,
           children: [
             Positioned.fill(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: width * 0.15,
-                  right: width * 0.15,
-                  top: height * 0.10,
-                  bottom: height * 0.08,
-                ),
-                child: ClipPath(
-                  clipper: const _MountainReservoirClipper(),
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.white.withValues(alpha: 0.02),
-                                Colors.white.withValues(alpha: 0.00),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (p > 0.0) ..._buildLayerBands(width, height),
-                    ],
+              child: AnimatedBuilder(
+                animation: _ctrl,
+                builder: (_, __) => CustomPaint(
+                  painter: _VolcanoPainter(
+                    layers: widget.layers,
+                    capacity: widget.capacity,
+                    fillPercent: widget.fillPercent,
+                    slosh: _slosh,
+                    time: _ctrl.value,
                   ),
                 ),
               ),
@@ -4118,8 +4191,8 @@ class MountainTubeReservoir extends StatelessWidget {
             SvgPicture.asset(
               kVolcanoReservoirSvgAsset,
               fit: BoxFit.contain,
-              width: width,
-              height: height,
+              width: widget.width,
+              height: widget.height,
               alignment: Alignment.bottomCenter,
             ),
           ],
@@ -4127,48 +4200,171 @@ class MountainTubeReservoir extends StatelessWidget {
       ),
     );
   }
+}
 
-  List<Widget> _buildLayerBands(double width, double height) {
-    final total = layers.fold<double>(0.0, (sum, l) => sum + l.volume);
-    if (total <= 0.001 || capacity <= 0) return const [];
+class _VolcanoPainter extends CustomPainter {
+  final List<_VisualLayer> layers;
+  final int capacity;
+  final double fillPercent;
+  final double slosh;
+  final double time;
 
-    final usableHeight = height * 0.56;
-    final bottomInset = height * 0.15;
-    double consumed = 0.0;
-    final widgets = <Widget>[];
+  const _VolcanoPainter({
+    required this.layers,
+    required this.capacity,
+    required this.fillPercent,
+    required this.slosh,
+    required this.time,
+  });
 
-    for (final layer in layers) {
-      final ratio = (layer.volume / capacity).clamp(0.0, 1.0);
-      final bandHeight = usableHeight * ratio;
-      if (bandHeight <= 0.1) continue;
-      final bottom = bottomInset + consumed;
-      consumed += bandHeight;
+  // SVG'ye uyan volkan iç clip path'i
+  Path _clipPath(Size size) {
+    final w = size.width;
+    final h = size.height;
+    return Path()
+      ..moveTo(w * 0.19, h * 0.87)
+      ..lineTo(w * 0.385, h * 0.46)
+      ..cubicTo(w * 0.415, h * 0.36, w * 0.425, h * 0.22, w * 0.425, h * 0.10)
+      ..lineTo(w * 0.575, h * 0.10)
+      ..cubicTo(w * 0.575, h * 0.22, w * 0.585, h * 0.36, w * 0.615, h * 0.46)
+      ..lineTo(w * 0.81, h * 0.87)
+      ..close();
+  }
+
+  // Y koordinatındaki iç genişliği döndür
+  double _widthAtY(Size size, double y) {
+    final w = size.width;
+    final h = size.height;
+    final neckTopY = h * 0.10;
+    final neckBotY = h * 0.46;
+    final botY = h * 0.87;
+    final neckW = w * 0.15;
+    final shoulderW = w * 0.23;
+    final baseW = w * 0.62;
+
+    if (y <= neckTopY) return neckW;
+    if (y <= neckBotY) {
+      final t = (y - neckTopY) / (neckBotY - neckTopY);
+      return lerpDouble(neckW, shoulderW, t)!;
+    }
+    final t = (y - neckBotY) / (botY - neckBotY);
+    return lerpDouble(shoulderW, baseW, t)!;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (fillPercent <= 0.001 || layers.isEmpty || capacity <= 0) return;
+
+    final w = size.width;
+    final h = size.height;
+    final botY = h * 0.87;
+    final topY = h * 0.10;
+    final usableH = botY - topY;
+
+    canvas.save();
+    canvas.clipPath(_clipPath(size));
+
+    final totalFillH = usableH * fillPercent.clamp(0.0, 1.0);
+    final surfaceY = botY - totalFillH;
+
+    // Katmanları alta'dan üste çiz
+    double accumUnits = 0.0;
+    for (int i = 0; i < layers.length; i++) {
+      final layer = layers[i];
       final color = kColors[layer.colorIdx]['fill'] as Color;
+      final isTop = i == layers.length - 1;
 
-      widgets.add(
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: bottom,
-          height: bandHeight + 1,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  color.withValues(alpha: 0.92),
-                  color,
-                ],
-              ),
+      final layerBotY = botY - (accumUnits / capacity) * usableH;
+      accumUnits += layer.volume;
+      final layerTopY = botY - (accumUnits / capacity) * usableH;
+
+      if (isTop) {
+        // Üst katman: dalgalı yüzey
+        final iw = _widthAtY(size, surfaceY);
+        final lx = (w - iw) / 2;
+        final rx = (w + iw) / 2;
+
+        // Dalga: slosh sol-sağ asimetri + zaman ile sinüs hareketi
+        final waveAmp = iw * 0.055 * slosh;
+        final ripple = sin(time * pi * 2.0) * iw * 0.010;
+
+        final surfacePath = Path()
+          ..moveTo(lx, surfaceY + waveAmp + ripple)
+          ..cubicTo(
+            lx + iw * 0.30,
+            surfaceY + waveAmp * 0.4 + ripple,
+            rx - iw * 0.30,
+            surfaceY - waveAmp * 0.4 - ripple,
+            rx,
+            surfaceY - waveAmp - ripple,
+          )
+          ..lineTo(rx, layerBotY + 2)
+          ..lineTo(lx, layerBotY + 2)
+          ..close();
+
+        canvas.drawPath(surfacePath, Paint()..color = color);
+
+        // Yüzey parlaması
+        canvas.drawPath(
+          Path()
+            ..moveTo(lx, surfaceY + waveAmp + ripple)
+            ..cubicTo(
+              lx + iw * 0.30,
+              surfaceY + waveAmp * 0.4 + ripple,
+              rx - iw * 0.30,
+              surfaceY - waveAmp * 0.4 - ripple,
+              rx,
+              surfaceY - waveAmp - ripple,
             ),
-          ),
-        ),
-      );
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.22)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..strokeCap = StrokeCap.round,
+        );
+      } else {
+        // Alt katmanlar: düz dikdörtgen (tam genişlik, clip zaten şekli keser)
+        canvas.drawRect(
+          Rect.fromLTRB(0, layerTopY, w, layerBotY + 1),
+          Paint()..color = color,
+        );
+        // Katmanlar arası ince çizgi
+        canvas.drawLine(
+          Offset(0, layerTopY),
+          Offset(w, layerTopY),
+          Paint()
+            ..color = Colors.black.withValues(alpha: 0.20)
+            ..strokeWidth = 0.8,
+        );
+      }
     }
 
-    return widgets;
+    // Sol iç parlaklık şeridi
+    final shineRect =
+        Rect.fromLTWH(w * 0.22, surfaceY, w * 0.06, botY - surfaceY);
+    canvas.drawRect(
+      shineRect,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [
+            Colors.white.withValues(alpha: 0.12),
+            Colors.white.withValues(alpha: 0.0),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ).createShader(shineRect),
+    );
+
+    canvas.restore();
   }
+
+  @override
+  bool shouldRepaint(_VolcanoPainter old) =>
+      old.fillPercent != fillPercent ||
+      old.slosh != slosh ||
+      old.time != time ||
+      old.layers.length != layers.length ||
+      old.capacity != capacity;
 }
 
 class _MountainReservoirClipper extends CustomClipper<Path> {
@@ -4775,6 +4971,8 @@ class _LiquidStreamPainter extends CustomPainter {
     required this.flowRate,
   });
 
+  bool get _isLava => color.value == _solidColorForIndex(kLavaColorIndex).value;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (headProgress <= 0.0) return;
@@ -4782,11 +4980,7 @@ class _LiquidStreamPainter extends CustomPainter {
 
     final totalDy = end.dy - start.dy;
 
-    // Akışın ucu: start.dy → end.dy
     final headY = start.dy + totalDy * headProgress.clamp(0.0, 1.0);
-
-    // Akışın tepesi: tailProgress>0 olunca start.dy'den aşağı kayar
-    // tail, head'i asla geçemez
     final tailY = tailProgress <= 0.0
         ? start.dy
         : (start.dy + totalDy * tailProgress.clamp(0.0, 1.0))
@@ -4795,15 +4989,64 @@ class _LiquidStreamPainter extends CustomPainter {
     if (headY - tailY < 1.0) return;
 
     final thickness = lerpDouble(3.6, 7.0, flowRate)!;
+    final path = Path()
+      ..moveTo(start.dx, tailY)
+      ..lineTo(start.dx, headY);
+
+    if (_isLava) {
+      final lavaRect = Rect.fromLTRB(
+        start.dx - thickness * 1.6,
+        tailY,
+        start.dx + thickness * 1.6,
+        headY,
+      );
+
+      canvas.drawPath(
+        path,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [kLavaCore, kLavaGlow, kLavaOrange, kLavaRed, kLavaDark],
+            stops: [0.0, 0.14, 0.42, 0.78, 1.0],
+          ).createShader(lavaRect)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = thickness + 4.5
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0),
+      );
+
+      canvas.drawPath(
+        path,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [kLavaGlow, kLavaOrange, kLavaRed, kLavaDark],
+            stops: [0.0, 0.20, 0.62, 1.0],
+          ).createShader(lavaRect)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = thickness
+          ..strokeCap = StrokeCap.round,
+      );
+
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.34)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = max(1.0, thickness * 0.22)
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
+      );
+      return;
+    }
+
     final paint = Paint()
       ..color = color.withValues(alpha: 0.98)
       ..style = PaintingStyle.stroke
       ..strokeWidth = thickness
       ..strokeCap = StrokeCap.round;
-
-    final path = Path()
-      ..moveTo(start.dx, tailY)
-      ..lineTo(start.dx, headY);
 
     canvas.drawPath(path, paint);
   }
@@ -5334,28 +5577,77 @@ class _LiquidPainter extends CustomPainter {
       final currentHiddenBelow = min(hiddenBelow, max(0, layers.length - 1));
       final isHidden = blindMode && i < currentHiddenBelow;
 
-      final fill = isHidden
-          ? const Color(0xFF2A2535)
-          : kColors[safeIdx]['fill'] as Color;
+      final fill =
+          isHidden ? const Color(0xFF2A2535) : _solidColorForIndex(safeIdx);
+      final isLavaLayer = !isHidden && _isLavaColorIndex(safeIdx);
 
       final bandPath = _band(vBot, vTop, tilt, isTop ? slosh : slosh * 0.45);
-      canvas.drawPath(bandPath, Paint()..color = fill);
+      if (isLavaLayer) {
+        canvas.drawPath(
+          bandPath,
+          Paint()
+            ..shader = const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [kLavaCore, kLavaGlow, kLavaOrange, kLavaRed, kLavaDark],
+              stops: [0.0, 0.12, 0.38, 0.74, 1.0],
+            ).createShader(liquidRect),
+        );
 
-      // Işık gradyanı
-      canvas.drawPath(
-        bandPath,
-        Paint()
-          ..shader = LinearGradient(
-            colors: [
-              Colors.white.withValues(alpha: 0.05),
-              Colors.transparent,
-              Colors.black.withValues(alpha: 0.05),
-            ],
-            stops: const [0.0, 0.35, 1.0],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ).createShader(liquidRect),
-      );
+        final lavaVein = Path();
+        final topS = _surface(vTop, tilt, isTop ? slosh : slosh * 0.45);
+        final botS = _surface(vBot, tilt, slosh * 0.20);
+        final midX = (_il + _ir) / 2;
+        lavaVein
+          ..moveTo(midX - _iw * 0.20, topS.cY + 3.0)
+          ..quadraticBezierTo(midX - _iw * 0.05, (topS.cY + botS.cY) / 2,
+              midX - _iw * 0.12, botS.cY - 3.0)
+          ..moveTo(midX + _iw * 0.08, topS.cY + 5.0)
+          ..quadraticBezierTo(midX + _iw * 0.18, (topS.cY + botS.cY) / 2 + 2.0,
+              midX + _iw * 0.12, botS.cY - 5.0);
+        canvas.drawPath(
+          lavaVein,
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.14)
+            ..strokeWidth = 1.2
+            ..style = PaintingStyle.stroke
+            ..strokeCap = StrokeCap.round
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.4),
+        );
+
+        canvas.drawPath(
+          bandPath,
+          Paint()
+            ..shader = const LinearGradient(
+              colors: [
+                Color(0x22FFF8E1),
+                Colors.transparent,
+                Color(0x33000000),
+              ],
+              stops: [0.0, 0.42, 1.0],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ).createShader(liquidRect),
+        );
+      } else {
+        canvas.drawPath(bandPath, Paint()..color = fill);
+
+        // Işık gradyanı
+        canvas.drawPath(
+          bandPath,
+          Paint()
+            ..shader = LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: 0.05),
+                Colors.transparent,
+                Colors.black.withValues(alpha: 0.05),
+              ],
+              stops: const [0.0, 0.35, 1.0],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ).createShader(liquidRect),
+        );
+      }
 
       final revealLayerIndex = blindMode && safeVisibleCount > 0
           ? max(
@@ -5432,13 +5724,18 @@ class _LiquidPainter extends CustomPainter {
 
     // Üst yüzey parlaması
     if (totalVol > 0.0001) {
+      final topColorIdx = layers.isNotEmpty ? layers.last.colorIdx : -1;
+      final topIsLava = _isLavaColorIndex(topColorIdx);
       canvas.drawPath(
         _surfaceLine(totalVol, tilt, slosh),
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.18)
-          ..strokeWidth = 1.0
+          ..color = (topIsLava ? kLavaCore : Colors.white)
+              .withValues(alpha: topIsLava ? 0.34 : 0.18)
+          ..strokeWidth = topIsLava ? 1.4 : 1.0
           ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round,
+          ..strokeCap = StrokeCap.round
+          ..maskFilter =
+              topIsLava ? const MaskFilter.blur(BlurStyle.normal, 1.2) : null,
       );
 
       // Sıçrama efekti
