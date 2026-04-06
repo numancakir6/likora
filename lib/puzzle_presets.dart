@@ -122,22 +122,34 @@ class StageLayout {
 
   factory StageLayout.standardForTubeCount(int tubeCount) {
     final safeCount = tubeCount < 1 ? 1 : tubeCount;
-    if (safeCount <= 3) {
-      return StageLayout.rows(rows: [List<int>.generate(safeCount, (i) => i)]);
+
+    if (safeCount <= 4) {
+      return StageLayout.rows(
+        rows: [List<int>.generate(safeCount, (i) => i)],
+      );
     }
 
+    final maxPerRow = safeCount <= 16 ? 4 : 5;
     final indices = List<int>.generate(safeCount, (i) => i);
     final rows = <List<int>>[];
-    var cursor = 0;
 
+    var cursor = 0;
     while (cursor < indices.length) {
       final remaining = indices.length - cursor;
-      final take = remaining > 4 ? 4 : remaining;
+      final take = remaining > maxPerRow ? maxPerRow : remaining;
       rows.add(indices.sublist(cursor, cursor + take));
       cursor += take;
     }
 
-    return StageLayout.rows(rows: rows);
+    final paddings = List<double>.filled(rows.length, 0);
+    if (paddings.isNotEmpty) {
+      paddings[paddings.length - 1] = 4;
+    }
+
+    return StageLayout.rows(
+      rows: rows,
+      rowTopPaddings: paddings,
+    );
   }
 }
 
@@ -229,7 +241,7 @@ class PuzzlePresets {
   //   K4: Hiçbir tüpte bitişik aynı renk yok
   //   K5: 2+1 boş tüp hariç tüm tüpler tam dolu (4 eleman)
   // ---------------------------------------------------------------------------
-  static const Map<int, Map<int, PuzzlePreset>> _presets = {
+  static final Map<int, Map<int, PuzzlePreset>> _presets = {
     1: {
       // ── Level 1 ── Kolay │ 12 renk │ imm=4 │ worst_block=3 │ ~46 hamle
       1: PuzzlePreset(
@@ -253,15 +265,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11],
-            [12, 13, 14],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(15),
         lockedAdTubeIndex: 14,
       ),
 
@@ -287,15 +291,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11],
-            [12, 13, 14],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(15),
         lockedAdTubeIndex: 14,
       ),
 
@@ -321,15 +317,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11],
-            [12, 13, 14],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(15),
         lockedAdTubeIndex: 14,
       ),
 
@@ -356,15 +344,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11],
-            [12, 13, 14, 15],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(16),
         lockedAdTubeIndex: 15,
       ),
 
@@ -391,15 +371,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11],
-            [12, 13, 14, 15],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(16),
         lockedAdTubeIndex: 15,
       ),
 
@@ -427,15 +399,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11],
-            [12, 13, 14, 15, 16],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(17),
         lockedAdTubeIndex: 16,
       ),
 
@@ -463,15 +427,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11],
-            [12, 13, 14, 15, 16],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(17),
         lockedAdTubeIndex: 16,
       ),
 
@@ -500,15 +456,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11, 12],
-            [13, 14, 15, 16, 17],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(18),
         lockedAdTubeIndex: 17,
       ),
 
@@ -537,15 +485,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11, 12],
-            [13, 14, 15, 16, 17],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(18),
         lockedAdTubeIndex: 17,
       ),
 
@@ -575,15 +515,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7, 8],
-            [9, 10, 11, 12],
-            [13, 14, 15, 16, 17, 18],
-          ],
-          rowTopPaddings: [0, 0, 4, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(19),
         lockedAdTubeIndex: 18,
       ),
     },
@@ -606,14 +538,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9, 10],
-          ],
-          rowTopPaddings: [0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(11),
         lockedAdTubeIndex: 10,
       ),
 
@@ -636,15 +561,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8],
-            [9, 10, 11],
-          ],
-          rowTopPaddings: [0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(12),
         lockedAdTubeIndex: 11,
       ),
 
@@ -667,15 +584,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8],
-            [9, 10, 11],
-          ],
-          rowTopPaddings: [0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(12),
         lockedAdTubeIndex: 11,
       ),
 
@@ -699,15 +608,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9],
-            [10, 11, 12],
-          ],
-          rowTopPaddings: [0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(13),
         lockedAdTubeIndex: 12,
       ),
 
@@ -729,14 +630,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9, 10],
-          ],
-          rowTopPaddings: [0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(11),
         lockedAdTubeIndex: 10,
       ),
 
@@ -761,15 +655,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9, 10],
-            [11, 12, 13],
-          ],
-          rowTopPaddings: [0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(14),
         lockedAdTubeIndex: 13,
       ),
 
@@ -793,15 +679,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9],
-            [10, 11, 12],
-          ],
-          rowTopPaddings: [0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(13),
         lockedAdTubeIndex: 12,
       ),
 
@@ -828,16 +706,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9, 10, 11],
-            [12],
-            [13, 14, 15],
-          ],
-          rowTopPaddings: [0, 0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(16),
         lockedAdTubeIndex: 15,
       ),
 
@@ -862,15 +731,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9, 10],
-            [11, 12, 13],
-          ],
-          rowTopPaddings: [0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(14),
         lockedAdTubeIndex: 13,
       ),
 
@@ -896,15 +757,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9, 10, 11],
-            [12, 13, 14],
-          ],
-          rowTopPaddings: [0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(15),
         lockedAdTubeIndex: 14,
       ),
 
@@ -928,15 +781,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9],
-            [10, 11, 12],
-          ],
-          rowTopPaddings: [0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(13),
         lockedAdTubeIndex: 12,
       ),
 
@@ -964,16 +809,7 @@ class PuzzlePresets {
           [],
           [],
         ],
-        layout: StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9, 10, 11],
-            [12, 13],
-            [14, 15, 16],
-          ],
-          rowTopPaddings: [0, 0, 0, 0, 4],
-        ),
+        layout: StageLayout.standardForTubeCount(17),
         lockedAdTubeIndex: 16,
       ),
     },
@@ -982,58 +818,31 @@ class PuzzlePresets {
         mapNumber: 3,
         levelId: 1,
         difficulty: 2,
-        mode: PuzzleMode.centerTubeCollection,
         tubes: [
+          [1, 4, 2, 3],
+          [5, 2, 6, 1],
+          [0, 3, 7, 4],
+          [6, 0, 5, 2],
+          [3, 1, 4, 7],
+          [2, 6, 0, 5],
+          [7, 5, 1, 3],
+          [4, 0, 6, 2],
+          [1, 7, 3, 6],
+          [5, 4, 2, 0],
+          [7, 3, 5, 1],
+          [0, 6, 4, 2],
           [],
-          [16, 1, 2, 3],
-          [4, 16, 7, 8],
-          [1, 2, 16, 4],
-          [6, 7, 8, 16],
           [],
           [],
         ],
-        layout: StageLayout.manual(
-          canvasWidth: 620,
-          canvasHeight: 660,
-          positions: [
-            StageTubePosition(
-              index: 0,
-              x: 241,
-              y: 92,
-              style: PuzzleTubeStyle.largeCollector,
-            ),
-            StageTubePosition(index: 1, x: 42, y: 142),
-            StageTubePosition(index: 2, x: 122, y: 142),
-            StageTubePosition(index: 3, x: 82, y: 346),
-            StageTubePosition(index: 4, x: 426, y: 142),
-            StageTubePosition(index: 5, x: 506, y: 142),
-            StageTubePosition(index: 6, x: 466, y: 346),
+        layout: const StageLayout.rows(
+          rows: [
+            [0, 1, 2, 3],
+            [4, 5, 6, 7],
+            [8, 9, 10, 11],
           ],
         ),
-        lockedAdTubeIndex: 6,
-        tubeStyles: {
-          0: PuzzleTubeStyle.largeCollector,
-        },
-        centerTube: CenterTubeConfig(
-          tubeIndex: 0,
-          targetColor: 16,
-          capacity: 24,
-          startsEmpty: true,
-        ),
-        sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [1, 2],
-          refillQueues: {
-            1: [
-              [16, 5, 2, 6],
-              [16, 3, 7, 1],
-            ],
-            2: [
-              [8, 16, 4, 5],
-              [6, 2, 16, 7],
-            ],
-          },
-          stopWhenCenterTubeFull: true,
-        ),
+        lockedAdTubeIndex: 14,
       ),
     },
   };

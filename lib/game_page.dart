@@ -27,6 +27,8 @@ const String kTubeLargeSvgAsset = 'assets/likora/test_tube_large.svg';
 // Widget boyutları – SVG oranına göre ayarlandı (84.4 x 182 mm → 60 x 130 px)
 const double kTW = 72.0;
 const double kTH = 155.0;
+const double kBasinW = 236.0;
+const double kBasinH = 128.0;
 
 // ── SVG oranları (viewBox: 8442.66 x 18197.8) ──────────────────────────────
 // Normalize faktör:
@@ -153,8 +155,10 @@ _ResolvedStageLayout resolveStageLayout({
       topOffset: effective.topOffset,
       width: max((effective.canvasWidth ?? maxRight) + 12.0, kWidgetW + 12.0),
       height: max(
-          (effective.canvasHeight ?? maxBottom) + effective.topOffset + 18.0,
-          kWidgetH + 18.0),
+          (effective.canvasHeight ?? maxBottom) +
+              effective.topOffset +
+              150.0, // 👈 boşluk
+          kWidgetH + 150.0),
     );
   }
 
@@ -252,7 +256,7 @@ const List<Map<String, dynamic>> kColors = [
 // OYUN MANTIĞI
 // ─────────────────────────────────────────────
 
-List<List<int>> _legacyGenerateTubes({
+List<List<int>> legacyGenerateTubes({
   required int level,
   required int difficulty,
 }) {
@@ -579,6 +583,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _adTubeUnlocked = false;
   bool _levelRewardGranted = false;
   bool _restoringLevelState = true;
+  bool _missingPreset = false;
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
 
   bool get _canBuyJoker => _coins >= _jokerCost;
@@ -590,11 +595,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         tubeCount: _tubes.length,
       );
 
-  bool get _isCenterTubeMode =>
-      _preset?.mode == PuzzleMode.centerTubeCollection &&
-      _preset?.centerTube != null;
+  bool get _isCenterTubeMode => false;
 
-  CenterTubeConfig? get _centerTubeConfig => _preset?.centerTube;
+  CenterTubeConfig? get _centerTubeConfig => null;
 
   int _tubeCapacityIn(List<List<int>> tubes, int idx) {
     final center = _centerTubeConfig;
@@ -619,6 +622,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     final movingColor = tubes[from].last;
     final center = _centerTubeConfig;
+    if (center != null && from == center.tubeIndex) return false;
     if (center != null &&
         to == center.tubeIndex &&
         movingColor != center.targetColor) {
@@ -697,7 +701,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _returnToMapPage() async {
-    await _persistLevelState();
+    if (!_missingPreset) {
+      await _persistLevelState();
+    }
+
     if (!mounted) return;
 
     if (_isDailyMode) {
@@ -739,6 +746,22 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final syncedCoins = widget.initialCoins > 0
         ? widget.initialCoins
         : PlayerProgress.coins.value;
+
+    if (widget.customPuzzleTubes == null && !_isDailyMode) {
+      _preset = PuzzlePresets.getOrNull(
+        mapNumber: widget.mapNumber,
+        levelId: widget.level,
+      );
+
+      if (_preset == null) {
+        if (!mounted) return;
+        setState(() {
+          _missingPreset = true;
+          _restoringLevelState = false;
+        });
+        return;
+      }
+    }
 
     if (_isDailyMode) {
       final isAlreadyCompleted =
@@ -1100,16 +1123,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           .toList(growable: true);
     }
 
-    _preset = PuzzlePresets.getOrNull(
+    _preset ??= PuzzlePresets.getOrNull(
       mapNumber: widget.mapNumber,
       levelId: widget.level,
     );
 
-    return (_preset?.tubes ??
-            _legacyGenerateTubes(
-              level: widget.level,
-              difficulty: widget.difficulty,
-            ))
+    return (_preset?.tubes ?? const <List<int>>[])
         .map((t) => List<int>.of(t, growable: true))
         .toList(growable: true);
   }
@@ -2457,10 +2476,16 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _exitLevel(completed: true);
   }
 
-  void _lowerLevel() {
-    _playClick();
-    _vibrateLight();
-    _exitLevel(completed: false);
+  Future<void> lowerLevel() async {
+    await _playClick();
+    await _vibrateLight();
+
+    if (_missingPreset) {
+      await _returnToMapPage();
+      return;
+    }
+
+    await _exitLevel(completed: false);
   }
 
   void _debugCompleteLevel() {
@@ -2481,6 +2506,72 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
               strokeWidth: 2.2,
               color: Colors.white70,
             ),
+          ),
+        ),
+      );
+    }
+
+    if (_missingPreset) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          await _returnToMapPage();
+        },
+        child: Scaffold(
+          backgroundColor: _theme.bgDark,
+          body: Stack(
+            children: [
+              _AnimatedThemeBg(
+                controller: _bgCtrl,
+                theme: _theme,
+                customBackground: widget.customBackground,
+              ),
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildTopBar(),
+                    Expanded(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.construction_rounded,
+                                size: 54,
+                                color: Colors.white70,
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Level hazır değil',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Map ${widget.mapNumber} - Level ${widget.level} hazır değil.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.82),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -2845,7 +2936,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
-                      onTap: _lowerLevel,
+                      onTap: () async {
+                        await _playClick();
+                        await _vibrateTap();
+                        await _returnToMapPage();
+                      },
                       child: Ink(
                         width: 42,
                         height: 42,
@@ -3381,7 +3476,13 @@ class _TubeStageState extends State<_TubeStage> {
     if (targetCtx == null || stageBox == null || tubeBox == null) return null;
     if (!stageBox.hasSize || !tubeBox.hasSize) return null;
 
-    // Hedef tüpün gerçek render edilmiş genişlik merkezini kullan.
+    final style = widget.tubeStyles[idx] ?? PuzzleTubeStyle.classic;
+    if (style == PuzzleTubeStyle.largeCollector) {
+      final localMouth =
+          Offset(tubeBox.size.width / 2, tubeBox.size.height * 0.14);
+      return tubeBox.localToGlobal(localMouth, ancestor: stageBox);
+    }
+
     final localMouth = Offset(
       tubeBox.size.width / 2,
       kMouthEntryY,
@@ -3402,6 +3503,16 @@ class _TubeStageState extends State<_TubeStage> {
 
     final capacity = (widget.tubeCapacities[idx] ?? kCap).toDouble();
     final fillRatio = (units / capacity).clamp(0.0, 1.0);
+    final style = widget.tubeStyles[idx] ?? PuzzleTubeStyle.classic;
+
+    if (style == PuzzleTubeStyle.largeCollector) {
+      final basinBottom = tubeBox.size.height * 0.78;
+      final basinTop = tubeBox.size.height * 0.28;
+      final localY = basinBottom - (basinBottom - basinTop) * fillRatio;
+      final localSurface = Offset(tubeBox.size.width / 2, localY);
+      return tubeBox.localToGlobal(localSurface, ancestor: stageBox);
+    }
+
     final localY = kLiquidBotY - (kLiquidBotY - kLiquidTopY) * fillRatio;
 
     final localSurface = Offset(tubeBox.size.width / 2, localY);
@@ -3519,24 +3630,9 @@ class _TubeStageState extends State<_TubeStage> {
       );
     }
 
-    final isLargeCollector = tubeStyle == PuzzleTubeStyle.largeCollector;
-    final double renderWidth = isLargeCollector ? 138.0 : kWidgetW;
-    final double renderHeight = isLargeCollector ? 348.0 : kWidgetH;
-
-    if (isLargeCollector) {
-      tubeView = SizedBox(
-        width: renderWidth,
-        height: renderHeight,
-        child: FittedBox(
-          fit: BoxFit.fill,
-          child: SizedBox(
-            width: kWidgetW,
-            height: kWidgetH,
-            child: tubeView,
-          ),
-        ),
-      );
-    }
+    final isCollector = tubeStyle == PuzzleTubeStyle.largeCollector;
+    final double renderWidth = isCollector ? kBasinW : kWidgetW;
+    final double renderHeight = isCollector ? kBasinH : kWidgetH;
 
     return Padding(
       padding: EdgeInsets.only(top: topPadding),
@@ -3666,6 +3762,7 @@ class _TubeStageState extends State<_TubeStage> {
             tubeStyle:
                 widget.tubeStyles[plan.fromIdx] ?? PuzzleTubeStyle.classic,
             capacity: widget.tubeCapacities[plan.fromIdx] ?? kCap,
+            targetCapacity: widget.tubeCapacities[plan.toIdx] ?? kCap,
           ),
       ],
     );
@@ -3908,6 +4005,7 @@ class _FlyingTube extends StatefulWidget {
   final int revealGlowTick;
   final PuzzleTubeStyle tubeStyle;
   final int capacity;
+  final int targetCapacity;
 
   const _FlyingTube({
     super.key,
@@ -3921,6 +4019,7 @@ class _FlyingTube extends StatefulWidget {
     this.revealGlowTick = 0,
     this.tubeStyle = PuzzleTubeStyle.classic,
     this.capacity = kCap,
+    this.targetCapacity = kCap,
   });
 
   @override
@@ -4114,7 +4213,7 @@ class _FlyingTubeState extends State<_FlyingTube>
         // Anlık hedef sıvı yüzeyi: döküm ilerledikçe yukarı çıkar
         final currentToVolume =
             (widget.plan.toSnapshot.length + widget.plan.count * drainProgress)
-                .clamp(0.0, kCap.toDouble());
+                .clamp(0.0, widget.targetCapacity.toDouble());
         final dynamicTargetSurface = widget.getRealTargetSurface(
               widget.plan.toIdx,
               currentToVolume,
@@ -4335,9 +4434,19 @@ class _TubeWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final svgAsset = tubeStyle == PuzzleTubeStyle.largeCollector
-        ? kTubeLargeSvgAsset
-        : kTubeSvgAsset;
+    if (tubeStyle == PuzzleTubeStyle.largeCollector) {
+      return SizedBox(
+        width: kBasinW,
+        height: kBasinH,
+        child: CustomPaint(
+          painter: _VolcanicBasinPainter(
+            currentUnits: tube.length + incomingVolume,
+            capacity: capacity,
+            highlight: isSelected,
+          ),
+        ),
+      );
+    }
 
     final frame = RepaintBoundary(
       child: SizedBox(
@@ -4368,7 +4477,7 @@ class _TubeWidget extends StatelessWidget {
             Positioned.fill(
               child: IgnorePointer(
                 child: SvgPicture.asset(
-                  svgAsset,
+                  kTubeSvgAsset,
                   fit: BoxFit.contain,
                 ),
               ),
@@ -4406,6 +4515,146 @@ class _TubeWidget extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _VolcanicBasinPainter extends CustomPainter {
+  final double currentUnits;
+  final int capacity;
+  final bool highlight;
+
+  const _VolcanicBasinPainter({
+    required this.currentUnits,
+    required this.capacity,
+    this.highlight = false,
+  });
+
+  Path _outerPath(Size size) {
+    final w = size.width;
+    final h = size.height;
+    return Path()
+      ..moveTo(w * 0.08, h * 0.24)
+      ..quadraticBezierTo(w * 0.16, h * 0.10, w * 0.28, h * 0.24)
+      ..lineTo(w * 0.28, h * 0.62)
+      ..quadraticBezierTo(w * 0.50, h * 0.92, w * 0.72, h * 0.62)
+      ..lineTo(w * 0.72, h * 0.24)
+      ..quadraticBezierTo(w * 0.84, h * 0.10, w * 0.92, h * 0.24)
+      ..lineTo(w * 0.92, h * 0.88)
+      ..lineTo(w * 0.08, h * 0.88)
+      ..close();
+  }
+
+  Path _innerPath(Size size) {
+    final w = size.width;
+    final h = size.height;
+    return Path()
+      ..moveTo(w * 0.18, h * 0.30)
+      ..quadraticBezierTo(w * 0.27, h * 0.20, w * 0.35, h * 0.32)
+      ..lineTo(w * 0.35, h * 0.62)
+      ..quadraticBezierTo(w * 0.50, h * 0.76, w * 0.65, h * 0.62)
+      ..lineTo(w * 0.65, h * 0.32)
+      ..quadraticBezierTo(w * 0.73, h * 0.20, w * 0.82, h * 0.30)
+      ..lineTo(w * 0.82, h * 0.80)
+      ..lineTo(w * 0.18, h * 0.80)
+      ..close();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final outer = _outerPath(size);
+    final inner = _innerPath(size);
+
+    canvas.drawShadow(outer, Colors.black.withValues(alpha: 0.42), 12, false);
+
+    final rock = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF2A130B), Color(0xFF130605)],
+      ).createShader(Offset.zero & size);
+    canvas.drawPath(outer, rock);
+
+    canvas.drawPath(
+      outer,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.2
+        ..color = const Color(0xFF6A3A22).withValues(alpha: 0.95),
+    );
+
+    canvas.drawPath(
+      outer,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = highlight ? 4.8 : 3.0
+        ..color =
+            const Color(0xFFFF8A33).withValues(alpha: highlight ? 0.48 : 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+    );
+
+    canvas.save();
+    canvas.clipPath(inner);
+
+    final fillRatio =
+        capacity <= 0 ? 0.0 : (currentUnits / capacity).clamp(0.0, 1.0);
+    final fillTop =
+        lerpDouble(size.height * 0.80, size.height * 0.30, fillRatio)!;
+    if (fillRatio > 0.0) {
+      final fillRect = Rect.fromLTWH(
+        size.width * 0.16,
+        fillTop,
+        size.width * 0.68,
+        size.height * 0.82 - fillTop,
+      );
+      final lava = Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [
+            Color(0xFFFFF59D),
+            Color(0xFFFFB300),
+            Color(0xFFFF7043),
+            Color(0xFFBF360C),
+          ],
+          stops: const [0.0, 0.22, 0.56, 1.0],
+        ).createShader(fillRect);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(fillRect, Radius.circular(size.width * 0.06)),
+        lava,
+      );
+
+      final surface = Path()
+        ..moveTo(size.width * 0.20, fillTop + 4)
+        ..quadraticBezierTo(
+            size.width * 0.34, fillTop - 6, size.width * 0.50, fillTop + 2)
+        ..quadraticBezierTo(
+            size.width * 0.66, fillTop + 8, size.width * 0.80, fillTop + 1);
+      canvas.drawPath(
+        surface,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.4
+          ..color = Colors.white.withValues(alpha: 0.28),
+      );
+    }
+    canvas.restore();
+
+    final lip = Paint()
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xFF1E0D08);
+    canvas.drawLine(
+      Offset(size.width * 0.20, size.height * 0.30),
+      Offset(size.width * 0.80, size.height * 0.30),
+      lip,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _VolcanicBasinPainter oldDelegate) {
+    return oldDelegate.currentUnits != currentUnits ||
+        oldDelegate.capacity != capacity ||
+        oldDelegate.highlight != highlight;
   }
 }
 
@@ -4840,4 +5089,47 @@ class _LiquidPainter extends CustomPainter {
       old.blindMode != blindMode ||
       old.visibleLayerCount != visibleLayerCount ||
       old.revealGlowTick != revealGlowTick;
+}
+
+class BasinPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF6D4C41)
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+
+    path.moveTo(0, size.height * 0.6);
+
+    path.quadraticBezierTo(
+      size.width * 0.2,
+      size.height * 0.2,
+      size.width * 0.4,
+      size.height * 0.6,
+    );
+
+    path.quadraticBezierTo(
+      size.width * 0.6,
+      size.height * 0.9,
+      size.width * 0.8,
+      size.height * 0.6,
+    );
+
+    path.quadraticBezierTo(
+      size.width,
+      size.height * 0.2,
+      size.width,
+      size.height * 0.6,
+    );
+
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
