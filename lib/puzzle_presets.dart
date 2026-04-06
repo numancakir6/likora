@@ -817,20 +817,20 @@ class PuzzlePresets {
       1: PuzzlePreset(
         mapNumber: 3,
         levelId: 1,
-        difficulty: 2,
+        difficulty: 3,
         tubes: [
-          [1, 4, 2, 3],
-          [5, 2, 6, 1],
-          [0, 3, 16, 4],
-          [6, 0, 5, 2],
-          [3, 1, 4, 16],
-          [2, 6, 0, 5],
-          [16, 5, 1, 3],
-          [4, 0, 6, 2],
-          [1, 16, 3, 6],
-          [5, 4, 2, 0],
-          [7, 3, 5, 1],
-          [0, 6, 4, 2],
+          // 0 ve 1 = yenilenen kaynak tüpler
+          [16, 0, 4, 1],
+          [2, 16, 5, 3],
+
+          [16, 4, 16, 6],
+          [0, 16, 5, 16],
+          [6, 1, 16, 4],
+          [16, 2, 6, 16],
+          [5, 16, 3, 6],
+          [16, 4, 0, 5],
+          [6, 16, 1, 2],
+
           [],
           [],
           [],
@@ -842,7 +842,19 @@ class PuzzlePresets {
             [8, 9, 10, 11],
           ],
         ),
-        lockedAdTubeIndex: 14,
+        lockedAdTubeIndex: 11,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1],
+          refillQueues: {
+            0: [
+              [16, 0, 16, 1],
+            ],
+            1: [
+              [16, 2, 16, 3],
+            ],
+          },
+          stopWhenCenterTubeFull: true,
+        ),
       ),
     },
   };
