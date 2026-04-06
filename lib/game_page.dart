@@ -23,6 +23,7 @@ const int kNColors = 18;
 const int kEmpty = 2;
 const String kTubeSvgAsset = 'assets/likora/test_tube.svg';
 const String kTubeLargeSvgAsset = 'assets/likora/test_tube_large.svg';
+const String kVolcanoReservoirSvgAsset = 'assets/likora/volkan_hazne.svg';
 
 // Widget boyutları – SVG oranına göre ayarlandı (84.4 x 182 mm → 60 x 130 px)
 const double kTW = 72.0;
@@ -256,7 +257,7 @@ const List<Map<String, dynamic>> kColors = [
 // OYUN MANTIĞI
 // ─────────────────────────────────────────────
 
-List<List<int>> legacyGenerateTubes({
+List<List<int>> _legacyGenerateTubes({
   required int level,
   required int difficulty,
 }) {
@@ -386,6 +387,8 @@ class _TransferPlan {
   final List<int> toSnapshot;
   final int colorIdx;
   final int count;
+  final bool isMountainTarget;
+  final int mountainFillBefore;
 
   const _TransferPlan({
     required this.fromIdx,
@@ -394,6 +397,8 @@ class _TransferPlan {
     required this.toSnapshot,
     required this.colorIdx,
     required this.count,
+    this.isMountainTarget = false,
+    this.mountainFillBefore = 0,
   });
 }
 
@@ -544,6 +549,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         List<int> visibleLayerCounts,
         int fromIdx,
         int toIdx,
+        int mountainFillUnits,
+        List<_VisualLayer> mountainLayers,
       })> _history = [];
 
   late List<int> _visibleLayerCounts;
@@ -584,16 +591,38 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _levelRewardGranted = false;
   bool _restoringLevelState = true;
   bool _missingPreset = false;
+  int _mountainFillUnits = 0;
+  final List<_VisualLayer> _mountainLayers = [];
+  static const int _mountainCapacity = 18;
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
 
   bool get _canBuyJoker => _coins >= _jokerCost;
   bool get _isDailyMode =>
       widget.isDailyPuzzleMode && widget.dailyPuzzleDateKey != null;
 
-  _ResolvedStageLayout get _stageLayout => resolveStageLayout(
-        layout: widget.customStageLayout ?? _preset?.layout,
-        tubeCount: _tubes.length,
-      );
+  double get _mountainFillPercent =>
+      (_mountainFillUnits / _mountainCapacity).clamp(0.0, 1.0);
+
+  _ResolvedStageLayout get _stageLayout {
+    final base = resolveStageLayout(
+      layout: widget.customStageLayout ?? _preset?.layout,
+      tubeCount: _tubes.length,
+    );
+
+    if (widget.mapNumber != 3) return base;
+
+    return _ResolvedStageLayout(
+      modeLayout: base.modeLayout,
+      rows: base.rows,
+      rowTopPaddings: base.rowTopPaddings,
+      positions: base.positions,
+      tubeGap: base.tubeGap,
+      rowGap: base.rowGap,
+      topOffset: base.topOffset,
+      width: base.width,
+      height: base.height + 176.0,
+    );
+  }
 
   bool get _isCenterTubeMode => false;
 
@@ -704,7 +733,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (!_missingPreset) {
       await _persistLevelState();
     }
-
     if (!mounted) return;
 
     if (_isDailyMode) {
@@ -953,6 +981,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         List<int> visibleLayerCounts,
         int fromIdx,
         int toIdx,
+        int mountainFillUnits,
+        List<_VisualLayer> mountainLayers,
       })>[];
 
       for (final item in decoded) {
@@ -988,11 +1018,36 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             ? visibleRaw.map((e) => e is int ? e : 0).toList(growable: true)
             : _defaultVisibleLayerCountsFor(tubes);
 
+        final mountainFillUnitsRaw = item['mountainFillUnits'];
+        final mountainLayersRaw = item['mountainLayers'];
+        final mountainFillUnits = mountainFillUnitsRaw is int
+            ? mountainFillUnitsRaw.clamp(0, _mountainCapacity).toInt()
+            : 0;
+        final mountainLayers = <_VisualLayer>[];
+        if (mountainLayersRaw is List) {
+          for (final layerRaw in mountainLayersRaw) {
+            if (layerRaw is! Map) continue;
+            final colorIdx = layerRaw['colorIdx'];
+            final volumeRaw = layerRaw['volume'];
+            if (colorIdx is! int) continue;
+            final volume = volumeRaw is num ? volumeRaw.toDouble() : 0.0;
+            if (volume <= 0) continue;
+            mountainLayers.add(
+              _VisualLayer(
+                colorIdx: colorIdx.clamp(0, kColors.length - 1).toInt(),
+                volume: volume,
+              ),
+            );
+          }
+        }
+
         restored.add((
           tubes: tubes,
           visibleLayerCounts: _normalizeVisibleLayerCounts(visible, tubes),
           fromIdx: fromIdx.clamp(0, _tubes.length - 1).toInt(),
           toIdx: toIdx.clamp(0, _tubes.length - 1).toInt(),
+          mountainFillUnits: mountainFillUnits,
+          mountainLayers: mountainLayers,
         ));
       }
 
@@ -1020,6 +1075,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
               'visibleLayerCounts': entry.visibleLayerCounts,
               'fromIdx': entry.fromIdx,
               'toIdx': entry.toIdx,
+              'mountainFillUnits': entry.mountainFillUnits,
+              'mountainLayers': entry.mountainLayers
+                  .map((layer) => {
+                        'colorIdx': layer.colorIdx,
+                        'volume': layer.volume,
+                      })
+                  .toList(growable: false),
             })
         .toList(growable: false);
 
@@ -1105,12 +1167,38 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
   }
 
+  void _updateBlindVisibilityAfterMountainPour(int from, int pouredCount) {
+    if (!_blindModeEnabled) return;
+
+    final oldFromVisible = _visibleLayerCounts[from]
+        .clamp(0, _tubes[from].length + pouredCount)
+        .toInt();
+    final newFromLen = _tubes[from].length;
+
+    final removedVisible = min(oldFromVisible, pouredCount);
+    var newFromVisible = max(0, oldFromVisible - removedVisible);
+
+    final removedHiddenAbove = pouredCount > removedVisible;
+    final shouldRevealNextTop =
+        newFromLen > 0 && (newFromVisible == 0 || removedHiddenAbove);
+    if (shouldRevealNextTop) {
+      newFromVisible = min(newFromLen, newFromVisible + 1);
+    }
+    _visibleLayerCounts[from] = newFromVisible.clamp(0, newFromLen).toInt();
+
+    if (shouldRevealNextTop) {
+      _triggerBlindRevealFlash(from);
+    }
+  }
+
   // Hangi tüpler şu an aktif animasyonda meşgul
   Set<int> get _busyTubes {
     final s = <int>{};
     for (final p in _activePlans) {
       s.add(p.fromIdx);
-      s.add(p.toIdx);
+      if (!p.isMountainTarget) {
+        s.add(p.toIdx);
+      }
     }
     return s;
   }
@@ -1266,6 +1354,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   Future<void> _persistLevelState() async {
     if (_restoringLevelState) return;
+    if (_missingPreset) return;
 
     if (_isDailyMode) {
       if (_gameWon) {
@@ -2081,6 +2170,125 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _commandQueue.addLast((from, to));
   }
 
+  Future<void> _handleMountainTap() async {
+    if (_gameWon || widget.mapNumber != 3) return;
+    if (_selected == null) return;
+
+    final from = _selected!;
+    final busy = _busyTubes;
+    if (busy.contains(from)) return;
+    if (_isLockedAdTubeIndex(from) || _tubes[from].isEmpty) {
+      setState(() => _selected = null);
+      return;
+    }
+
+    await _startPourToMountain(from);
+  }
+
+  Future<void> _startPourToMountain(int from) async {
+    if (from < 0 || from >= _tubes.length || _tubes[from].isEmpty) {
+      _vibrateLight();
+      return;
+    }
+
+    final available = _mountainCapacity - _mountainFillUnits;
+    if (available <= 0) {
+      _vibrateLight();
+      setState(() => _selected = null);
+      return;
+    }
+
+    final colorIdx = _tubes[from].last;
+    int count = 0;
+    for (int i = _tubes[from].length - 1; i >= 0; i--) {
+      if (_tubes[from][i] == colorIdx) {
+        count++;
+      } else {
+        break;
+      }
+    }
+    count = min(count, available);
+    if (count <= 0) {
+      _vibrateLight();
+      setState(() => _selected = null);
+      return;
+    }
+
+    final plan = _TransferPlan(
+      fromIdx: from,
+      toIdx: from,
+      fromSnapshot: List<int>.from(_tubes[from]),
+      toSnapshot: const [],
+      colorIdx: colorIdx,
+      count: count,
+      isMountainTarget: true,
+      mountainFillBefore: _mountainFillUnits,
+    );
+
+    _history.add((
+      tubes: _tubes.map((t) => List<int>.from(t)).toList(),
+      visibleLayerCounts: List<int>.from(_visibleLayerCounts),
+      fromIdx: from,
+      toIdx: from,
+      mountainFillUnits: _mountainFillUnits,
+      mountainLayers: _mountainLayers.map((l) => l.copyWith()).toList(),
+    ));
+
+    for (int i = 0; i < count; i++) {
+      _tubes[from].removeLast();
+    }
+    _tryRefillSourceTube(from);
+
+    if (_mountainLayers.isNotEmpty &&
+        _mountainLayers.last.colorIdx == colorIdx) {
+      _mountainLayers[_mountainLayers.length - 1] =
+          _mountainLayers.last.copyWith(
+        volume: _mountainLayers.last.volume + count.toDouble(),
+      );
+    } else {
+      _mountainLayers
+          .add(_VisualLayer(colorIdx: colorIdx, volume: count.toDouble()));
+    }
+
+    setState(() {
+      _selected = null;
+      _mountainFillUnits += count;
+      _activePlans.add(plan);
+    });
+    _persistLevelState();
+    unawaited(_persistUndoHistoryState());
+
+    final waterStartMs = (kPourDuration.inMilliseconds * 0.58).round();
+    final waterStopMs = (kPourDuration.inMilliseconds * 0.90).round();
+
+    Future.delayed(Duration(milliseconds: waterStartMs), () {
+      if (!mounted || !_activePlans.contains(plan)) return;
+      SfxService.startWater();
+    });
+
+    Future.delayed(Duration(milliseconds: waterStopMs), () {
+      if (!mounted) return;
+      if (_activePlans.length <= 1) {
+        SfxService.stopWater();
+      }
+    });
+
+    Future.delayed(kPourDuration, () {
+      if (!mounted) return;
+      _updateBlindVisibilityAfterMountainPour(from, count);
+      setState(() {
+        _activePlans.remove(plan);
+      });
+      _persistLevelState();
+
+      if (_activePlans.isEmpty) {
+        SfxService.stopWater();
+      }
+
+      _drainQueue();
+    });
+  }
+
   Future<void> _startPour(int from, int to) async {
     if (!_canPourIn(_tubes, from, to)) {
       _vibrateLight();
@@ -2108,6 +2316,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       visibleLayerCounts: List<int>.from(_visibleLayerCounts),
       fromIdx: from,
       toIdx: to,
+      mountainFillUnits: _mountainFillUnits,
+      mountainLayers: _mountainLayers.map((l) => l.copyWith()).toList(),
     ));
 
     // Mantık durumunu hemen güncelle (animasyon gösterimi snapshot tabanlı)
@@ -2210,6 +2420,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _selected = null;
       _gameWon = false;
       _commandQueue.clear();
+      _mountainFillUnits = last.mountainFillUnits;
+      _mountainLayers
+        ..clear()
+        ..addAll(last.mountainLayers.map((l) => l.copyWith()));
       _blindRevealFlashTicks.remove(last.fromIdx);
       _blindRevealFlashTicks.remove(last.toIdx);
       // Etkilenen tüplere slosh animasyonu ver
@@ -2476,16 +2690,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _exitLevel(completed: true);
   }
 
-  Future<void> lowerLevel() async {
-    await _playClick();
-    await _vibrateLight();
-
-    if (_missingPreset) {
-      await _returnToMapPage();
-      return;
-    }
-
-    await _exitLevel(completed: false);
+  void _lowerLevel() {
+    _playClick();
+    _vibrateLight();
+    _exitLevel(completed: false);
   }
 
   void _debugCompleteLevel() {
@@ -2512,67 +2720,60 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     if (_missingPreset) {
-      return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) async {
-          if (didPop) return;
-          await _returnToMapPage();
-        },
-        child: Scaffold(
-          backgroundColor: _theme.bgDark,
-          body: Stack(
-            children: [
-              _AnimatedThemeBg(
-                controller: _bgCtrl,
-                theme: _theme,
-                customBackground: widget.customBackground,
-              ),
-              SafeArea(
-                child: Column(
-                  children: [
-                    _buildTopBar(),
-                    Expanded(
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.construction_rounded,
-                                size: 54,
-                                color: Colors.white70,
+      return Scaffold(
+        backgroundColor: _theme.bgDark,
+        body: Stack(
+          children: [
+            _AnimatedThemeBg(
+              controller: _bgCtrl,
+              theme: _theme,
+              customBackground: widget.customBackground,
+            ),
+            SafeArea(
+              child: Column(
+                children: [
+                  _buildTopBar(),
+                  Expanded(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.construction_rounded,
+                              size: 54,
+                              color: Colors.white70,
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Level hazır değil',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
                               ),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'Level hazır değil',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Map ${widget.mapNumber} - Level ${widget.level} hazır değil.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.82),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Map ${widget.mapNumber} - Level ${widget.level} hazır değil.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.82),
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -2652,6 +2853,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                           width: _stageLayout.width,
                                           height: _stageLayout.height,
                                           child: _TubeStage(
+                                            mapNumber: widget.mapNumber,
                                             stageLayout: _stageLayout,
                                             tubes: _tubes,
                                             selected: _selected,
@@ -2687,6 +2889,15 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                                   i++)
                                                 i: _tubeCapacityIn(_tubes, i),
                                             },
+                                            onMountainTap: _handleMountainTap,
+                                            mountainFillPercent:
+                                                _mountainFillPercent,
+                                            mountainLayers:
+                                                List<_VisualLayer>.from(
+                                              _mountainLayers
+                                                  .map((l) => l.copyWith()),
+                                            ),
+                                            mountainCapacity: _mountainCapacity,
                                           ),
                                         ),
                                       ),
@@ -2936,11 +3147,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
-                      onTap: () async {
-                        await _playClick();
-                        await _vibrateTap();
-                        await _returnToMapPage();
-                      },
+                      onTap: _lowerLevel,
                       child: Ink(
                         width: 42,
                         height: 42,
@@ -3388,6 +3595,7 @@ class _TutorialStep {
 }
 
 class _TubeStage extends StatefulWidget {
+  final int mapNumber;
   final _ResolvedStageLayout stageLayout;
   final List<List<int>> tubes;
   final int? selected;
@@ -3407,8 +3615,13 @@ class _TubeStage extends StatefulWidget {
   final Map<int, int> blindRevealFlashTicks;
   final Map<int, PuzzleTubeStyle> tubeStyles;
   final Map<int, int> tubeCapacities;
+  final VoidCallback? onMountainTap;
+  final double mountainFillPercent;
+  final List<_VisualLayer> mountainLayers;
+  final int mountainCapacity;
 
   const _TubeStage({
+    required this.mapNumber,
     required this.stageLayout,
     required this.tubes,
     required this.selected,
@@ -3428,6 +3641,10 @@ class _TubeStage extends StatefulWidget {
     this.blindRevealFlashTicks = const {},
     this.tubeStyles = const {},
     this.tubeCapacities = const {},
+    this.onMountainTap,
+    this.mountainFillPercent = 0.0,
+    this.mountainLayers = const [],
+    this.mountainCapacity = 18,
   });
 
   @override
@@ -3436,6 +3653,43 @@ class _TubeStage extends StatefulWidget {
 
 class _TubeStageState extends State<_TubeStage> {
   late List<GlobalKey> _keys;
+  final GlobalKey _mountainKey = GlobalKey();
+
+  bool get _showMountainReservoir => widget.mapNumber == 3;
+
+  Offset? _mountainAnchorPos(Offset localAnchor) {
+    final box = _mountainKey.currentContext?.findRenderObject() as RenderBox?;
+    final stageBox = context.findRenderObject() as RenderBox?;
+    if (box == null || stageBox == null || !box.hasSize || !stageBox.hasSize) {
+      return null;
+    }
+    return box.localToGlobal(localAnchor) - stageBox.localToGlobal(Offset.zero);
+  }
+
+  Offset? _mountainMouthPos() {
+    final box = _mountainKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return _mountainAnchorPos(
+        Offset(box.size.width / 2, box.size.height * 0.10));
+  }
+
+  Offset? _mountainSurfacePos(double units) {
+    final box = _mountainKey.currentContext?.findRenderObject() as RenderBox?;
+    final stageBox = context.findRenderObject() as RenderBox?;
+    if (box == null || stageBox == null || !box.hasSize || !stageBox.hasSize) {
+      return null;
+    }
+
+    final fillRatio =
+        (units / max(1, widget.mountainCapacity)).clamp(0.0, 1.0).toDouble();
+    final usableBottom = box.size.height * 0.84;
+    final usableTop = box.size.height * 0.28;
+    final localY = usableBottom - (usableBottom - usableTop) * fillRatio;
+    return box.localToGlobal(
+      Offset(box.size.width / 2, localY),
+      ancestor: stageBox,
+    );
+  }
 
   @override
   void initState() {
@@ -3532,7 +3786,7 @@ class _TubeStageState extends State<_TubeStage> {
 
     final activeTargetPlan =
         widget.activePlans.cast<_TransferPlan?>().firstWhere(
-              (p) => p?.toIdx == idx,
+              (p) => p != null && !p.isMountainTarget && p.toIdx == idx,
               orElse: () => null,
             );
 
@@ -3737,6 +3991,29 @@ class _TubeStageState extends State<_TubeStage> {
     return Stack(
       clipBehavior: Clip.none,
       children: [
+        if (_showMountainReservoir)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: -34,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: MountainTubeReservoir(
+                key: _mountainKey,
+                width: 348,
+                height: 196,
+                fillPercent: widget.mountainFillPercent,
+                liquidColor: widget.mountainLayers.isEmpty
+                    ? const Color(0xFFFF6A00)
+                    : (kColors[widget.mountainLayers.last.colorIdx]['fill']
+                        as Color),
+                glow: false,
+                onTap: widget.onMountainTap,
+                layers: widget.mountainLayers,
+                capacity: widget.mountainCapacity,
+              ),
+            ),
+          ),
         Positioned.fill(
           child: Align(
             alignment: Alignment.topCenter,
@@ -3754,6 +4031,8 @@ class _TubeStageState extends State<_TubeStage> {
             getAnchor: _anchorPos,
             getRealTargetMouth: _realTargetMouthPos,
             getRealTargetSurface: _realTargetSurfacePos,
+            getMountainMouth: _mountainMouthPos,
+            getMountainSurface: _mountainSurfacePos,
             blindMode: widget.blindMode,
             visibleLayerCount: plan.fromSnapshot.isEmpty
                 ? 0
@@ -3767,6 +4046,150 @@ class _TubeStageState extends State<_TubeStage> {
       ],
     );
   }
+}
+
+class MountainTubeReservoir extends StatelessWidget {
+  final double width;
+  final double height;
+  final double fillPercent;
+  final Color liquidColor;
+  final bool glow;
+  final VoidCallback? onTap;
+  final List<_VisualLayer> layers;
+  final int capacity;
+
+  const MountainTubeReservoir({
+    super.key,
+    this.width = 250,
+    this.height = 120,
+    this.fillPercent = 0.0,
+    this.liquidColor = const Color(0xFFFF6A00),
+    this.glow = false,
+    this.onTap,
+    this.layers = const [],
+    this.capacity = 18,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = fillPercent.clamp(0.0, 1.0);
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: onTap,
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          children: [
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: width * 0.15,
+                  right: width * 0.15,
+                  top: height * 0.10,
+                  bottom: height * 0.08,
+                ),
+                child: ClipPath(
+                  clipper: const _MountainReservoirClipper(),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.white.withValues(alpha: 0.02),
+                                Colors.white.withValues(alpha: 0.00),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (p > 0.0) ..._buildLayerBands(width, height),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SvgPicture.asset(
+              kVolcanoReservoirSvgAsset,
+              fit: BoxFit.contain,
+              width: width,
+              height: height,
+              alignment: Alignment.bottomCenter,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildLayerBands(double width, double height) {
+    final total = layers.fold<double>(0.0, (sum, l) => sum + l.volume);
+    if (total <= 0.001 || capacity <= 0) return const [];
+
+    final usableHeight = height * 0.56;
+    final bottomInset = height * 0.15;
+    double consumed = 0.0;
+    final widgets = <Widget>[];
+
+    for (final layer in layers) {
+      final ratio = (layer.volume / capacity).clamp(0.0, 1.0);
+      final bandHeight = usableHeight * ratio;
+      if (bandHeight <= 0.1) continue;
+      final bottom = bottomInset + consumed;
+      consumed += bandHeight;
+      final color = kColors[layer.colorIdx]['fill'] as Color;
+
+      widgets.add(
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: bottom,
+          height: bandHeight + 1,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  color.withValues(alpha: 0.92),
+                  color,
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return widgets;
+  }
+}
+
+class _MountainReservoirClipper extends CustomClipper<Path> {
+  const _MountainReservoirClipper();
+
+  @override
+  Path getClip(Size size) {
+    final w = size.width;
+    final h = size.height;
+    return Path()
+      ..moveTo(w * 0.19, h * 0.84)
+      ..lineTo(w * 0.39, h * 0.47)
+      ..cubicTo(w * 0.425, h * 0.38, w * 0.43, h * 0.24, w * 0.43, h * 0.12)
+      ..lineTo(w * 0.57, h * 0.12)
+      ..cubicTo(w * 0.57, h * 0.24, w * 0.575, h * 0.38, w * 0.61, h * 0.47)
+      ..lineTo(w * 0.81, h * 0.84)
+      ..close();
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
 
 class _AdUnlockBadge extends StatelessWidget {
@@ -4000,6 +4423,8 @@ class _FlyingTube extends StatefulWidget {
   final Offset? Function(int idx, Offset local) getAnchor;
   final Offset? Function(int idx) getRealTargetMouth;
   final Offset? Function(int idx, double units) getRealTargetSurface;
+  final Offset? Function() getMountainMouth;
+  final Offset? Function(double units) getMountainSurface;
   final bool blindMode;
   final int visibleLayerCount;
   final int revealGlowTick;
@@ -4014,6 +4439,8 @@ class _FlyingTube extends StatefulWidget {
     required this.getAnchor,
     required this.getRealTargetMouth,
     required this.getRealTargetSurface,
+    required this.getMountainMouth,
+    required this.getMountainSurface,
     this.blindMode = false,
     this.visibleLayerCount = kCap,
     this.revealGlowTick = 0,
@@ -4108,14 +4535,18 @@ class _FlyingTubeState extends State<_FlyingTube>
   Widget build(BuildContext context) {
     final fromPos = widget.getPos(widget.plan.fromIdx);
 
-    final targetSurface = widget.getRealTargetSurface(
-      widget.plan.toIdx,
-      widget.plan.toSnapshot.length.toDouble(),
-    );
+    final targetSurface = widget.plan.isMountainTarget
+        ? widget.getMountainSurface(widget.plan.mountainFillBefore.toDouble())
+        : widget.getRealTargetSurface(
+            widget.plan.toIdx,
+            widget.plan.toSnapshot.length.toDouble(),
+          );
 
     // Artık sabit local ağız noktası değil,
     // hedef tüpün gerçek render edilmiş ağız merkezi kullanılıyor.
-    final targetMouthEntry = widget.getRealTargetMouth(widget.plan.toIdx);
+    final targetMouthEntry = widget.plan.isMountainTarget
+        ? widget.getMountainMouth()
+        : widget.getRealTargetMouth(widget.plan.toIdx);
 
     if (fromPos == null || targetSurface == null || targetMouthEntry == null) {
       return const SizedBox.shrink();
@@ -4214,11 +4645,17 @@ class _FlyingTubeState extends State<_FlyingTube>
         final currentToVolume =
             (widget.plan.toSnapshot.length + widget.plan.count * drainProgress)
                 .clamp(0.0, widget.targetCapacity.toDouble());
-        final dynamicTargetSurface = widget.getRealTargetSurface(
-              widget.plan.toIdx,
-              currentToVolume,
-            ) ??
-            targetSurface;
+        final dynamicTargetSurface = widget.plan.isMountainTarget
+            ? (widget.getMountainSurface(
+                  widget.plan.mountainFillBefore +
+                      (widget.plan.count * drainProgress),
+                ) ??
+                targetSurface)
+            : (widget.getRealTargetSurface(
+                  widget.plan.toIdx,
+                  currentToVolume,
+                ) ??
+                targetSurface);
 
         // Head: sabit hızda düz iner
         final headProgress = v <= vStreamStart
@@ -5091,7 +5528,7 @@ class _LiquidPainter extends CustomPainter {
       old.revealGlowTick != revealGlowTick;
 }
 
-class BasinPainter extends CustomPainter {
+class _BasinPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
