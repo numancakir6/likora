@@ -4,17 +4,72 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class InProgressHistoryEntry {
+  final List<List<int>> tubes;
+  final List<int> visibleLayerCounts;
+  final int fromIdx;
+  final int toIdx;
+
+  const InProgressHistoryEntry({
+    required this.tubes,
+    required this.visibleLayerCounts,
+    required this.fromIdx,
+    required this.toIdx,
+  });
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'tubes': tubes.map((t) => List<int>.from(t)).toList(growable: false),
+        'visibleLayerCounts':
+            List<int>.from(visibleLayerCounts, growable: false),
+        'fromIdx': fromIdx,
+        'toIdx': toIdx,
+      };
+
+  static InProgressHistoryEntry? fromJson(dynamic raw) {
+    if (raw is! Map<String, dynamic>) return null;
+
+    final tubesRaw = raw['tubes'];
+    final visibleRaw = raw['visibleLayerCounts'];
+    if (tubesRaw is! List || visibleRaw is! List) return null;
+
+    try {
+      final tubes = tubesRaw
+          .map((tube) => (tube as List)
+              .map((cell) => (cell as num).toInt())
+              .toList(growable: true))
+          .toList(growable: true);
+
+      final visibleLayerCounts = visibleRaw
+          .map((value) => (value as num).toInt())
+          .toList(growable: true);
+
+      return InProgressHistoryEntry(
+        tubes: tubes,
+        visibleLayerCounts: visibleLayerCounts,
+        fromIdx: (raw['fromIdx'] as num?)?.toInt() ?? 0,
+        toIdx: (raw['toIdx'] as num?)?.toInt() ?? 0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class InProgressLevelState {
   final List<List<int>> tubes;
   final int lockedAdTubeIndex;
   final bool adTubeUnlocked;
   final int coins;
+  final List<int>? visibleLayerCounts;
+  final List<InProgressHistoryEntry> history;
 
   const InProgressLevelState({
     required this.tubes,
     required this.lockedAdTubeIndex,
     required this.adTubeUnlocked,
     required this.coins,
+    this.visibleLayerCounts,
+    this.history = const <InProgressHistoryEntry>[],
   });
 }
 
@@ -119,6 +174,8 @@ class PlayerProgress {
     required int lockedAdTubeIndex,
     required bool adTubeUnlocked,
     required int coinsValue,
+    List<int>? visibleLayerCounts,
+    List<InProgressHistoryEntry> history = const <InProgressHistoryEntry>[],
   }) async {
     await ensureLoaded();
 
@@ -127,6 +184,10 @@ class PlayerProgress {
       'lockedAdTubeIndex': lockedAdTubeIndex,
       'adTubeUnlocked': adTubeUnlocked,
       'coins': coinsValue,
+      if (visibleLayerCounts != null)
+        'visibleLayerCounts':
+            List<int>.from(visibleLayerCounts, growable: false),
+      'history': history.map((entry) => entry.toJson()).toList(growable: false),
     };
 
     await _prefs!.setString(
@@ -157,12 +218,29 @@ class PlayerProgress {
               .toList(growable: true))
           .toList(growable: true);
 
+      final visibleLayerCountsRaw = decoded['visibleLayerCounts'];
+      final visibleLayerCounts = visibleLayerCountsRaw is List
+          ? visibleLayerCountsRaw
+              .map((value) => (value as num).toInt())
+              .toList(growable: true)
+          : null;
+
+      final historyRaw = decoded['history'];
+      final history = historyRaw is List
+          ? historyRaw
+              .map(InProgressHistoryEntry.fromJson)
+              .whereType<InProgressHistoryEntry>()
+              .toList(growable: true)
+          : <InProgressHistoryEntry>[];
+
       return InProgressLevelState(
         tubes: tubes,
         lockedAdTubeIndex: (decoded['lockedAdTubeIndex'] as num?)?.toInt() ??
             (tubes.isEmpty ? 0 : tubes.length - 1),
         adTubeUnlocked: decoded['adTubeUnlocked'] == true,
         coins: (decoded['coins'] as num?)?.toInt() ?? coins.value,
+        visibleLayerCounts: visibleLayerCounts,
+        history: history,
       );
     } catch (_) {
       return null;
@@ -213,16 +291,16 @@ class PlayerProgress {
   static int rewardForDifficultyDots(int dots) {
     switch (dots) {
       case 1:
-        return 10;
+        return 30;
       case 2:
-        return 15;
+        return 50;
       case 3:
-        return 20;
+        return 70;
       case 4:
-        return 25;
+        return 100;
       case 5:
       default:
-        return 30;
+        return 200;
     }
   }
 }

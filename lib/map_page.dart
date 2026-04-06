@@ -202,7 +202,7 @@ class MapPage extends StatefulWidget {
 
 class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const int _maxMapCount = 15;
-  static const int _playableMapCount = 2;
+  static const int _playableMapCount = 3;
   static const double _swipeVelocityThreshold = 250;
   static const double _swipeDistanceThreshold = 24;
   static const double _nodeWidgetSize = 72;
@@ -435,10 +435,16 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   }
 
   Future<void> _navigateToLevel(int levelId) async {
+    final levelData = _levels.firstWhere((e) => e.id == levelId);
+
     final result = await Navigator.push<GamePageResult>(
       context,
       MaterialPageRoute(
-        builder: (_) => GamePage(level: levelId, mapNumber: _mapNumber),
+        builder: (_) => GamePage(
+          level: levelId,
+          mapNumber: _mapNumber,
+          difficulty: levelData.difficulty.dotCount,
+        ),
       ),
     );
 

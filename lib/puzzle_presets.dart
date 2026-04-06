@@ -7,6 +7,12 @@ class PuzzleMove {
 
 enum PuzzleTubeStyle {
   classic,
+  largeCollector,
+}
+
+enum PuzzleMode {
+  standard,
+  centerTubeCollection,
 }
 
 enum StageLayoutMode {
@@ -18,11 +24,39 @@ class StageTubePosition {
   final int index;
   final double x;
   final double y;
+  final PuzzleTubeStyle style;
 
   const StageTubePosition({
     required this.index,
     required this.x,
     required this.y,
+    this.style = PuzzleTubeStyle.classic,
+  });
+}
+
+class CenterTubeConfig {
+  final int tubeIndex;
+  final int targetColor;
+  final int capacity;
+  final bool startsEmpty;
+
+  const CenterTubeConfig({
+    required this.tubeIndex,
+    required this.targetColor,
+    required this.capacity,
+    this.startsEmpty = true,
+  });
+}
+
+class SourceTubeRefillConfig {
+  final List<int> tubeIndexes;
+  final Map<int, List<List<int>>> refillQueues;
+  final bool stopWhenCenterTubeFull;
+
+  const SourceTubeRefillConfig({
+    required this.tubeIndexes,
+    required this.refillQueues,
+    this.stopWhenCenterTubeFull = true,
   });
 }
 
@@ -115,8 +149,12 @@ class PuzzlePreset {
   final int lockedAdTubeIndex;
   final StageLayout layout;
   final PuzzleTubeStyle tubeStyle;
+  final Map<int, PuzzleTubeStyle> tubeStyles;
   final List<List<PuzzleMove>> solutionBranches;
   final Map<String, PuzzleMove> jokerRecoveryMoves;
+  final PuzzleMode mode;
+  final CenterTubeConfig? centerTube;
+  final SourceTubeRefillConfig? sourceRefill;
 
   const PuzzlePreset({
     required this.mapNumber,
@@ -126,8 +164,12 @@ class PuzzlePreset {
     required this.layout,
     this.lockedAdTubeIndex = 10,
     this.tubeStyle = PuzzleTubeStyle.classic,
+    this.tubeStyles = const {},
     this.solutionBranches = const [],
     this.jokerRecoveryMoves = const {},
+    this.mode = PuzzleMode.standard,
+    this.centerTube,
+    this.sourceRefill,
   });
 }
 
@@ -933,6 +975,65 @@ class PuzzlePresets {
           rowTopPaddings: [0, 0, 0, 0, 4],
         ),
         lockedAdTubeIndex: 16,
+      ),
+    },
+    3: {
+      1: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 1,
+        difficulty: 2,
+        mode: PuzzleMode.centerTubeCollection,
+        tubes: [
+          [],
+          [16, 1, 2, 3],
+          [4, 16, 7, 8],
+          [1, 2, 16, 4],
+          [6, 7, 8, 16],
+          [],
+          [],
+        ],
+        layout: StageLayout.manual(
+          canvasWidth: 620,
+          canvasHeight: 660,
+          positions: [
+            StageTubePosition(
+              index: 0,
+              x: 241,
+              y: 92,
+              style: PuzzleTubeStyle.largeCollector,
+            ),
+            StageTubePosition(index: 1, x: 42, y: 142),
+            StageTubePosition(index: 2, x: 122, y: 142),
+            StageTubePosition(index: 3, x: 82, y: 346),
+            StageTubePosition(index: 4, x: 426, y: 142),
+            StageTubePosition(index: 5, x: 506, y: 142),
+            StageTubePosition(index: 6, x: 466, y: 346),
+          ],
+        ),
+        lockedAdTubeIndex: 6,
+        tubeStyles: {
+          0: PuzzleTubeStyle.largeCollector,
+        },
+        centerTube: CenterTubeConfig(
+          tubeIndex: 0,
+          targetColor: 16,
+          capacity: 24,
+          startsEmpty: true,
+        ),
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [1, 2],
+          refillQueues: {
+            1: [
+              [16, 5, 2, 6],
+              [16, 3, 7, 1],
+            ],
+            2: [
+              [8, 16, 4, 5],
+              [6, 2, 16, 7],
+            ],
+          },
+          stopWhenCenterTubeFull: true,
+        ),
       ),
     },
   };
