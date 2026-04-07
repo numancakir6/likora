@@ -2246,7 +2246,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     final plan = _TransferPlan(
       fromIdx: from,
-      toIdx: from,
+      toIdx: -1,
       fromSnapshot: List<int>.from(_tubes[from]),
       toSnapshot: const [],
       colorIdx: colorIdx,
