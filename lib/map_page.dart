@@ -268,6 +268,26 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     await PlayerProgress.setCompletedLevels(_mapNumber, completedLevels);
   }
 
+  /// TEST BUTTON: Bu haritanın tüm levellerini açar + önceki haritaları da unlock eder
+  Future<void> _unlockAllLevels() async {
+    // Tüm playable haritaları unlock et (1'den _playableMapCount'a kadar)
+    for (var map = 1; map <= _playableMapCount; map++) {
+      await PlayerProgress.unlockMap(map);
+    }
+
+    // Şu anki haritanın tüm levellerini tamamlanmış say
+    final allLevelIds =
+        List.generate(_layout.totalLevels, (i) => i + 1).toSet();
+    _mapCompletedLevels[_mapNumber] = Set<int>.from(allLevelIds);
+    await PlayerProgress.setCompletedLevels(_mapNumber, allLevelIds);
+
+    if (!mounted) return;
+    setState(() {
+      completedLevels = Set<int>.from(allLevelIds);
+      _rebuildLevels();
+    });
+  }
+
   @override
   void dispose() {
     _bgController.dispose();
@@ -585,7 +605,13 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           ),
         ),
         const Spacer(),
-        const SizedBox(width: 46),
+        // ── TEST BUTONU ──
+        _GlassButton(
+          accentColor: Colors.orange,
+          onTap: _unlockAllLevels,
+          child: const Icon(Icons.lock_open_rounded,
+              color: Colors.orange, size: 20),
+        ),
       ]),
     );
   }

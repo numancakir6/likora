@@ -23,7 +23,7 @@ const int kNColors = 18;
 const int kEmpty = 2;
 const String kTubeSvgAsset = 'assets/likora/test_tube.svg';
 const String kTubeLargeSvgAsset = 'assets/likora/test_tube_large.svg';
-const String kVolcanoReservoirSvgAsset = 'assets/likora/volkan_hazne.svg';
+const String kVolcanoReservoirSvgAsset = 'assets/likora/volkan_hazne.png';
 
 // Widget boyutları – SVG oranına göre ayarlandı (84.4 x 182 mm → 60 x 130 px)
 const double kTW = 72.0;
@@ -2271,22 +2271,30 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         updated.removeLast();
       }
       _tubes[from] = updated;
-      _tryRefillSourceTube(from);
-
-      if (_mountainLayers.isNotEmpty &&
-          _mountainLayers.last.colorIdx == colorIdx) {
-        _mountainLayers[_mountainLayers.length - 1] =
-            _mountainLayers.last.copyWith(
-          volume: _mountainLayers.last.volume + count.toDouble(),
-        );
-      } else {
-        _mountainLayers
-            .add(_VisualLayer(colorIdx: colorIdx, volume: count.toDouble()));
-      }
 
       _selected = null;
-      _mountainFillUnits += count;
       _activePlans.add(plan);
+    });
+
+    // Volkan dolumu: akışın sıvıya değdiği anda başlasın (animasyonun %68'i = vHeadEnd)
+    // Tüp yola çıkar çıkmaz değil, döküm ortasında başlasın.
+    final mountainFillStartMs =
+        (kPourDuration.inMilliseconds * 0.68).round(); // vHeadEnd
+    Future.delayed(Duration(milliseconds: mountainFillStartMs), () {
+      if (!mounted || !_activePlans.contains(plan)) return;
+      setState(() {
+        if (_mountainLayers.isNotEmpty &&
+            _mountainLayers.last.colorIdx == colorIdx) {
+          _mountainLayers[_mountainLayers.length - 1] =
+              _mountainLayers.last.copyWith(
+            volume: _mountainLayers.last.volume + count.toDouble(),
+          );
+        } else {
+          _mountainLayers
+              .add(_VisualLayer(colorIdx: colorIdx, volume: count.toDouble()));
+        }
+        _mountainFillUnits += count;
+      });
     });
     _persistLevelState();
     unawaited(_persistUndoHistoryState());
@@ -2308,9 +2316,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     Future.delayed(kPourDuration, () {
       if (!mounted) return;
+
       _updateBlindVisibilityAfterMountainPour(from, count);
+
+      final didWin = _isGameDoneIn(_tubes);
+
       setState(() {
         _activePlans.remove(plan);
+        _gameWon = didWin;
       });
       _persistLevelState();
 
@@ -2318,7 +2331,26 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         SfxService.stopWater();
       }
 
+      if (didWin) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (!mounted) return;
+          final allDone = <int, int>{};
+          for (int i = 0; i < _tubes.length; i++) {
+            if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
+              allDone[i] = _tubes[i].first;
+            }
+          }
+          _triggerDoneCelebration(allDone, isWin: true);
+        });
+      }
+
       _drainQueue();
+
+      if (didWin && _activePlans.isEmpty) {
+        Future.delayed(const Duration(milliseconds: 2100), () {
+          if (mounted) _showWinDialog();
+        });
+      }
     });
   }
 
@@ -2355,8 +2387,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     // Mantık durumunu hemen güncelle (animasyon gösterimi snapshot tabanlı)
     _doPourIn(_tubes, from, to);
-    _tryRefillSourceTube(from);
-    _tryRefillSourceTube(to);
 
     setState(() {
       _selected = null;
@@ -2382,6 +2412,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     // Animasyon biter bitmez planı kaldır
     Future.delayed(kPourDuration, () {
+      _activePlans.remove(plan);
+
+// 🔥 BURAYA AL
+      _tryRefillSourceTube(from);
+      _tryRefillSourceTube(to);
       if (!mounted) return;
 
       _updateBlindVisibilityAfterPour(from, to, count);
@@ -3723,7 +3758,7 @@ class _TubeStageState extends State<_TubeStage> {
     // SVG'nin ağız merkezi: üst orta
     final localMouth = Offset(
       mountainBox.size.width / 2,
-      mountainBox.size.height * 0.11,
+      mountainBox.size.height * 0.30, // boyun üstüyle hizalı (eskiden 0.11)
     );
 
     return mountainBox.localToGlobal(localMouth, ancestor: stageBox);
@@ -3744,7 +3779,8 @@ class _TubeStageState extends State<_TubeStage> {
     final fillRatio = (units / widget.mountainCapacity).clamp(0.0, 1.0);
 
     // İç dolgu alanı: SVG’ye daha uygun dar bölge
-    final topInset = h * 0.24;
+    // İç dolgu alanı: clip path boyun yüksekliğiyle (h*0.30) tutarlı
+    final topInset = h * 0.30;
     final bottomInset = h * 0.12;
     final usableHeight = h - topInset - bottomInset;
 
@@ -4143,6 +4179,26 @@ class _TubeStageState extends State<_TubeStage> {
             capacity: widget.tubeCapacities[plan.fromIdx] ?? kCap,
             targetCapacity: widget.tubeCapacities[plan.toIdx] ?? kCap,
           ),
+        // volkan_hazne.png — tüm animasyonların ÜSTÜNDE çizilir
+        // böylece akış sıvısı PNG'nin arkasından geçer
+        if (_showMountainReservoir)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: -34,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: IgnorePointer(
+                child: Image.asset(
+                  kVolcanoReservoirSvgAsset,
+                  width: 348,
+                  height: 196,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -4248,13 +4304,6 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
                 ),
               ),
             ),
-            SvgPicture.asset(
-              kVolcanoReservoirSvgAsset,
-              fit: BoxFit.contain,
-              width: widget.width,
-              height: widget.height,
-              alignment: Alignment.bottomCenter,
-            ),
           ],
         ),
       ),
@@ -4277,141 +4326,366 @@ class _VolcanoPainter extends CustomPainter {
     required this.time,
   });
 
-  // SVG'ye uyan volkan iç clip path'i
+  // Volkan haznesinin İÇ hacmi.
+  // Buradaki path dış çizgi değil, sıvının oturacağı iç alan.
   Path _clipPath(Size size) {
     final w = size.width;
     final h = size.height;
+
     return Path()
-      ..moveTo(w * 0.19, h * 0.87)
-      ..lineTo(w * 0.385, h * 0.46)
-      ..cubicTo(w * 0.415, h * 0.36, w * 0.425, h * 0.22, w * 0.425, h * 0.10)
-      ..lineTo(w * 0.575, h * 0.10)
-      ..cubicTo(w * 0.575, h * 0.22, w * 0.585, h * 0.36, w * 0.615, h * 0.46)
-      ..lineTo(w * 0.81, h * 0.87)
+      ..moveTo(w * 0.10, h * 0.985)
+      ..quadraticBezierTo(w * 0.14, h * 0.90, w * 0.20, h * 0.80)
+      ..quadraticBezierTo(w * 0.27, h * 0.66, w * 0.34, h * 0.56)
+      ..quadraticBezierTo(w * 0.39, h * 0.48, w * 0.43, h * 0.40)
+      ..lineTo(w * 0.43, h * 0.30)
+      ..lineTo(w * 0.57, h * 0.30)
+      ..lineTo(w * 0.57, h * 0.40)
+      ..quadraticBezierTo(w * 0.61, h * 0.48, w * 0.67, h * 0.56)
+      ..quadraticBezierTo(w * 0.74, h * 0.66, w * 0.82, h * 0.80)
+      ..quadraticBezierTo(w * 0.87, h * 0.90, w * 0.91, h * 0.985)
       ..close();
   }
 
-  // Y koordinatındaki iç genişliği döndür
-  double _widthAtY(Size size, double y) {
-    final w = size.width;
-    final h = size.height;
-    final neckTopY = h * 0.10;
-    final neckBotY = h * 0.46;
-    final botY = h * 0.87;
-    final neckW = w * 0.15;
-    final shoulderW = w * 0.23;
-    final baseW = w * 0.62;
-
-    if (y <= neckTopY) return neckW;
-    if (y <= neckBotY) {
-      final t = (y - neckTopY) / (neckBotY - neckTopY);
-      return lerpDouble(neckW, shoulderW, t)!;
+  Color _layerColor(int colorIdx) {
+    if (_isLavaColorIndex(colorIdx)) {
+      return kLavaRed;
     }
-    final t = (y - neckBotY) / (botY - neckBotY);
-    return lerpDouble(shoulderW, baseW, t)!;
+    return _solidColorForIndex(colorIdx);
   }
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (fillPercent <= 0.001 || layers.isEmpty || capacity <= 0) return;
+    final clipPath = _clipPath(size);
+    final bounds = clipPath.getBounds();
 
-    final w = size.width;
-    final h = size.height;
-    final botY = h * 0.87;
-    final topY = h * 0.10;
-    final usableH = botY - topY;
+    final sloshShift = slosh * size.width * 0.018;
+
+    // Güçlü iç glow
+    canvas.drawPath(
+      clipPath,
+      Paint()
+        ..color = const Color(0xFFFF6A00).withValues(alpha: 0.11)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
+    );
 
     canvas.save();
-    canvas.clipPath(_clipPath(size));
+    canvas.clipPath(clipPath);
 
-    final totalFillH = usableH * fillPercent.clamp(0.0, 1.0);
-    final surfaceY = botY - totalFillH;
+    final safeCapacity = max(1, capacity);
+    final normalizedFill = fillPercent.clamp(0.0, 1.0);
 
-    // Katmanları alta'dan üste çiz
-    double accumUnits = 0.0;
-    for (int i = 0; i < layers.length; i++) {
-      final layer = layers[i];
-      final color = kColors[layer.colorIdx]['fill'] as Color;
-      final isTop = i == layers.length - 1;
+    // Daha doğal yükselme
+    final easedFill = pow(normalizedFill, 1.35).toDouble().clamp(0.0, 1.0);
+    final totalFillHeight = bounds.height * easedFill;
+    final liquidTopBase = bounds.bottom - totalFillHeight;
 
-      final layerBotY = botY - (accumUnits / capacity) * usableH;
-      accumUnits += layer.volume;
-      final layerTopY = botY - (accumUnits / capacity) * usableH;
+    // Dipte kor parlaması
+    if (normalizedFill > 0.0) {
+      final emberRect = Rect.fromLTRB(
+        bounds.left - 10,
+        bounds.bottom - 34,
+        bounds.right + 10,
+        bounds.bottom + 12,
+      );
 
-      if (isTop) {
-        // Üst katman: dalgalı yüzey
-        final iw = _widthAtY(size, surfaceY);
-        final lx = (w - iw) / 2;
-        final rx = (w + iw) / 2;
+      canvas.drawRect(
+        emberRect,
+        Paint()
+          ..shader = RadialGradient(
+            center: const Alignment(0, 1),
+            radius: 1.18,
+            colors: [
+              kLavaCore.withValues(alpha: 0.34),
+              kLavaGlow.withValues(alpha: 0.24),
+              kLavaRed.withValues(alpha: 0.14),
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.22, 0.58, 1.0],
+          ).createShader(emberRect),
+      );
+    }
 
-        // Dalga: slosh sol-sağ asimetri + zaman ile sinüs hareketi
-        final waveAmp = iw * 0.055 * slosh;
-        final ripple = sin(time * pi * 2.0) * iw * 0.010;
+    // Arka genel lav tabanı
+    if (normalizedFill > 0.0) {
+      final backRect = Rect.fromLTRB(
+        bounds.left - 22,
+        liquidTopBase,
+        bounds.right + 22,
+        bounds.bottom + 22,
+      );
 
-        final surfacePath = Path()
-          ..moveTo(lx, surfaceY + waveAmp + ripple)
-          ..cubicTo(
-            lx + iw * 0.30,
-            surfaceY + waveAmp * 0.4 + ripple,
-            rx - iw * 0.30,
-            surfaceY - waveAmp * 0.4 - ripple,
-            rx,
-            surfaceY - waveAmp - ripple,
+      canvas.drawRect(
+        backRect,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              kLavaDark.withValues(alpha: 0.98),
+              kLavaRed.withValues(alpha: 0.96),
+              kLavaOrange.withValues(alpha: 0.90),
+            ],
+            stops: const [0.0, 0.58, 1.0],
+          ).createShader(backRect),
+      );
+    }
+
+    // İç alevler
+    if (normalizedFill > 0.02) {
+      final flameBaseY = bounds.bottom - 3;
+      final flameTopLimit =
+          max(bounds.top + 8, liquidTopBase - bounds.height * 0.22);
+
+      for (int i = 0; i < 14; i++) {
+        final lane = i / 13.0;
+        final x = lerpDouble(bounds.left + 14, bounds.right - 14, lane)! +
+            sin(time * pi * 2.2 + i * 0.85) * 6 +
+            sloshShift * 0.35;
+
+        final flameH = lerpDouble(
+          24,
+          78,
+          (sin(time * pi * 2.0 + i * 0.9) * 0.5 + 0.5),
+        )!;
+        final topY = max(flameTopLimit, flameBaseY - flameH);
+
+        final flamePath = Path()
+          ..moveTo(x, flameBaseY)
+          ..quadraticBezierTo(
+            x - 10 - sin(time * pi * 2 + i) * 3,
+            lerpDouble(flameBaseY, topY, 0.62)!,
+            x,
+            topY,
           )
-          ..lineTo(rx, layerBotY + 2)
-          ..lineTo(lx, layerBotY + 2)
+          ..quadraticBezierTo(
+            x + 10 + cos(time * pi * 2 + i) * 3,
+            lerpDouble(flameBaseY, topY, 0.62)!,
+            x,
+            flameBaseY,
+          )
           ..close();
 
-        canvas.drawPath(surfacePath, Paint()..color = color);
+        final flameRect = Rect.fromLTRB(x - 16, topY, x + 16, flameBaseY);
 
-        // Yüzey parlaması
         canvas.drawPath(
-          Path()
-            ..moveTo(lx, surfaceY + waveAmp + ripple)
-            ..cubicTo(
-              lx + iw * 0.30,
-              surfaceY + waveAmp * 0.4 + ripple,
-              rx - iw * 0.30,
-              surfaceY - waveAmp * 0.4 - ripple,
-              rx,
-              surfaceY - waveAmp - ripple,
-            ),
+          flamePath,
           Paint()
-            ..color = Colors.white.withValues(alpha: 0.22)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.2
-            ..strokeCap = StrokeCap.round,
-        );
-      } else {
-        // Alt katmanlar: düz dikdörtgen (tam genişlik, clip zaten şekli keser)
-        canvas.drawRect(
-          Rect.fromLTRB(0, layerTopY, w, layerBotY + 1),
-          Paint()..color = color,
-        );
-        // Katmanlar arası ince çizgi
-        canvas.drawLine(
-          Offset(0, layerTopY),
-          Offset(w, layerTopY),
-          Paint()
-            ..color = Colors.black.withValues(alpha: 0.20)
-            ..strokeWidth = 0.8,
+            ..shader = LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [
+                kLavaRed.withValues(alpha: 0.30),
+                kLavaOrange.withValues(alpha: 0.55),
+                kLavaGlow.withValues(alpha: 0.78),
+                kLavaCore.withValues(alpha: 0.38),
+              ],
+              stops: const [0.0, 0.45, 0.78, 1.0],
+            ).createShader(flameRect)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
         );
       }
     }
 
-    // Sol iç parlaklık şeridi
-    final shineRect =
-        Rect.fromLTWH(w * 0.22, surfaceY, w * 0.06, botY - surfaceY);
+    // Katmanları alttan yukarı gerçekten hacme yay
+    double currentBottom = bounds.bottom;
+
+    if (layers.isNotEmpty) {
+      final totalVolume = layers.fold<double>(0.0, (a, b) => a + b.volume);
+
+      if (totalVolume > 0.0001) {
+        for (int i = layers.length - 1; i >= 0; i--) {
+          final layer = layers[i];
+          final ratio = (layer.volume / safeCapacity).clamp(0.0, 1.0);
+          final hPart = bounds.height * ratio;
+
+          final top = currentBottom - hPart;
+          final rect = Rect.fromLTRB(
+            bounds.left - 18,
+            top,
+            bounds.right + 18,
+            currentBottom + 8,
+          );
+
+          final base = _layerColor(layer.colorIdx);
+          final isLava = _isLavaColorIndex(layer.colorIdx);
+
+          canvas.drawRect(
+            rect,
+            Paint()
+              ..shader = LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: isLava
+                    ? [
+                        kLavaDark,
+                        kLavaRed,
+                        kLavaOrange,
+                      ]
+                    : [
+                        base.withValues(alpha: 0.95),
+                        Color.lerp(base, Colors.white, 0.12)!
+                            .withValues(alpha: 0.96),
+                        Color.lerp(base, Colors.black, 0.12)!
+                            .withValues(alpha: 0.96),
+                      ],
+                stops: const [0.0, 0.62, 1.0],
+              ).createShader(rect),
+          );
+
+          final edgeY = top + sin((time * 2 * pi) + i * 0.9) * 1.2;
+          canvas.drawRect(
+            Rect.fromLTRB(
+              bounds.left - 10,
+              edgeY,
+              bounds.right + 10,
+              edgeY + 2.2,
+            ),
+            Paint()
+              ..shader = LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Colors.transparent,
+                  (isLava ? kLavaCore : Colors.white).withValues(alpha: 0.30),
+                  Colors.transparent,
+                ],
+              ).createShader(
+                Rect.fromLTRB(bounds.left, edgeY, bounds.right, edgeY + 2.2),
+              ),
+          );
+
+          currentBottom = top;
+        }
+      }
+    } else if (normalizedFill > 0.0) {
+      final rect = Rect.fromLTRB(
+        bounds.left - 18,
+        liquidTopBase,
+        bounds.right + 18,
+        bounds.bottom + 8,
+      );
+
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              kLavaDark,
+              kLavaRed,
+              kLavaOrange,
+            ],
+            stops: const [0.0, 0.58, 1.0],
+          ).createShader(rect),
+      );
+    }
+
+    // Üst yüzey
+    if (normalizedFill > 0.0) {
+      final waveY = liquidTopBase;
+      final waveAmp = 1.8 + (slosh.abs() * 2.4);
+
+      final wavePath = Path()
+        ..moveTo(bounds.left - 20, bounds.bottom + 10)
+        ..lineTo(bounds.left - 20, waveY)
+        ..quadraticBezierTo(
+          bounds.left + bounds.width * 0.25 + sloshShift,
+          waveY - waveAmp,
+          bounds.left + bounds.width * 0.50 + sloshShift * 0.5,
+          waveY + waveAmp * 0.35,
+        )
+        ..quadraticBezierTo(
+          bounds.left + bounds.width * 0.75 + sloshShift,
+          waveY + waveAmp,
+          bounds.right + 20,
+          waveY - waveAmp * 0.15,
+        )
+        ..lineTo(bounds.right + 20, bounds.bottom + 10)
+        ..close();
+
+      canvas.drawPath(
+        wavePath,
+        Paint()
+          ..color = kLavaOrange.withValues(alpha: 0.22)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+
+      canvas.drawPath(
+        Path()
+          ..moveTo(bounds.left, waveY)
+          ..quadraticBezierTo(
+            bounds.left + bounds.width * 0.25 + sloshShift,
+            waveY - waveAmp,
+            bounds.left + bounds.width * 0.50 + sloshShift * 0.5,
+            waveY + waveAmp * 0.35,
+          )
+          ..quadraticBezierTo(
+            bounds.left + bounds.width * 0.75 + sloshShift,
+            waveY + waveAmp,
+            bounds.right,
+            waveY - waveAmp * 0.15,
+          ),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0
+          ..color = kLavaCore.withValues(alpha: 0.48),
+      );
+    }
+
+    // İç fokurdama / sıcak kabarcıklar
+    if (normalizedFill > 0.04) {
+      for (int i = 0; i < 26; i++) {
+        final lane = (i % 9) / 8.0;
+        final riseSeed = (sin(time * pi * 2.4 + i * 0.7) * 0.5 + 0.5);
+
+        final x = lerpDouble(bounds.left + 10, bounds.right - 10, lane)! +
+            sin(time * pi * 1.7 + i) * 7 +
+            sloshShift * 0.55;
+
+        final y = lerpDouble(bounds.bottom - 6, liquidTopBase + 14, riseSeed)!;
+        final r = lerpDouble(
+          2.5,
+          7.5,
+          (sin(time * pi * 3.1 + i * 1.2) * 0.5 + 0.5),
+        )!;
+
+        if (y < liquidTopBase || y > bounds.bottom - 2) continue;
+
+        canvas.drawCircle(
+          Offset(x, y),
+          r,
+          Paint()
+            ..color = kLavaGlow.withValues(alpha: 0.18)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+        );
+
+        canvas.drawCircle(
+          Offset(x, y),
+          r * 0.48,
+          Paint()..color = kLavaCore.withValues(alpha: 0.65),
+        );
+      }
+    }
+
+    // Sol iç parlama
+    final shineRect = Rect.fromLTWH(
+      bounds.left + bounds.width * 0.08,
+      bounds.top,
+      bounds.width * 0.16,
+      bounds.height,
+    );
+
     canvas.drawRect(
       shineRect,
       Paint()
         ..shader = LinearGradient(
-          colors: [
-            Colors.white.withValues(alpha: 0.12),
-            Colors.white.withValues(alpha: 0.0),
-          ],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.10),
+            Colors.white.withValues(alpha: 0.00),
+          ],
         ).createShader(shineRect),
     );
 
@@ -4419,59 +4693,22 @@ class _VolcanoPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_VolcanoPainter old) =>
-      old.fillPercent != fillPercent ||
-      old.slosh != slosh ||
-      old.time != time ||
-      old.layers.length != layers.length ||
-      old.capacity != capacity;
-}
+  bool shouldRepaint(covariant _VolcanoPainter oldDelegate) {
+    if (oldDelegate.capacity != capacity) return true;
+    if ((oldDelegate.fillPercent - fillPercent).abs() > 0.0001) return true;
+    if ((oldDelegate.slosh - slosh).abs() > 0.0001) return true;
+    if ((oldDelegate.time - time).abs() > 0.0001) return true;
+    if (oldDelegate.layers.length != layers.length) return true;
 
-class _MountainReservoirClipper extends CustomClipper<Path> {
-  const _MountainReservoirClipper();
-
-  @override
-  Path getClip(Size size) {
-    final w = size.width;
-    final h = size.height;
-    return Path()
-      ..moveTo(w * 0.19, h * 0.84)
-      ..lineTo(w * 0.39, h * 0.47)
-      ..cubicTo(w * 0.425, h * 0.38, w * 0.43, h * 0.24, w * 0.43, h * 0.12)
-      ..lineTo(w * 0.57, h * 0.12)
-      ..cubicTo(w * 0.57, h * 0.24, w * 0.575, h * 0.38, w * 0.61, h * 0.47)
-      ..lineTo(w * 0.81, h * 0.84)
-      ..close();
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
-}
-
-class _AdUnlockBadge extends StatelessWidget {
-  final Color color;
-
-  const _AdUnlockBadge({required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 22,
-      height: 22,
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-      ),
-      child: Icon(
-        Icons.play_arrow_rounded,
-        size: 15,
-        color: color,
-      ),
-    );
+    for (int i = 0; i < layers.length; i++) {
+      if (oldDelegate.layers[i].colorIdx != layers[i].colorIdx) return true;
+      if ((oldDelegate.layers[i].volume - layers[i].volume).abs() > 0.0001) {
+        return true;
+      }
+    }
+    return false;
   }
 }
-
 // ─────────────────────────────────────────────
 // TEK ŞİŞE TAMAMLANDI — ALTIEGEN PATLAMA
 // ─────────────────────────────────────────────
@@ -4720,7 +4957,7 @@ class _FlyingTubeState extends State<_FlyingTube>
 
   // Uçan şişeyi hedefin üstünde biraz daha yukarıda tut.
   // İstersen 28 → 36 → 44 diye deneyebilirsin.
-  static const double _extraHoverLift = 80.0;
+  static const double _extraHoverLift = 112.0;
 
   double _liquidTilt = 0.0;
 
@@ -5126,7 +5363,45 @@ class _LiquidStreamPainter extends CustomPainter {
 // TÜP WIDGET
 // ─────────────────────────────────────────────
 
-class _TubeWidget extends StatelessWidget {
+class _AdUnlockBadge extends StatelessWidget {
+  final Color color;
+
+  const _AdUnlockBadge({
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A1600).withValues(alpha: 0.92),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: const Color(0xFFFFC107).withValues(alpha: 0.95),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFF8F00).withValues(alpha: 0.28),
+            blurRadius: 6,
+            spreadRadius: 0.4,
+          ),
+        ],
+      ),
+      child: Center(
+        child: Icon(
+          Icons.play_arrow_rounded,
+          size: 13,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _TubeWidget extends StatefulWidget {
   final List<int> tube;
   final bool isSelected;
   final double tilt;
@@ -5163,6 +5438,55 @@ class _TubeWidget extends StatelessWidget {
     this.capacity = kCap,
   });
 
+  @override
+  State<_TubeWidget> createState() => _TubeWidgetState();
+}
+
+class _TubeWidgetState extends State<_TubeWidget>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _lavaCtrl;
+
+  bool _hasLava() {
+    if (widget.tubeStyle == PuzzleTubeStyle.largeCollector) return true;
+    if (_isLavaColorIndex(widget.incomingColorIdx ?? -1)) return true;
+    for (final c in widget.tube) {
+      if (_isLavaColorIndex(c)) return true;
+    }
+    return false;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_hasLava()) {
+      _lavaCtrl = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 3),
+      )..repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_TubeWidget old) {
+    super.didUpdateWidget(old);
+    final nowHasLava = _hasLava();
+    if (nowHasLava && _lavaCtrl == null) {
+      _lavaCtrl = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 3),
+      )..repeat();
+    } else if (!nowHasLava && _lavaCtrl != null) {
+      _lavaCtrl!.dispose();
+      _lavaCtrl = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _lavaCtrl?.dispose();
+    super.dispose();
+  }
+
   Alignment _pivotAlignment() {
     const pivotX = kTW / 2;
     final pivotY = kBodyBotY + kTR;
@@ -5174,62 +5498,85 @@ class _TubeWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (tubeStyle == PuzzleTubeStyle.largeCollector) {
-      return SizedBox(
-        width: kBasinW,
-        height: kBasinH,
-        child: CustomPaint(
-          painter: _VolcanicBasinPainter(
-            currentUnits: tube.length + incomingVolume,
-            capacity: capacity,
-            highlight: isSelected,
+    if (widget.tubeStyle == PuzzleTubeStyle.largeCollector) {
+      // largeCollector da lavaCtrl ile çalışır — her zaman lava var
+      final lavaTime = _lavaCtrl?.value ?? 0.0;
+      Widget basinWidget(double t) => SizedBox(
+            width: kBasinW,
+            height: kBasinH,
+            child: CustomPaint(
+              painter: _VolcanicBasinPainter(
+                currentUnits: widget.tube.length + widget.incomingVolume,
+                capacity: widget.capacity,
+                highlight: widget.isSelected,
+                lavaTime: t,
+              ),
+            ),
+          );
+      if (_lavaCtrl != null) {
+        return AnimatedBuilder(
+          animation: _lavaCtrl!,
+          builder: (_, __) => basinWidget(_lavaCtrl!.value),
+        );
+      }
+      return basinWidget(0.0);
+    }
+
+    Widget buildFrame(double lavaTime) {
+      return RepaintBoundary(
+        child: SizedBox(
+          width: kWidgetW,
+          height: kWidgetH,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CustomPaint(
+                size: Size(kWidgetW, kWidgetH),
+                painter: _LiquidPainter(
+                  tube: widget.tube,
+                  tilt: widget.tilt,
+                  slosh: widget.slosh,
+                  drainedVolume: widget.drainedVolume,
+                  incomingColorIdx: widget.incomingColorIdx,
+                  incomingVolume: widget.incomingVolume,
+                  splash: widget.splash,
+                  pourProgress: widget.pourProgress,
+                  bubbleBurst: widget.bubbleBurst,
+                  receiveFlow: widget.receiveFlow,
+                  blindMode: widget.blindMode,
+                  visibleLayerCount: widget.visibleLayerCount,
+                  revealGlowTick: widget.revealGlowTick,
+                  capacity: widget.capacity,
+                  lavaTime: lavaTime,
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: SvgPicture.asset(
+                    kTubeSvgAsset,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );
     }
 
-    final frame = RepaintBoundary(
-      child: SizedBox(
-        width: kWidgetW,
-        height: kWidgetH,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            CustomPaint(
-              size: Size(kWidgetW, kWidgetH),
-              painter: _LiquidPainter(
-                tube: tube,
-                tilt: tilt,
-                slosh: slosh,
-                drainedVolume: drainedVolume,
-                incomingColorIdx: incomingColorIdx,
-                incomingVolume: incomingVolume,
-                splash: splash,
-                pourProgress: pourProgress,
-                bubbleBurst: bubbleBurst,
-                receiveFlow: receiveFlow,
-                blindMode: blindMode,
-                visibleLayerCount: visibleLayerCount,
-                revealGlowTick: revealGlowTick,
-                capacity: capacity,
-              ),
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: SvgPicture.asset(
-                  kTubeSvgAsset,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    Widget frame;
+    if (_lavaCtrl != null) {
+      frame = AnimatedBuilder(
+        animation: _lavaCtrl!,
+        builder: (_, __) => buildFrame(_lavaCtrl!.value),
+      );
+    } else {
+      frame = buildFrame(0.0);
+    }
 
-    final liftY = isSelected ? -15.0 : 0.0;
+    final liftY = widget.isSelected ? -15.0 : 0.0;
 
-    if (tilt.abs() < 0.0001) {
+    if (widget.tilt.abs() < 0.0001) {
       return SizedBox(
         width: kWidgetW,
         height: kWidgetH,
@@ -5247,7 +5594,7 @@ class _TubeWidget extends StatelessWidget {
         child: Transform.translate(
           offset: Offset(0, liftY),
           child: Transform.rotate(
-            angle: tilt,
+            angle: widget.tilt,
             alignment: _pivotAlignment(),
             transformHitTests: false,
             child: frame,
@@ -5262,11 +5609,13 @@ class _VolcanicBasinPainter extends CustomPainter {
   final double currentUnits;
   final int capacity;
   final bool highlight;
+  final double lavaTime; // 0→1 döngüsel
 
   const _VolcanicBasinPainter({
     required this.currentUnits,
     required this.capacity,
     this.highlight = false,
+    this.lavaTime = 0.0,
   });
 
   Path _outerPath(Size size) {
@@ -5301,19 +5650,25 @@ class _VolcanicBasinPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
     final outer = _outerPath(size);
     final inner = _innerPath(size);
 
-    canvas.drawShadow(outer, Colors.black.withValues(alpha: 0.42), 12, false);
+    // ── Kaya gövdesi ──────────────────────────────────────────────────────────
+    canvas.drawShadow(outer, Colors.black.withValues(alpha: 0.45), 14, false);
 
-    final rock = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF2A130B), Color(0xFF130605)],
-      ).createShader(Offset.zero & size);
-    canvas.drawPath(outer, rock);
+    canvas.drawPath(
+      outer,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF2A130B), Color(0xFF130605)],
+        ).createShader(Offset.zero & size),
+    );
 
+    // Kaya kenar çizgisi
     canvas.drawPath(
       outer,
       Paint()
@@ -5322,71 +5677,365 @@ class _VolcanicBasinPainter extends CustomPainter {
         ..color = const Color(0xFF6A3A22).withValues(alpha: 0.95),
     );
 
+    // Seçili parlama / highlight
     canvas.drawPath(
       outer,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = highlight ? 4.8 : 3.0
+        ..strokeWidth = highlight ? 5.5 : 3.2
         ..color =
-            const Color(0xFFFF8A33).withValues(alpha: highlight ? 0.48 : 0.18)
+            const Color(0xFFFF8A33).withValues(alpha: highlight ? 0.55 : 0.22)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
     );
 
+    // ── İç lav alanı ─────────────────────────────────────────────────────────
     canvas.save();
     canvas.clipPath(inner);
 
     final fillRatio =
         capacity <= 0 ? 0.0 : (currentUnits / capacity).clamp(0.0, 1.0);
-    final fillTop =
-        lerpDouble(size.height * 0.80, size.height * 0.30, fillRatio)!;
-    if (fillRatio > 0.0) {
-      final fillRect = Rect.fromLTWH(
-        size.width * 0.16,
-        fillTop,
-        size.width * 0.68,
-        size.height * 0.82 - fillTop,
-      );
-      final lava = Paint()
-        ..shader = LinearGradient(
+    // Boş bile olsa iç alan tamamen kırmızı-siyah kor görünsün
+    final baseTop = h * 0.30;
+    final baseBot = h * 0.80;
+    final baseRect =
+        Rect.fromLTWH(w * 0.16, baseTop, w * 0.68, baseBot - baseTop);
+
+    // Arka plan kor — her zaman çizilir
+    canvas.drawRect(
+      baseRect,
+      Paint()
+        ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: const [
-            Color(0xFFFFF59D),
-            Color(0xFFFFB300),
-            Color(0xFFFF7043),
-            Color(0xFFBF360C),
-          ],
-          stops: const [0.0, 0.22, 0.56, 1.0],
-        ).createShader(fillRect);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(fillRect, Radius.circular(size.width * 0.06)),
-        lava,
+          colors: [Color(0xFF3A0A00), Color(0xFF1A0300)],
+        ).createShader(baseRect),
+    );
+
+    // Dolu lav katmanı
+    final fillTop = lerpDouble(baseBot, baseTop, fillRatio)!;
+    final fillRect =
+        Rect.fromLTWH(w * 0.16, fillTop, w * 0.68, baseBot - fillTop);
+
+    if (fillRatio > 0.001) {
+      // Ana lav rengi: kırmızı-turuncu, normal tüplerle aynı palet
+      canvas.drawRect(
+        fillRect,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: const [
+              Color(0xFFFF3D00),
+              Color(0xFFDD1500),
+              Color(0xFF8B0000),
+            ],
+            stops: const [0.0, 0.50, 1.0],
+          ).createShader(fillRect),
       );
 
+      // ── Animasyonlu kor damarları ───────────────────────────────────────
+      for (int v = 0; v < 4; v++) {
+        final vPhase = ((v / 4.0) + lavaTime * 0.35) % 1.0;
+        final vX = fillRect.left + fillRect.width * (0.12 + v * 0.24);
+        final vTopY = fillRect.bottom - vPhase * fillRect.height * 1.1 - 4;
+        final vBotY = vTopY + fillRect.height * 0.32;
+        final vPath = Path()
+          ..moveTo(vX, max(fillRect.top, vTopY))
+          ..cubicTo(
+            vX - fillRect.width * 0.05,
+            max(fillRect.top, vTopY) + fillRect.height * 0.10,
+            vX + fillRect.width * 0.05,
+            max(fillRect.top, vTopY) + fillRect.height * 0.20,
+            vX - fillRect.width * 0.03,
+            min(fillRect.bottom, vBotY),
+          );
+        canvas.drawPath(
+          vPath,
+          Paint()
+            ..color = const Color(0xFFFF6D00).withValues(alpha: 0.60)
+            ..strokeWidth = 2.0
+            ..style = PaintingStyle.stroke
+            ..strokeCap = StrokeCap.round
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5),
+        );
+      }
+
+      // ── Sıcak nokta parlamaları ─────────────────────────────────────────
+      for (int h2 = 0; h2 < 3; h2++) {
+        final hPhase = ((h2 / 3.0) + lavaTime * 0.65) % 1.0;
+        final hPulse = sin(hPhase * pi * 2) * 0.5 + 0.5;
+        final hX = fillRect.left + fillRect.width * (0.20 + h2 * 0.30);
+        final hY = fillRect.top + fillRect.height * (0.20 + h2 * 0.25);
+        if (hY > fillRect.bottom) continue;
+        final hR = (8.0 + 6.0 * hPulse);
+        final hotRect =
+            Rect.fromCircle(center: Offset(hX, hY), radius: hR * 2.5);
+        canvas.drawCircle(
+          Offset(hX, hY),
+          hR * 2.5,
+          Paint()
+            ..shader = RadialGradient(
+              colors: [
+                const Color(0xFFFFD54F).withValues(alpha: 0.60 * hPulse),
+                const Color(0xFFFF6F00).withValues(alpha: 0.35 * hPulse),
+                Colors.transparent,
+              ],
+            ).createShader(hotRect),
+        );
+      }
+
+      // ── Yüzen kabarcıklar ───────────────────────────────────────────────
+      final bubbles = [
+        (0.22, 3.5, 0.00),
+        (0.50, 5.0, 0.20),
+        (0.72, 4.0, 0.40),
+        (0.35, 3.0, 0.60),
+        (0.60, 6.0, 0.75),
+        (0.15, 4.5, 0.10),
+        (0.82, 3.8, 0.85),
+        (0.45, 5.5, 0.50),
+      ];
+      for (final (bxFrac, br, offset) in bubbles) {
+        final tPhase = ((lavaTime + offset) % 1.0);
+        final bY = fillRect.bottom - tPhase * fillRect.height;
+        if (bY < fillRect.top) continue;
+
+        final bX = fillRect.left + fillRect.width * bxFrac;
+        final bOp = tPhase < 0.12
+            ? tPhase / 0.12
+            : tPhase > 0.82
+                ? (1.0 - tPhase) / 0.18
+                : 1.0;
+
+        canvas.drawCircle(
+          Offset(bX, bY),
+          br * 1.9,
+          Paint()
+            ..color = Colors.black.withValues(alpha: 0.16 * bOp)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+        );
+        canvas.drawCircle(
+          Offset(bX, bY),
+          br,
+          Paint()
+            ..color = const Color(0xFFFF8C00).withValues(alpha: 0.72 * bOp),
+        );
+        canvas.drawCircle(
+          Offset(bX - br * 0.28, bY - br * 0.28),
+          br * 0.32,
+          Paint()..color = Colors.white.withValues(alpha: 0.65 * bOp),
+        );
+        canvas.drawCircle(
+          Offset(bX, bY),
+          br,
+          Paint()
+            ..color = const Color(0xFFFFD54F).withValues(alpha: 0.45 * bOp)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.7,
+        );
+      }
+
+      // ── Yüzey patlama noktaları ─────────────────────────────────────────
+      for (int p = 0; p < 3; p++) {
+        final pPhase = ((lavaTime * 1.2 + p * 0.33) % 1.0);
+        if (pPhase > 0.22) continue;
+        final pT = pPhase / 0.22;
+        final pPulse = sin(pT * pi);
+        final pX = fillRect.left + fillRect.width * (0.20 + p * 0.30);
+        final pY = fillTop + 2.0;
+        final pR = 3.0 + 6.0 * pPulse;
+        canvas.drawCircle(
+          Offset(pX, pY),
+          pR * 2.2,
+          Paint()
+            ..color = const Color(0xFFFF6D00).withValues(alpha: 0.45 * pPulse)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0),
+        );
+        canvas.drawCircle(
+          Offset(pX, pY),
+          pR * 0.55,
+          Paint()
+            ..color = const Color(0xFFFFF9C4).withValues(alpha: 0.85 * pPulse),
+        );
+      }
+
+      // ── Dalgalı yüzey çizgisi ───────────────────────────────────────────
+      final waveAmp = fillRect.width * 0.020;
+      final ripple = sin(lavaTime * pi * 2.0) * waveAmp;
       final surface = Path()
-        ..moveTo(size.width * 0.20, fillTop + 4)
-        ..quadraticBezierTo(
-            size.width * 0.34, fillTop - 6, size.width * 0.50, fillTop + 2)
-        ..quadraticBezierTo(
-            size.width * 0.66, fillTop + 8, size.width * 0.80, fillTop + 1);
+        ..moveTo(
+            fillRect.left + fillRect.width * 0.04, fillTop + waveAmp + ripple)
+        ..cubicTo(
+          fillRect.left + fillRect.width * 0.28,
+          fillTop + waveAmp * 0.4 + ripple,
+          fillRect.left + fillRect.width * 0.50,
+          fillTop - waveAmp * 0.4 - ripple,
+          fillRect.left + fillRect.width * 0.72,
+          fillTop - waveAmp - ripple,
+        )
+        ..cubicTo(
+          fillRect.left + fillRect.width * 0.82,
+          fillTop - waveAmp * 0.3 + ripple * 0.5,
+          fillRect.left + fillRect.width * 0.90,
+          fillTop + waveAmp * 0.2,
+          fillRect.right - fillRect.width * 0.04,
+          fillTop + waveAmp * 0.5,
+        );
       canvas.drawPath(
         surface,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.4
-          ..color = Colors.white.withValues(alpha: 0.28),
+          ..strokeWidth = 1.8
+          ..color = kLavaCore.withValues(alpha: 0.55)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.0),
+      );
+
+      // Sol iç parlaklık şeridi
+      final shineRect = Rect.fromLTWH(
+          fillRect.left, fillTop, fillRect.width * 0.10, fillRect.height);
+      canvas.drawRect(
+        shineRect,
+        Paint()
+          ..shader = LinearGradient(
+            colors: [
+              Colors.white.withValues(alpha: 0.16),
+              Colors.white.withValues(alpha: 0.0),
+            ],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ).createShader(shineRect),
       );
     }
+
+    // ── Sürekli alev efekti — lav yüzeyinden yukarı ─────────────────────────
+    // fillRatio ne olursa olsun alev her zaman yanıyor
+    {
+      final flameBaseY = fillRatio > 0.001 ? fillTop : baseBot;
+      final cx = w / 2;
+      final innerTopY = baseTop;
+      final flameH = ((flameBaseY - innerTopY) * 0.55).clamp(14.0, 52.0);
+
+      // Ana alev — merkez
+      final mainFlame = Path()
+        ..moveTo(cx - w * 0.12, flameBaseY)
+        ..cubicTo(
+          cx - w * 0.18,
+          flameBaseY - flameH * 0.40,
+          cx - w * 0.08,
+          flameBaseY - flameH * 0.80,
+          cx,
+          flameBaseY - flameH,
+        )
+        ..cubicTo(
+          cx + w * 0.08,
+          flameBaseY - flameH * 0.80,
+          cx + w * 0.18,
+          flameBaseY - flameH * 0.40,
+          cx + w * 0.12,
+          flameBaseY,
+        )
+        ..close();
+
+      final flameRect = Rect.fromLTWH(
+          cx - w * 0.20, flameBaseY - flameH * 1.1, w * 0.40, flameH * 1.2);
+
+      canvas.drawPath(
+        mainFlame,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              const Color(0xDDFF3D00),
+              const Color(0xAAFF8C00),
+              const Color(0x66FFD54F),
+              const Color(0x22FFF9C4),
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.30, 0.60, 0.82, 1.0],
+          ).createShader(flameRect)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.5),
+      );
+
+      // Titreyen yan alevler
+      for (int f = 0; f < 4; f++) {
+        final fSign = (f % 2 == 0) ? -1.0 : 1.0;
+        final fXFrac = 0.10 + (f ~/ 2) * 0.22;
+        final fPhase = ((lavaTime * 1.4 + f * 0.25) % 1.0);
+        final fPulse = sin(fPhase * pi * 2) * 0.5 + 0.5;
+        final fH = flameH * (0.35 + 0.30 * fPulse);
+        final fX = cx + fSign * w * fXFrac;
+
+        final sideFlame = Path()
+          ..moveTo(fX - w * 0.055, flameBaseY)
+          ..cubicTo(
+            fX - w * 0.09,
+            flameBaseY - fH * 0.45,
+            fX + w * 0.02,
+            flameBaseY - fH * 0.82,
+            fX + w * 0.04,
+            flameBaseY - fH,
+          )
+          ..cubicTo(
+            fX + w * 0.08,
+            flameBaseY - fH * 0.70,
+            fX + w * 0.07,
+            flameBaseY - fH * 0.28,
+            fX + w * 0.055,
+            flameBaseY,
+          )
+          ..close();
+
+        final sfRect = Rect.fromLTWH(
+            fX - w * 0.10, flameBaseY - fH * 1.1, w * 0.20, fH * 1.2);
+        canvas.drawPath(
+          sideFlame,
+          Paint()
+            ..shader = LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [
+                const Color(0xBBFF3D00).withValues(alpha: 0.70 * fPulse),
+                const Color(0x88FF8C00).withValues(alpha: 0.45 * fPulse),
+                Colors.transparent,
+              ],
+            ).createShader(sfRect)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+        );
+      }
+
+      // Kor hattı — yüzey çizgisi parlaması
+      canvas.drawLine(
+        Offset(cx - w * 0.22, flameBaseY),
+        Offset(cx + w * 0.22, flameBaseY),
+        Paint()
+          ..color = kLavaCore.withValues(alpha: 0.65)
+          ..strokeWidth = 2.0
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+      );
+    }
+
     canvas.restore();
 
-    final lip = Paint()
-      ..strokeWidth = 5
-      ..strokeCap = StrokeCap.round
-      ..color = const Color(0xFF1E0D08);
+    // ── Ağız kenar çizgisi ────────────────────────────────────────────────────
     canvas.drawLine(
-      Offset(size.width * 0.20, size.height * 0.30),
-      Offset(size.width * 0.80, size.height * 0.30),
-      lip,
+      Offset(w * 0.20, h * 0.30),
+      Offset(w * 0.80, h * 0.30),
+      Paint()
+        ..strokeWidth = 5.0
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFF1E0D08),
+    );
+
+    // Ağız parlama — lavdan gelen turuncu ışık
+    canvas.drawLine(
+      Offset(w * 0.20, h * 0.30),
+      Offset(w * 0.80, h * 0.30),
+      Paint()
+        ..strokeWidth = 3.0
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFFFF6D00).withValues(alpha: 0.28)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
   }
 
@@ -5394,7 +6043,8 @@ class _VolcanicBasinPainter extends CustomPainter {
   bool shouldRepaint(covariant _VolcanicBasinPainter oldDelegate) {
     return oldDelegate.currentUnits != currentUnits ||
         oldDelegate.capacity != capacity ||
-        oldDelegate.highlight != highlight;
+        oldDelegate.highlight != highlight ||
+        oldDelegate.lavaTime != lavaTime;
   }
 }
 
@@ -5417,6 +6067,7 @@ class _LiquidPainter extends CustomPainter {
   final int visibleLayerCount;
   final int revealGlowTick;
   final int capacity;
+  final double lavaTime; // 0→1 döngüsel, AnimationController'dan
 
   const _LiquidPainter({
     required this.tube,
@@ -5433,6 +6084,7 @@ class _LiquidPainter extends CustomPainter {
     this.blindMode = false,
     this.visibleLayerCount = kCap,
     this.capacity = kCap,
+    this.lavaTime = 0.0,
   });
 
   // İç alan sınırları
@@ -5643,51 +6295,187 @@ class _LiquidPainter extends CustomPainter {
 
       final bandPath = _band(vBot, vTop, tilt, isTop ? slosh : slosh * 0.45);
       if (isLavaLayer) {
-        canvas.drawPath(
-          bandPath,
-          Paint()
-            ..shader = const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [kLavaCore, kLavaGlow, kLavaOrange, kLavaRed, kLavaDark],
-              stops: [0.0, 0.12, 0.38, 0.74, 1.0],
-            ).createShader(liquidRect),
-        );
-
-        final lavaVein = Path();
+        // ── Lav bandı: her katmanda aynı görünüm için kendi rect'i kullan ──
         final topS = _surface(vTop, tilt, isTop ? slosh : slosh * 0.45);
         final botS = _surface(vBot, tilt, slosh * 0.20);
-        final midX = (_il + _ir) / 2;
-        lavaVein
-          ..moveTo(midX - _iw * 0.20, topS.cY + 3.0)
-          ..quadraticBezierTo(midX - _iw * 0.05, (topS.cY + botS.cY) / 2,
-              midX - _iw * 0.12, botS.cY - 3.0)
-          ..moveTo(midX + _iw * 0.08, topS.cY + 5.0)
-          ..quadraticBezierTo(midX + _iw * 0.18, (topS.cY + botS.cY) / 2 + 2.0,
-              midX + _iw * 0.12, botS.cY - 5.0);
-        canvas.drawPath(
-          lavaVein,
-          Paint()
-            ..color = Colors.white.withValues(alpha: 0.14)
-            ..strokeWidth = 1.2
-            ..style = PaintingStyle.stroke
-            ..strokeCap = StrokeCap.round
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.4),
-        );
+        final bandTopY = min(topS.lY, topS.rY);
+        final bandBotY = max(botS.lY, botS.rY);
+        final bandRect = Rect.fromLTRB(_il, bandTopY, _ir, bandBotY + 2);
 
+        // Ana lav dolgusu — koyu kırmızıdan parlak kırmızıya, her bantta aynı
         canvas.drawPath(
           bandPath,
           Paint()
-            ..shader = const LinearGradient(
-              colors: [
-                Color(0x22FFF8E1),
-                Colors.transparent,
-                Color(0x33000000),
-              ],
-              stops: [0.0, 0.42, 1.0],
+            ..shader = LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-            ).createShader(liquidRect),
+              colors: const [
+                Color(0xFFFF3D00), // üst: canlı kırmızı-turuncu
+                Color(0xFFDD1500), // orta: koyu kırmızı
+                Color(0xFF8B0000), // alt: derin kızıl
+              ],
+              stops: const [0.0, 0.50, 1.0],
+            ).createShader(bandRect),
+        );
+
+        // Damar/parlama dalgası — lavaTime ile kayar
+        canvas.save();
+        canvas.clipPath(bandPath);
+
+        // Yavaş akan kor damarları
+        for (int v = 0; v < 3; v++) {
+          final vPhase = (v / 3.0 + lavaTime * 0.4) % 1.0;
+          final vX = _il + _iw * (0.18 + v * 0.28);
+          final vTopY = bandRect.top + bandRect.height * vPhase - 4;
+          final vBotY = vTopY + bandRect.height * 0.35;
+          final vPath = Path()
+            ..moveTo(vX, vTopY)
+            ..cubicTo(
+              vX - _iw * 0.06,
+              vTopY + bandRect.height * 0.12,
+              vX + _iw * 0.06,
+              vTopY + bandRect.height * 0.22,
+              vX - _iw * 0.04,
+              vBotY,
+            );
+          canvas.drawPath(
+            vPath,
+            Paint()
+              ..color = const Color(0xFFFF6D00).withValues(alpha: 0.55)
+              ..strokeWidth = 1.6
+              ..style = PaintingStyle.stroke
+              ..strokeCap = StrokeCap.round
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
+          );
+        }
+
+        // Sıcak nokta parlamaları
+        for (int h = 0; h < 2; h++) {
+          final hPhase = ((h * 0.5 + lavaTime * 0.7) % 1.0);
+          final hPulse = (sin(hPhase * pi * 2) * 0.5 + 0.5);
+          final hX = _il + _iw * (0.28 + h * 0.44);
+          final hY = bandRect.top + bandRect.height * (0.25 + h * 0.35);
+          final hR = 4.0 + 3.0 * hPulse;
+          final hotRect =
+              Rect.fromCircle(center: Offset(hX, hY), radius: hR * 2.5);
+          canvas.drawCircle(
+            Offset(hX, hY),
+            hR * 2.5,
+            Paint()
+              ..shader = RadialGradient(
+                colors: [
+                  const Color(0xFFFFD54F).withValues(alpha: 0.55 * hPulse),
+                  const Color(0xFFFF6F00).withValues(alpha: 0.30 * hPulse),
+                  Colors.transparent,
+                ],
+              ).createShader(hotRect),
+          );
+        }
+
+        // Kabarcıklar — lavaTime ile yukarı tırmanır
+        final bubbleRng = [
+          (0.22, 0.78, 2.2, 0.0),
+          (0.58, 0.42, 1.6, 0.33),
+          (0.40, 0.65, 2.8, 0.67),
+          (0.72, 0.20, 1.8, 0.15),
+          (0.15, 0.50, 2.4, 0.50),
+        ];
+
+        for (final (bx, _, br, offset) in bubbleRng) {
+          final tPhase = ((lavaTime + offset) % 1.0);
+          // Kabarcık bandın tabanından yüzeyine çıkar
+          final bY = bandRect.bottom - tPhase * bandRect.height;
+          if (bY < bandRect.top || bY > bandRect.bottom) continue;
+
+          final bX = _il + _iw * bx;
+          final bOpacity = tPhase < 0.15
+              ? tPhase / 0.15
+              : tPhase > 0.80
+                  ? (1.0 - tPhase) / 0.20
+                  : 1.0;
+
+          // Kabarcık gölgesi
+          canvas.drawCircle(
+            Offset(bX, bY),
+            br * 1.8,
+            Paint()
+              ..color = Colors.black.withValues(alpha: 0.18 * bOpacity)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0),
+          );
+          // Kabarcık gövdesi
+          canvas.drawCircle(
+            Offset(bX, bY),
+            br,
+            Paint()
+              ..color =
+                  const Color(0xFFFF8C00).withValues(alpha: 0.70 * bOpacity)
+              ..style = PaintingStyle.fill,
+          );
+          // Kabarcık iç parlaması
+          canvas.drawCircle(
+            Offset(bX - br * 0.28, bY - br * 0.28),
+            br * 0.32,
+            Paint()..color = Colors.white.withValues(alpha: 0.60 * bOpacity),
+          );
+          // Kabarcık dış çerçevesi
+          canvas.drawCircle(
+            Offset(bX, bY),
+            br,
+            Paint()
+              ..color =
+                  const Color(0xFFFFD54F).withValues(alpha: 0.50 * bOpacity)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 0.6,
+          );
+        }
+
+        // Patlama noktaları — en üst katmanda yüzeyde patlamalar
+        if (isTop) {
+          for (int p = 0; p < 2; p++) {
+            final pOffset = p * 0.5;
+            final pPhase = ((lavaTime * 1.4 + pOffset) % 1.0);
+            // Patlama kısa süre içinde gerçekleşir
+            if (pPhase > 0.25) continue;
+            final pT = pPhase / 0.25;
+            final pPulse = sin(pT * pi);
+            final pX = _il + _iw * (0.30 + p * 0.40);
+            final pY = topS.cY - 1.0;
+            final pR = 2.5 + 4.0 * pPulse;
+            canvas.drawCircle(
+              Offset(pX, pY),
+              pR * 2.0,
+              Paint()
+                ..color =
+                    const Color(0xFFFF6D00).withValues(alpha: 0.40 * pPulse)
+                ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
+            );
+            canvas.drawCircle(
+              Offset(pX, pY),
+              pR * 0.55,
+              Paint()
+                ..color =
+                    const Color(0xFFFFF9C4).withValues(alpha: 0.80 * pPulse),
+            );
+          }
+        }
+
+        canvas.restore();
+
+        // Sol iç parlaklık şeridi (tüpün sol duvarı boyunca)
+        final shineW = _iw * 0.14;
+        final shineRect =
+            Rect.fromLTWH(_il, bandRect.top, shineW, bandRect.height);
+        canvas.drawRect(
+          shineRect,
+          Paint()
+            ..shader = LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: 0.18),
+                Colors.white.withValues(alpha: 0.0),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ).createShader(shineRect),
         );
       } else {
         canvas.drawPath(bandPath, Paint()..color = fill);
@@ -5817,18 +6605,27 @@ class _LiquidPainter extends CustomPainter {
     // 🫧 Kabarcık efekti (görünür güçlendirilmiş sürüm)
     if (totalVol > 0.0001 && bubbleBurst > 0.01) {
       final s = _surface(totalVol, tilt, slosh * 0.25);
+      final topColorIdx = layers.isNotEmpty ? layers.last.colorIdx : -1;
+      final burstIsLava = _isLavaColorIndex(topColorIdx) ||
+          (incomingColorIdx != null && _isLavaColorIndex(incomingColorIdx!));
+
+      final bubbleBaseColor =
+          burstIsLava ? const Color(0xFFFF8C00) : Colors.white;
+      final bubbleHighColor =
+          burstIsLava ? const Color(0xFFFFF9C4) : Colors.white;
 
       final bubbleFill = Paint()
-        ..color = Colors.white.withValues(alpha: 0.55 * bubbleBurst)
+        ..color = bubbleBaseColor.withValues(
+            alpha: (burstIsLava ? 0.70 : 0.55) * bubbleBurst)
         ..style = PaintingStyle.fill;
 
       final bubbleStroke = Paint()
-        ..color = Colors.white.withValues(alpha: 0.95 * bubbleBurst)
+        ..color = bubbleHighColor.withValues(alpha: 0.95 * bubbleBurst)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0;
 
       final highlightPaint = Paint()
-        ..color = Colors.white.withValues(alpha: 0.95 * bubbleBurst)
+        ..color = bubbleHighColor.withValues(alpha: 0.95 * bubbleBurst)
         ..style = PaintingStyle.fill;
 
       final driftUp = lerpDouble(0.0, 7.0, bubbleBurst)!;
@@ -5882,7 +6679,8 @@ class _LiquidPainter extends CustomPainter {
       old.receiveFlow != receiveFlow ||
       old.blindMode != blindMode ||
       old.visibleLayerCount != visibleLayerCount ||
-      old.revealGlowTick != revealGlowTick;
+      old.revealGlowTick != revealGlowTick ||
+      old.lavaTime != lavaTime;
 }
 
 class _BasinPainter extends CustomPainter {

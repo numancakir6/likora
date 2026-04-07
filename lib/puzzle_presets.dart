@@ -215,35 +215,8 @@ class PuzzlePresets {
     return tubes.map((t) => t.join(',')).join('|');
   }
 
-  // ---------------------------------------------------------------------------
-  // Level üretim kriterleri (Python jeneratörden):
-  //   immediate_moves : üstteki renkler arasında anlık eşleşme sayısı
-  //                     Düşük = zor başlangıç (oyuncu ilk hamleyi bulmakta zorlanır)
-  //   worst_block     : bir rengin en derindeki parçasının üstündeki yabancı sayısı
-  //                     Yüksek = o rengi ortaya çıkarmak çok hamle gerektirir
-  //   diversity       : kaç tüpte 4 farklı renk var
-  //                     Yüksek = hiçbir tüp "yarı hazır" değil
-  //
-  //   L1  difficulty=2  imm=4  worst=3  div=9   ~46  hamle
-  //   L2  difficulty=2  imm=4  worst=3  div=9   ~53  hamle
-  //   L3  difficulty=3  imm=3  worst=3  div=11  ~47  hamle
-  //   L4  difficulty=3  imm=3  worst=3  div=9   ~54  hamle
-  //   L5  difficulty=4  imm=2  worst=3  div=11  ~53  hamle
-  //   L6  difficulty=4  imm=2  worst=3  div=7   ~60  hamle
-  //   L7  difficulty=5  imm=2  worst=3  div=13  ~56  hamle
-  //   L8  difficulty=5  imm=2  worst=3  div=12  ~57  hamle
-  //   L9  difficulty=5  imm=2  worst=3  div=12  ~66  hamle
-  //   L10 difficulty=6  imm=2  worst=3  div=14  ~64  hamle
-  //
-  // Kurallar (hepsi doğrulandı):
-  //   K1: Her zaman 2 boş oyun tüpü + 1 reklam tüpü (lockedAdTubeIndex = son)
-  //   K3: Her renkten tam 4 sıvı (renk sayısı = dolu tüp sayısı)
-  //   K4: Hiçbir tüpte bitişik aynı renk yok
-  //   K5: 2+1 boş tüp hariç tüm tüpler tam dolu (4 eleman)
-  // ---------------------------------------------------------------------------
   static final Map<int, Map<int, PuzzlePreset>> _presets = {
     1: {
-      // ── Level 1 ── Kolay │ 12 renk │ imm=4 │ worst_block=3 │ ~46 hamle
       1: PuzzlePreset(
         mapNumber: 1,
         levelId: 1,
@@ -268,8 +241,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(15),
         lockedAdTubeIndex: 14,
       ),
-
-      // ── Level 2 ── Kolay │ 12 renk │ imm=4 │ worst_block=3 │ ~53 hamle
       2: PuzzlePreset(
         mapNumber: 1,
         levelId: 2,
@@ -294,8 +265,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(15),
         lockedAdTubeIndex: 14,
       ),
-
-      // ── Level 3 ── Orta │ 12 renk │ imm=3 │ worst_block=3 │ div=11 │ ~47 hamle
       3: PuzzlePreset(
         mapNumber: 1,
         levelId: 3,
@@ -320,8 +289,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(15),
         lockedAdTubeIndex: 14,
       ),
-
-      // ── Level 4 ── Orta │ 13 renk │ imm=3 │ worst_block=3 │ ~54 hamle
       4: PuzzlePreset(
         mapNumber: 1,
         levelId: 4,
@@ -347,8 +314,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(16),
         lockedAdTubeIndex: 15,
       ),
-
-      // ── Level 5 ── Zor │ 13 renk │ imm=2 │ worst_block=3 │ div=11 │ ~53 hamle
       5: PuzzlePreset(
         mapNumber: 1,
         levelId: 5,
@@ -374,8 +339,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(16),
         lockedAdTubeIndex: 15,
       ),
-
-      // ── Level 6 ── Zor │ 14 renk │ imm=2 │ worst_block=3 │ ~60 hamle
       6: PuzzlePreset(
         mapNumber: 1,
         levelId: 6,
@@ -402,8 +365,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(17),
         lockedAdTubeIndex: 16,
       ),
-
-      // ── Level 7 ── Çok Zor │ 14 renk │ imm=2 │ worst_block=3 │ div=13 │ ~56 hamle
       7: PuzzlePreset(
         mapNumber: 1,
         levelId: 7,
@@ -430,8 +391,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(17),
         lockedAdTubeIndex: 16,
       ),
-
-      // ── Level 8 ── Çok Zor │ 15 renk │ imm=2 │ worst_block=3 │ div=12 │ ~57 hamle
       8: PuzzlePreset(
         mapNumber: 1,
         levelId: 8,
@@ -459,8 +418,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(18),
         lockedAdTubeIndex: 17,
       ),
-
-      // ── Level 9 ── Expert │ 15 renk │ imm=2 │ worst_block=3 │ div=12 │ ~66 hamle
       9: PuzzlePreset(
         mapNumber: 1,
         levelId: 9,
@@ -488,8 +445,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(18),
         lockedAdTubeIndex: 17,
       ),
-
-      // ── Level 10 ── Master │ 16 renk │ imm=2 │ worst_block=3 │ div=14 │ ~64 hamle
       10: PuzzlePreset(
         mapNumber: 1,
         levelId: 10,
@@ -520,7 +475,6 @@ class PuzzlePresets {
       ),
     },
     2: {
-      // ── Level 1 ── Kolay │ 8 renk │ imm=4 │ worst_block=3 │ div=4
       1: PuzzlePreset(
         mapNumber: 2,
         levelId: 1,
@@ -541,8 +495,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(11),
         lockedAdTubeIndex: 10,
       ),
-
-      // ── Level 2 ── Kolay │ 9 renk │ imm=4 │ worst_block=3 │ div=4
       2: PuzzlePreset(
         mapNumber: 2,
         levelId: 2,
@@ -564,8 +516,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(12),
         lockedAdTubeIndex: 11,
       ),
-
-      // ── Level 3 ── Kolay │ 9 renk │ imm=3 │ worst_block=3 │ div=7
       3: PuzzlePreset(
         mapNumber: 2,
         levelId: 3,
@@ -587,8 +537,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(12),
         lockedAdTubeIndex: 11,
       ),
-
-      // ── Level 4 ── Orta │ 10 renk │ imm=3 │ worst_block=3 │ div=8
       4: PuzzlePreset(
         mapNumber: 2,
         levelId: 4,
@@ -611,8 +559,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(13),
         lockedAdTubeIndex: 12,
       ),
-
-      // ── Level 5 ── Orta │ 8 renk │ imm=1 │ worst_block=3 │ div=7
       5: PuzzlePreset(
         mapNumber: 2,
         levelId: 5,
@@ -633,8 +579,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(11),
         lockedAdTubeIndex: 10,
       ),
-
-      // ── Level 6 ── Orta │ 11 renk │ imm=2 │ worst_block=3 │ div=9
       6: PuzzlePreset(
         mapNumber: 2,
         levelId: 6,
@@ -658,8 +602,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(14),
         lockedAdTubeIndex: 13,
       ),
-
-      // ── Level 7 ── Zor │ 10 renk │ imm=2 │ worst_block=3 │ div=9
       7: PuzzlePreset(
         mapNumber: 2,
         levelId: 7,
@@ -682,8 +624,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(13),
         lockedAdTubeIndex: 12,
       ),
-
-      // ── Level 8 ── Orta │ 13 renk │ imm=4 │ worst_block=3 │ div=6
       8: PuzzlePreset(
         mapNumber: 2,
         levelId: 8,
@@ -709,8 +649,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(16),
         lockedAdTubeIndex: 15,
       ),
-
-      // ── Level 9 ── Zor │ 11 renk │ imm=1 │ worst_block=3 │ div=10
       9: PuzzlePreset(
         mapNumber: 2,
         levelId: 9,
@@ -734,8 +672,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(14),
         lockedAdTubeIndex: 13,
       ),
-
-      // ── Level 10 ── Zor │ 12 renk │ imm=2 │ worst_block=3 │ div=11
       10: PuzzlePreset(
         mapNumber: 2,
         levelId: 10,
@@ -760,8 +696,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(15),
         lockedAdTubeIndex: 14,
       ),
-
-      // ── Level 11 ── Çok Zor │ 10 renk │ imm=1 │ worst_block=3 │ div=9
       11: PuzzlePreset(
         mapNumber: 2,
         levelId: 11,
@@ -784,8 +718,6 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(13),
         lockedAdTubeIndex: 12,
       ),
-
-      // ── Level 12 ── Çok Zor │ 14 renk │ imm=1 │ worst_block=3 │ div=13
       12: PuzzlePreset(
         mapNumber: 2,
         levelId: 12,
@@ -823,7 +755,7 @@ class PuzzlePresets {
           [16, 0, 4, 1],
           [2, 16, 5, 3],
 
-          [16, 4, 16, 6],
+          [16, 4, 16, 3],
           [0, 16, 5, 16],
           [6, 1, 16, 4],
           [16, 2, 6, 16],
