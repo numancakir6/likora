@@ -537,6 +537,21 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   late final AnimationController _bgCtrl;
   late final MapTheme _theme;
   final GlobalKey _mountainReservoirKey = GlobalKey();
+  Offset? _getMountainFixedEntry() {
+    final ctx = _mountainReservoirKey.currentContext;
+    if (ctx == null) return null;
+
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+
+    final topLeft = box.localToGlobal(Offset.zero);
+    final size = box.size;
+
+    return Offset(
+      topLeft.dx + size.width * 0.5,
+      topLeft.dy + size.height * 0.22,
+    );
+  }
 
   late int _lockedAdTubeIndex;
   PuzzlePreset? _preset;
@@ -5917,6 +5932,13 @@ class _FlyingTubeState extends State<_FlyingTube>
     final targetMouthEntry = widget.plan.isMountainTarget
         ? widget.getMountainMouth()
         : widget.getRealTargetMouth(widget.plan.toIdx);
+
+    final targetSurface = widget.plan.isMountainTarget
+        ? widget.getMountainMouth()
+        : widget.getRealTargetSurface(
+            widget.plan.toIdx,
+            widget.plan.toSnapshot.length.toDouble(),
+          );
 
     if (fromPos == null || targetSurface == null || targetMouthEntry == null) {
       return const SizedBox.shrink();
