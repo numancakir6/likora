@@ -13,6 +13,8 @@ import 'settings_page.dart';
 import 'audio_service.dart';
 import 'daily_puzzle_progress.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 // ─────────────────────────────────────────────
@@ -608,6 +610,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   int _mountainFillUnits = 0;
   final List<_VisualLayer> _mountainLayers = [];
   static const int _mountainCapacity = 16;
+  bool _loopCompletedVolcano = false;
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
 
   // Rewarded reklam
@@ -616,12 +619,32 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _isJokerAdReady = false;
   bool _isExtraTubeAdReady = false;
 
+  bool get _adsEnabledOnThisPlatform {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android;
+  }
+
   bool get _canBuyJoker => _coins >= _jokerCost;
   bool get _isDailyMode =>
       widget.isDailyPuzzleMode && widget.dailyPuzzleDateKey != null;
 
   double get _mountainFillPercent =>
       (_mountainFillUnits / _mountainCapacity).clamp(0.0, 1.0);
+
+  void _primeCompletedVolcanoVisuals() {
+    if (widget.mapNumber != 3) return;
+
+    _mountainFillUnits = _mountainCapacity;
+    _mountainLayers
+      ..clear()
+      ..add(
+        _VisualLayer(
+          colorIdx: kLavaColorIndex,
+          volume: _mountainCapacity.toDouble(),
+        ),
+      );
+  }
 
   _ResolvedStageLayout get _stageLayout {
     final base = resolveStageLayout(
@@ -927,8 +950,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     )..repeat(reverse: true);
     _coins = widget.initialCoins;
     _restoreOrResetLevel();
-    _loadJokerAd();
-    _loadExtraTubeAd();
+    if (_adsEnabledOnThisPlatform) {
+      _loadJokerAd();
+      _loadExtraTubeAd();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowTutorial();
     });
@@ -1073,22 +1098,28 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   @override
   void dispose() {
     SfxService.stopWater();
-    _bgCtrl.dispose();
     _jokerAd?.dispose();
     _extraTubeAd?.dispose();
+    _bgCtrl.dispose();
     super.dispose();
   }
 
+  bool get _showLockedAdTube => !_adTubeUnlocked;
+
   void _loadJokerAd() {
+    if (!_adsEnabledOnThisPlatform) return;
+
     RewardedAd.load(
       adUnitId: 'ca-app-pub-3080345587906246/7193577467',
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
+          _jokerAd?.dispose();
           _jokerAd = ad;
           _isJokerAdReady = true;
         },
         onAdFailedToLoad: (error) {
+          _jokerAd = null;
           _isJokerAdReady = false;
         },
       ),
@@ -1096,22 +1127,25 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   void _loadExtraTubeAd() {
+    if (!_adsEnabledOnThisPlatform) return;
+
     RewardedAd.load(
       adUnitId: 'ca-app-pub-3080345587906246/3174441406',
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
+          _extraTubeAd?.dispose();
           _extraTubeAd = ad;
           _isExtraTubeAdReady = true;
         },
         onAdFailedToLoad: (error) {
+          _extraTubeAd = null;
           _isExtraTubeAdReady = false;
         },
       ),
     );
   }
 
-  bool get _showLockedAdTube => !_adTubeUnlocked;
   bool get _blindModeEnabled => widget.mapNumber == 2;
 
   String get _blindVisibilityPrefsKey =>
@@ -1545,15 +1579,23 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       coinsValue: coinsOverride ?? _coins,
     );
 
+    if (widget.mapNumber == 3) {
+      _primeCompletedVolcanoVisuals();
+    }
+
     _visibleLayerCounts = List<int>.generate(
       _tubes.length,
       (i) => _tubes[i].length,
       growable: true,
     );
     _gameWon = true;
+    _loopCompletedVolcano = widget.mapNumber == 3;
     _levelRewardGranted = true;
     _showTutorial = false;
     _selected = null;
+    _activePlans.clear();
+    _commandQueue.clear();
+    _history.clear();
   }
 
   Future<void> _persistLevelState() async {
@@ -2116,14 +2158,27 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<bool> _showRewardedJokerAdGate() async {
-    if (!mounted) return false;
-
-    if (!_isJokerAdReady || _jokerAd == null) {
-      _showBottomHint('Reklam hazır değil');
+    if (!_adsEnabledOnThisPlatform) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Web testinde reklam kapalı')),
+        );
+      }
       return false;
     }
 
-    bool rewardEarned = false;
+    if (_jokerAd == null || !_isJokerAdReady) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reklam hazır değil')),
+        );
+      }
+      _loadJokerAd();
+      return false;
+    }
+
+    final completer = Completer<bool>();
+    var rewardEarned = false;
 
     _jokerAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
@@ -2131,33 +2186,54 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         _jokerAd = null;
         _isJokerAdReady = false;
         _loadJokerAd();
+        if (!completer.isCompleted) {
+          completer.complete(rewardEarned);
+        }
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
         _jokerAd = null;
         _isJokerAdReady = false;
         _loadJokerAd();
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
       },
     );
 
-    await _jokerAd!.show(
+    _jokerAd!.show(
       onUserEarnedReward: (ad, reward) {
         rewardEarned = true;
       },
     );
 
-    return rewardEarned;
+    return completer.future;
   }
 
   Future<bool> _tryUnlockAdTube() async {
-    if (!mounted) return false;
+    if (_adTubeUnlocked) return true;
 
-    if (!_isExtraTubeAdReady || _extraTubeAd == null) {
-      _showBottomHint('Reklam hazır değil');
+    if (!_adsEnabledOnThisPlatform) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Web testinde reklam kapalı')),
+        );
+      }
       return false;
     }
 
-    bool rewardEarned = false;
+    if (_extraTubeAd == null || !_isExtraTubeAdReady) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reklam hazır değil')),
+        );
+      }
+      _loadExtraTubeAd();
+      return false;
+    }
+
+    final completer = Completer<bool>();
+    var rewardEarned = false;
 
     _extraTubeAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
@@ -2165,29 +2241,35 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         _extraTubeAd = null;
         _isExtraTubeAdReady = false;
         _loadExtraTubeAd();
+
+        if (rewardEarned && mounted) {
+          setState(() {
+            _adTubeUnlocked = true;
+          });
+        }
+
+        if (!completer.isCompleted) {
+          completer.complete(rewardEarned);
+        }
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
         _extraTubeAd = null;
         _isExtraTubeAdReady = false;
         _loadExtraTubeAd();
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
       },
     );
 
-    await _extraTubeAd!.show(
+    _extraTubeAd!.show(
       onUserEarnedReward: (ad, reward) {
         rewardEarned = true;
       },
     );
 
-    if (rewardEarned && mounted) {
-      setState(() {
-        _adTubeUnlocked = true;
-      });
-      _persistLevelState();
-    }
-
-    return rewardEarned;
+    return completer.future;
   }
 
   Future<void> _useJokerWithEconomy() async {
@@ -2547,6 +2629,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       setState(() {
         _activePlans.remove(plan);
         _gameWon = didWin;
+        if (didWin) {
+          _loopCompletedVolcano = false;
+        }
       });
       _persistLevelState();
 
@@ -2570,7 +2655,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _drainQueue();
 
       if (didWin && _activePlans.isEmpty) {
-        Future.delayed(const Duration(milliseconds: 2100), () {
+        // Eruption animasyonunun (~3.5sn) bitmesini bekle
+        Future.delayed(const Duration(milliseconds: 4500), () {
           if (mounted) _showWinDialog();
         });
       }
@@ -2655,6 +2741,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       setState(() {
         _activePlans.remove(plan);
         _gameWon = didWin;
+        if (didWin) {
+          _loopCompletedVolcano = false;
+        }
       });
       _persistLevelState();
 
@@ -2683,7 +2772,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _drainQueue();
 
       if (didWin && _activePlans.isEmpty) {
-        Future.delayed(const Duration(milliseconds: 2100), () {
+        // Map 3'te eruption animasyonunu bekle, diğerlerinde kısa gecikme
+        final winDelay = widget.mapNumber == 3
+            ? const Duration(milliseconds: 4500)
+            : const Duration(milliseconds: 2100);
+        Future.delayed(winDelay, () {
           if (mounted) _showWinDialog();
         });
       }
@@ -3262,21 +3355,32 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                       final screenW =
                           MediaQuery.of(ctx).size.width.clamp(280.0, 500.0);
                       final reservoirH = screenW / 1.776;
-                      return MountainTubeReservoir(
-                        key: _mountainReservoirKey,
-                        width: screenW,
-                        height: reservoirH,
-                        fillPercent: _mountainFillPercent,
-                        liquidColor: _mountainLayers.isEmpty
-                            ? const Color(0xFFFF6A00)
-                            : (kColors[_mountainLayers.last.colorIdx]['fill']
-                                as Color),
-                        glow: false,
-                        onTap: _handleMountainTap,
-                        layers: List<_VisualLayer>.from(
-                            _mountainLayers.map((l) => l.copyWith())),
-                        capacity: _mountainCapacity,
-                        gameWon: _gameWon,
+                      return TweenAnimationBuilder<double>(
+                        tween: Tween<double>(
+                          begin: 0.0,
+                          end: _mountainFillPercent,
+                        ),
+                        duration: const Duration(milliseconds: 1200),
+                        curve: Curves.easeInOut,
+                        builder: (ctx, animatedFill, _) {
+                          return MountainTubeReservoir(
+                            key: _mountainReservoirKey,
+                            width: screenW,
+                            height: reservoirH,
+                            fillPercent: animatedFill,
+                            liquidColor: _mountainLayers.isEmpty
+                                ? const Color(0xFFFF6A00)
+                                : (kColors[_mountainLayers.last.colorIdx]
+                                    ['fill'] as Color),
+                            glow: false,
+                            onTap: _handleMountainTap,
+                            layers: List<_VisualLayer>.from(
+                                _mountainLayers.map((l) => l.copyWith())),
+                            capacity: _mountainCapacity,
+                            gameWon: _gameWon,
+                            loopEruption: _loopCompletedVolcano,
+                          );
+                        },
                       );
                     },
                   ),
@@ -4453,6 +4557,7 @@ class MountainTubeReservoir extends StatefulWidget {
   final List<_VisualLayer> layers;
   final int capacity;
   final bool gameWon;
+  final bool loopEruption;
 
   const MountainTubeReservoir({
     super.key,
@@ -4465,6 +4570,7 @@ class MountainTubeReservoir extends StatefulWidget {
     this.layers = const [],
     this.capacity = 18,
     this.gameWon = false,
+    this.loopEruption = false,
   });
 
   @override
@@ -4550,6 +4656,8 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
 
   // Oyun bitti eruption
   bool _eruptionStarted = false;
+  bool _eruptionLooping = false;
+  bool _eruptionCycleStarted = false;
   final List<_LavaProjectile> _projectiles = [];
   double _eruptionTimer = 0.0; // eruption süresi sayacı (0..1)
 
@@ -4566,6 +4674,26 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
       duration: const Duration(milliseconds: 100),
     )..repeat();
     _ctrl.addListener(_tick);
+
+    if (widget.gameWon) {
+      _startEruption(looping: widget.loopEruption);
+    }
+  }
+
+  void _startEruption({required bool looping}) {
+    _eruptionStarted = true;
+    _eruptionLooping = looping;
+    _eruptionCycleStarted = true;
+    _eruptionTimer = 0.0;
+    _pourGlow = 1.0;
+    _interiorGlow = 1.0;
+    _projectiles.clear();
+    _spawnEruption();
+  }
+
+  void _restartLoopingEruptionIfNeeded() {
+    if (!widget.gameWon || !widget.loopEruption) return;
+    _startEruption(looping: true);
   }
 
   @override
@@ -4580,32 +4708,46 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
     }
     _prevFill = widget.fillPercent;
 
-    // Oyun bitti — patlama başlat
-    if (widget.gameWon && !old.gameWon && !_eruptionStarted) {
-      _eruptionStarted = true;
+    if (widget.gameWon && !old.gameWon) {
+      _startEruption(looping: widget.loopEruption);
+      return;
+    }
+
+    if (widget.gameWon &&
+        old.gameWon &&
+        widget.loopEruption != old.loopEruption &&
+        widget.loopEruption) {
+      _restartLoopingEruptionIfNeeded();
+      return;
+    }
+
+    if (!widget.gameWon && old.gameWon) {
+      _eruptionStarted = false;
+      _eruptionLooping = false;
+      _eruptionCycleStarted = false;
       _eruptionTimer = 0.0;
-      _pourGlow = 1.0;
-      _interiorGlow = 1.0;
-      _spawnEruption();
+      _projectiles.clear();
     }
   }
 
   void _spawnEruption() {
-    // Dağın ağzından her yöne alev ve lav fırlat
-    for (int i = 0; i < 22; i++) {
-      final isFlame = i < 12;
-      final angle = (-pi * 0.9) + _rng.nextDouble() * pi * 0.8;
-      _projectiles.add(_LavaProjectile(
-        phase: 0.0,
-        speed: 0.0008 + _rng.nextDouble() * 0.0006,
-        angle: angle,
-        power: 60 + _rng.nextDouble() * 120,
-        size: isFlame ? 8 + _rng.nextDouble() * 22 : 5 + _rng.nextDouble() * 14,
-        maxAlpha: 0.70 + _rng.nextDouble() * 0.28,
-        isFlame: isFlame,
-      ));
+    for (int i = 0; i < 26; i++) {
+      final isFlame = i < 14;
+      final angle = (-pi * 0.88) + _rng.nextDouble() * pi * 0.76;
+
+      _projectiles.add(
+        _LavaProjectile(
+          phase: 0.0,
+          speed: 0.0032 + _rng.nextDouble() * 0.0020,
+          angle: angle,
+          power: 48 + _rng.nextDouble() * 105,
+          size:
+              isFlame ? 8 + _rng.nextDouble() * 18 : 4 + _rng.nextDouble() * 13,
+          maxAlpha: 0.62 + _rng.nextDouble() * 0.30,
+          isFlame: isFlame,
+        ),
+      );
     }
-    // Ek alev huzmeleri de yığ
     _spawnFlamesForPour();
     _pourGlow = 1.0;
   }
@@ -4640,78 +4782,87 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
   }
 
   void _tick() {
-    // Yavaş dalga fazı — her tick ~0.0004 artış → ~2500 tick = ~4 saniye / döngü
-    _wavePhase = (_wavePhase + 0.0004) % 1.0;
-    // Slosh fiziği
-    _sloshVel += -_sloshSpring * _slosh;
-    _sloshVel *= _sloshDecay;
-    _slosh = (_slosh + _sloshVel).clamp(-1.0, 1.0);
+    _wavePhase += 0.020;
 
-    final fill = widget.fillPercent;
+    final target = 0.0;
+    final acc = (target - _slosh) * _sloshSpring;
+    _sloshVel = (_sloshVel + acc) * _sloshDecay;
+    _slosh += _sloshVel;
 
-    // pourGlow yavaşça söner
-    if (_pourGlow > 0) _pourGlow = (_pourGlow - 0.006).clamp(0.0, 1.0);
-    if (_interiorGlow > 0)
-      _interiorGlow = (_interiorGlow - 0.003).clamp(0.0, 1.0);
-
-    // Eruption projectile güncelle
-    if (_eruptionStarted) {
-      _eruptionTimer = (_eruptionTimer + 0.0005).clamp(0.0, 1.0);
-      // İlk 0.4 süresince ek yığınlar fırlat
-      if (_eruptionTimer < 0.40 &&
-          _rng.nextDouble() < 0.12 &&
-          _projectiles.length < 60) {
-        final isFlame = _rng.nextBool();
-        final angle = (-pi * 0.85) + _rng.nextDouble() * pi * 0.70;
-        _projectiles.add(_LavaProjectile(
-          phase: 0.0,
-          speed: 0.0009 + _rng.nextDouble() * 0.0007,
-          angle: angle,
-          power: 45 + _rng.nextDouble() * 100,
-          size:
-              isFlame ? 7 + _rng.nextDouble() * 18 : 4 + _rng.nextDouble() * 12,
-          maxAlpha: 0.60 + _rng.nextDouble() * 0.35,
-          isFlame: isFlame,
-        ));
-      }
-      for (int i = _projectiles.length - 1; i >= 0; i--) {
-        _projectiles[i].phase += _projectiles[i].speed;
-        if (_projectiles[i].phase >= 1.0) _projectiles.removeAt(i);
-      }
-      // Eruption sırasında pourGlow yüksek kalsın
-      if (_eruptionTimer < 0.6) _pourGlow = (_pourGlow + 0.01).clamp(0.0, 1.0);
+    if (_pourGlow > 0.0) {
+      _pourGlow = (_pourGlow - 0.020).clamp(0.0, 1.0);
     }
 
-    if (fill < 0.02) return;
-
-    // Arka plan alev spawn — düşük dolumda çok seyrek, yüksek dolumda daha sık
-    final bgRate = 0.002 + fill * 0.010;
-    if (_rng.nextDouble() < bgRate && _flames.length < 6) {
-      _flames.add(_FlameJet(
-        phase: 0.0,
-        speed: 0.0018 + _rng.nextDouble() * 0.0010,
-        laneX: (_rng.nextDouble() * 2 - 1) * 0.50,
-        lean: (_rng.nextDouble() - 0.5) * 0.20,
-        height: 10 + _rng.nextDouble() * 20 * fill,
-        maxAlpha: 0.12 + fill * 0.22,
-      ));
+    if (_interiorGlow > 0.0) {
+      _interiorGlow = (_interiorGlow - 0.012).clamp(0.0, 1.0);
     }
 
-    // Alev güncelle — zirveye yakın duman bırak
     for (int i = _flames.length - 1; i >= 0; i--) {
       final f = _flames[i];
       f.phase += f.speed;
-      // phase 0.60 geçince duman doğur (bir kez)
-      if (f.phase >= 0.60 && f.phase - f.speed < 0.60) {
-        _spawnSmoke(f.laneX);
+      if (f.phase >= 1.0) {
+        _flames.removeAt(i);
       }
-      if (f.phase >= 1.0) _flames.removeAt(i);
     }
 
-    // Duman güncelle
     for (int i = _smokes.length - 1; i >= 0; i--) {
-      _smokes[i].phase += _smokes[i].speed;
-      if (_smokes[i].phase >= 1.0) _smokes.removeAt(i);
+      final s = _smokes[i];
+      s.phase += s.speed;
+      if (s.phase >= 1.0) {
+        _smokes.removeAt(i);
+      }
+    }
+
+    if (_eruptionStarted) {
+      _eruptionTimer = (_eruptionTimer + 0.0018).clamp(0.0, 1.0);
+
+      if (_eruptionTimer < 0.35 &&
+          _rng.nextDouble() < 0.22 &&
+          _projectiles.length < 70) {
+        final isFlame = _rng.nextBool();
+        final angle = (-pi * 0.85) + _rng.nextDouble() * pi * 0.70;
+
+        _projectiles.add(
+          _LavaProjectile(
+            phase: 0.0,
+            speed: 0.0032 + _rng.nextDouble() * 0.0020,
+            angle: angle,
+            power: 45 + _rng.nextDouble() * 100,
+            size: isFlame
+                ? 7 + _rng.nextDouble() * 18
+                : 4 + _rng.nextDouble() * 12,
+            maxAlpha: 0.60 + _rng.nextDouble() * 0.35,
+            isFlame: isFlame,
+          ),
+        );
+      }
+
+      for (int i = _projectiles.length - 1; i >= 0; i--) {
+        final p = _projectiles[i];
+        p.phase += p.speed;
+        if (p.phase >= 1.0) {
+          _projectiles.removeAt(i);
+        }
+      }
+
+      if (_eruptionTimer < 0.6) {
+        _pourGlow = (_pourGlow + 0.01).clamp(0.0, 1.0);
+      }
+
+      if (_eruptionTimer >= 1.0 && _projectiles.isEmpty) {
+        if (_eruptionLooping && widget.gameWon && widget.loopEruption) {
+          _eruptionTimer = 0.0;
+          _projectiles.clear();
+          _spawnEruption();
+        } else {
+          _eruptionStarted = false;
+          _eruptionCycleStarted = false;
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -4756,8 +4907,8 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
             Positioned(
               left: -60,
               right: -60,
-              top: widget.height * 0.02,
-              height: widget.height * 0.20 + 260,
+              top: -widget.height * 0.12, // yukarı kaydırıldı
+              height: widget.height * 0.45 + 260,
               child: AnimatedBuilder(
                 animation: _ctrl,
                 builder: (_, __) => CustomPaint(
@@ -4767,7 +4918,8 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
                     pourGlow: _pourGlow,
                     fillPercent: widget.fillPercent,
                     time: _ctrl.value,
-                    mouthLocalY: widget.height * (0.10 - 0.02),
+                    // ağız lokal y: container'ın negatif top offset'ini telafi et
+                    mouthLocalY: widget.height * (0.10 + 0.12),
                     projectiles:
                         List<_LavaProjectile>.unmodifiable(_projectiles),
                     eruptionTimer: _eruptionTimer,
