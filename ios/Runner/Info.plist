@@ -1,107 +1,101 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 
-```
-<key>CADisableMinimumFrameDurationOnPhone</key>
-<true/>
-
-<key>CFBundleDevelopmentRegion</key>
-<string>tr</string>
-
-<key>CFBundleLocalizations</key>
-<array>
+	<key>CFBundleDevelopmentRegion</key>
 	<string>tr</string>
-</array>
 
-<key>CFBundleDisplayName</key>
-<string>Likora</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>tr</string>
+	</array>
 
-<key>CFBundleExecutable</key>
-<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Likora</string>
 
-<key>CFBundleIdentifier</key>
-<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
 
-<key>CFBundleInfoDictionaryVersion</key>
-<string>6.0</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 
-<key>CFBundleName</key>
-<string>likora</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
 
-<key>CFBundlePackageType</key>
-<string>APPL</string>
+	<key>CFBundleName</key>
+	<string>likora</string>
 
-<key>CFBundleShortVersionString</key>
-<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
 
-<key>CFBundleSignature</key>
-<string>????</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
 
-<key>CFBundleVersion</key>
-<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
 
-<key>ITSAppUsesNonExemptEncryption</key>
-<false/>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
 
-<key>LSRequiresIPhoneOS</key>
-<true/>
-
-<key>GADApplicationIdentifier</key>
-<string>ca-app-pub-3080345587906246~5012370325</string>
-
-<key>NSUserTrackingUsageDescription</key>
-<string>Reklam deneyimini geliştirmek için izin istiyoruz.</string>
-
-<key>UIApplicationSceneManifest</key>
-<dict>
-	<key>UIApplicationSupportsMultipleScenes</key>
+	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<key>UISceneConfigurations</key>
+
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3080345587906246~5012370325</string>
+
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Reklam deneyimini geliştirmek için izin istiyoruz.</string>
+
+	<key>UIApplicationSceneManifest</key>
 	<dict>
-		<key>UIWindowSceneSessionRoleApplication</key>
-		<array>
-			<dict>
-				<key>UISceneClassName</key>
-				<string>UIWindowScene</string>
-				<key>UISceneConfigurationName</key>
-				<string>flutter</string>
-				<key>UISceneDelegateClassName</key>
-				<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-				<key>UISceneStoryboardFile</key>
-				<string>Main</string>
-			</dict>
-		</array>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
 	</dict>
-</dict>
 
-<key>UIApplicationSupportsIndirectInputEvents</key>
-<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
 
-<key>UILaunchStoryboardName</key>
-<string>LaunchScreen</string>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
 
-<key>UIMainStoryboardFile</key>
-<string>Main</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
 
-<key>UISupportedInterfaceOrientations</key>
-<array>
-	<string>UIInterfaceOrientationPortrait</string>
-	<string>UIInterfaceOrientationLandscapeLeft</string>
-	<string>UIInterfaceOrientationLandscapeRight</string>
-</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 
-<key>UISupportedInterfaceOrientations~ipad</key>
-<array>
-	<string>UIInterfaceOrientationPortrait</string>
-	<string>UIInterfaceOrientationPortraitUpsideDown</string>
-	<string>UIInterfaceOrientationLandscapeLeft</string>
-	<string>UIInterfaceOrientationLandscapeRight</string>
-</array>
-```
-
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 </dict>
 </plist>
