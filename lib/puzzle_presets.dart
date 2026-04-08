@@ -1,3 +1,5 @@
+const int kLavaColorIndex = 16;
+
 class PuzzleMove {
   final int from;
   final int to;
@@ -8,11 +10,6 @@ class PuzzleMove {
 enum PuzzleTubeStyle {
   classic,
   largeCollector,
-}
-
-enum PuzzleMode {
-  standard,
-  centerTubeCollection,
 }
 
 enum StageLayoutMode {
@@ -34,29 +31,15 @@ class StageTubePosition {
   });
 }
 
-class CenterTubeConfig {
-  final int tubeIndex;
-  final int targetColor;
-  final int capacity;
-  final bool startsEmpty;
-
-  const CenterTubeConfig({
-    required this.tubeIndex,
-    required this.targetColor,
-    required this.capacity,
-    this.startsEmpty = true,
-  });
-}
-
 class SourceTubeRefillConfig {
   final List<int> tubeIndexes;
   final Map<int, List<List<int>>> refillQueues;
-  final bool stopWhenCenterTubeFull;
+  final bool stopWhenMountainFull;
 
   const SourceTubeRefillConfig({
     required this.tubeIndexes,
     required this.refillQueues,
-    this.stopWhenCenterTubeFull = true,
+    this.stopWhenMountainFull = true,
   });
 }
 
@@ -164,8 +147,7 @@ class PuzzlePreset {
   final Map<int, PuzzleTubeStyle> tubeStyles;
   final List<List<PuzzleMove>> solutionBranches;
   final Map<String, PuzzleMove> jokerRecoveryMoves;
-  final PuzzleMode mode;
-  final CenterTubeConfig? centerTube;
+  final int? mountainCapacity;
   final SourceTubeRefillConfig? sourceRefill;
 
   const PuzzlePreset({
@@ -179,8 +161,7 @@ class PuzzlePreset {
     this.tubeStyles = const {},
     this.solutionBranches = const [],
     this.jokerRecoveryMoves = const {},
-    this.mode = PuzzleMode.standard,
-    this.centerTube,
+    this.mountainCapacity,
     this.sourceRefill,
   });
 }
@@ -750,6 +731,7 @@ class PuzzlePresets {
         mapNumber: 3,
         levelId: 1,
         difficulty: 3,
+        mountainCapacity: 16,
         tubes: [
           // 0 ve 1 = yenilenen kaynak tüpler
           [16, 0, 4, 1],
@@ -785,7 +767,47 @@ class PuzzlePresets {
               [16, 2, 16, 3],
             ],
           },
-          stopWhenCenterTubeFull: true,
+          stopWhenMountainFull: true,
+        ),
+      ),
+      2: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 2,
+        difficulty: 3,
+        mountainCapacity: 14,
+        tubes: [
+          // 🔁 REFILL TÜPLERİ
+          [16, 0, 3, 1],
+          [2, 16, 4, 5],
+
+          // 🔀 ANA KARIŞIM
+          [1, 2, 16, 0],
+          [3, 16, 5, 2],
+          [4, 1, 16, 3],
+          [5, 4, 0, 16],
+          [0, 3, 2, 4],
+          [16, 5, 1, 16], // lav çiftli (max 2 ✔)
+
+          // 🟢 BOŞ TÜPLER
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(11),
+        lockedAdTubeIndex: 10,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1],
+          refillQueues: {
+            0: [
+              [16, 2],
+              [1],
+            ],
+            1: [
+              [16, 3],
+              [4],
+            ],
+          },
+          stopWhenMountainFull: true,
         ),
       ),
     },

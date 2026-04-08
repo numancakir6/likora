@@ -208,6 +208,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const double _nodeWidgetSize = 72;
   static const double _nodeHalfSize = _nodeWidgetSize / 2;
   static const double _nodeMinCenterDistance = 80;
+  static const bool _showDebugButtons = false;
 
   static final Map<int, Set<int>> _mapCompletedLevels = {
     for (var i = 1; i <= _maxMapCount; i++) i: <int>{},
@@ -606,12 +607,13 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         ),
         const Spacer(),
         // ── TEST BUTONU ──
-        _GlassButton(
-          accentColor: Colors.orange,
-          onTap: _unlockAllLevels,
-          child: const Icon(Icons.lock_open_rounded,
-              color: Colors.orange, size: 20),
-        ),
+        if (_showDebugButtons)
+          _GlassButton(
+            accentColor: Colors.orange,
+            onTap: _unlockAllLevels,
+            child: const Icon(Icons.lock_open_rounded,
+                color: Colors.orange, size: 20),
+          ),
       ]),
     );
   }

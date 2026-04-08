@@ -254,7 +254,6 @@ const List<Map<String, dynamic>> kColors = [
   }, // koyu mor; açık mor (neon) ve maviden çok uzak
 ];
 
-const int kLavaColorIndex = 16; // Kiremit -> Map 3 lav hedef rengi
 const Color kLavaDark = Color(0xFF4A0B00);
 const Color kLavaRed = Color(0xFFC62828);
 const Color kLavaOrange = Color(0xFFFF6F00);
@@ -271,7 +270,7 @@ Color _solidColorForIndex(int colorIdx) =>
 // OYUN MANTIĞI
 // ─────────────────────────────────────────────
 
-List<List<int>> _legacyGenerateTubes({
+List<List<int>> legacyGenerateTubes({
   required int level,
   required int difficulty,
 }) {
@@ -609,7 +608,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _missingPreset = false;
   int _mountainFillUnits = 0;
   final List<_VisualLayer> _mountainLayers = [];
-  static const int _mountainCapacity = 16;
   bool _loopCompletedVolcano = false;
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
 
@@ -629,19 +627,30 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool get _isDailyMode =>
       widget.isDailyPuzzleMode && widget.dailyPuzzleDateKey != null;
 
-  double get _mountainFillPercent =>
-      (_mountainFillUnits / _mountainCapacity).clamp(0.0, 1.0);
+  int get _mountainCapacity => _preset?.mountainCapacity ?? 0;
+
+  bool get _hasMountainObjective =>
+      widget.mapNumber == 3 && _mountainCapacity > 0;
+
+  double get _mountainFillPercent {
+    final capacity = _mountainCapacity;
+    if (capacity <= 0) return 0.0;
+    return (_mountainFillUnits / capacity).clamp(0.0, 1.0);
+  }
 
   void _primeCompletedVolcanoVisuals() {
-    if (widget.mapNumber != 3) return;
+    if (!_hasMountainObjective) return;
 
-    _mountainFillUnits = _mountainCapacity;
+    final capacity = _mountainCapacity;
+    if (capacity <= 0) return;
+
+    _mountainFillUnits = capacity;
     _mountainLayers
       ..clear()
       ..add(
         _VisualLayer(
           colorIdx: kLavaColorIndex,
-          volume: _mountainCapacity.toDouble(),
+          volume: capacity.toDouble(),
         ),
       );
   }
@@ -667,19 +676,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
   }
 
-  bool get _isCenterTubeMode =>
-      (_preset?.mode ?? PuzzleMode.standard) == PuzzleMode.centerTubeCollection;
-
-  CenterTubeConfig? get _centerTubeConfig =>
-      _isCenterTubeMode ? _preset?.centerTube : null;
-
-  int _tubeCapacityIn(List<List<int>> tubes, int idx) {
-    final center = _centerTubeConfig;
-    if (center != null && idx == center.tubeIndex) {
-      return center.capacity;
-    }
-    return kCap;
-  }
+  int _tubeCapacityIn(List<List<int>> tubes, int idx) => kCap;
 
   PuzzleTubeStyle _tubeStyleForIndex(int idx) {
     return _preset?.tubeStyles[idx] ??
@@ -695,14 +692,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (tubes[to].length >= _tubeCapacityIn(tubes, to)) return false;
 
     final movingColor = tubes[from].last;
-    final center = _centerTubeConfig;
-    if (center != null && from == center.tubeIndex) return false;
-    if (center != null &&
-        to == center.tubeIndex &&
-        movingColor != center.targetColor) {
-      return false;
-    }
-
     if (tubes[to].isNotEmpty && tubes[to].last != movingColor) return false;
     return true;
   }
@@ -740,15 +729,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final cap = _tubeCapacityIn(tubes, idx);
     if (tube.length != cap) return false;
     if (!tube.every((c) => c == tube.first)) return false;
-    final center = _centerTubeConfig;
-    if (center != null && idx == center.tubeIndex) {
-      return tube.first == center.targetColor;
-    }
     return true;
   }
 
   bool _isGameDoneIn(List<List<int>> tubes) {
-    if (widget.mapNumber == 3 && _mountainFillUnits < _mountainCapacity) {
+    if (_hasMountainObjective && _mountainFillUnits < _mountainCapacity) {
       return false;
     }
 
@@ -878,16 +863,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
   }
 
-  bool _isRefillStopped() {
+  bool isRefillStopped() {
     final refill = _preset?.sourceRefill;
-    if (refill == null || !refill.stopWhenCenterTubeFull) return false;
-
-    final center = _centerTubeConfig;
-    if (center != null) {
-      return _tubes[center.tubeIndex].length >= center.capacity;
-    }
-
-    return widget.mapNumber == 3 && _mountainFillUnits >= _mountainCapacity;
+    if (refill == null || !refill.stopWhenMountainFull) return false;
+    return _hasMountainObjective && _mountainFillUnits >= _mountainCapacity;
   }
 
   void _tryRefillSourceTube(int tubeIndex) {
@@ -1257,7 +1236,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         final mountainFillUnitsRaw = item['mountainFillUnits'];
         final mountainLayersRaw = item['mountainLayers'];
         final mountainFillUnits = mountainFillUnitsRaw is int
-            ? mountainFillUnitsRaw.clamp(0, _mountainCapacity).toInt()
+            ? (_mountainCapacity > 0
+                ? mountainFillUnitsRaw.clamp(0, _mountainCapacity).toInt()
+                : 0)
             : 0;
         final mountainLayers = <_VisualLayer>[];
         if (mountainLayersRaw is List) {
@@ -1525,7 +1506,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       }
     }
 
-    final center = _centerTubeConfig;
     final solvedColors = colorCounts.keys.toList()..sort();
     final result = <List<int>>[];
     final usedColors = <int>{};
@@ -1533,13 +1513,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     for (int i = 0; i < initialTubes.length; i++) {
       if (initialTubes[i].isEmpty) {
         result.add(<int>[]);
-        continue;
-      }
-
-      if (center != null && i == center.tubeIndex) {
-        result.add(List<int>.filled(center.capacity, center.targetColor,
-            growable: true));
-        usedColors.add(center.targetColor);
         continue;
       }
 
@@ -1579,7 +1552,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       coinsValue: coinsOverride ?? _coins,
     );
 
-    if (widget.mapNumber == 3) {
+    if (_hasMountainObjective) {
       _primeCompletedVolcanoVisuals();
     }
 
@@ -2524,7 +2497,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return;
     }
 
-    final available = _mountainCapacity - _mountainFillUnits;
+    final capacity = _mountainCapacity;
+    if (capacity <= 0) {
+      _vibrateLight();
+      setState(() => _selected = null);
+      return;
+    }
+
+    final available = capacity - _mountainFillUnits;
     if (available <= 0) {
       _vibrateLight();
       setState(() => _selected = null);
@@ -3309,7 +3289,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
               ),
               Positioned(
                 right: 0,
-                bottom: 20,
+                bottom: 175,
                 child: AnimatedOpacity(
                   duration: const Duration(milliseconds: 180),
                   opacity: _showTutorial ? 0.22 : 1.0,
@@ -4113,11 +4093,11 @@ class _TubeStageState extends State<_TubeStage> {
   final GlobalKey _ownMountainKey = GlobalKey();
   GlobalKey get _mountainKey => widget.mountainReservoirKey ?? _ownMountainKey;
 
-  bool get _showMountainReservoir =>
+  bool get showMountainReservoir =>
       widget.mapNumber == 3 &&
       !widget.tubeStyles.values.contains(PuzzleTubeStyle.largeCollector);
 
-  Offset? _mountainAnchorPos(Offset localAnchor) {
+  Offset? mountainAnchorPos(Offset localAnchor) {
     final box = _mountainKey.currentContext?.findRenderObject() as RenderBox?;
     final stageBox = context.findRenderObject() as RenderBox?;
     if (box == null || stageBox == null || !box.hasSize || !stageBox.hasSize) {
@@ -4657,7 +4637,7 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
   // Oyun bitti eruption
   bool _eruptionStarted = false;
   bool _eruptionLooping = false;
-  bool _eruptionCycleStarted = false;
+  bool eruptionCycleStarted = false;
   final List<_LavaProjectile> _projectiles = [];
   double _eruptionTimer = 0.0; // eruption süresi sayacı (0..1)
 
@@ -4683,7 +4663,7 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
   void _startEruption({required bool looping}) {
     _eruptionStarted = true;
     _eruptionLooping = looping;
-    _eruptionCycleStarted = true;
+    eruptionCycleStarted = true;
     _eruptionTimer = 0.0;
     _pourGlow = 1.0;
     _interiorGlow = 1.0;
@@ -4724,7 +4704,7 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
     if (!widget.gameWon && old.gameWon) {
       _eruptionStarted = false;
       _eruptionLooping = false;
-      _eruptionCycleStarted = false;
+      eruptionCycleStarted = false;
       _eruptionTimer = 0.0;
       _projectiles.clear();
     }
@@ -4769,7 +4749,7 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
     }
   }
 
-  void _spawnSmoke(double laneX) {
+  void spawnSmoke(double laneX) {
     if (_smokes.length >= 10) return;
     _smokes.add(_SmokeCloud(
       phase: 0.0,
@@ -4856,7 +4836,7 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
           _spawnEruption();
         } else {
           _eruptionStarted = false;
-          _eruptionCycleStarted = false;
+          eruptionCycleStarted = false;
         }
       }
     }
@@ -5530,28 +5510,40 @@ class _VolcanoPainter extends CustomPainter {
       );
     }
 
-    // Kabarcıklar — yavaş yükselme
+    // Kabarcıklar — dipten yukarı sürekli yükselme döngüsü
     if (normalizedFill > 0.05) {
-      for (int i = 0; i < 16; i++) {
-        final lane = (i % 8) / 7.0;
-        final riseSeed = sin(time * pi * 0.45 + i * 0.8) * 0.5 + 0.5;
-        final x = lerpDouble(bounds.left + 10, bounds.right - 10, lane)! +
-            sin(time * pi * 0.35 + i) * 6 +
-            sloshShift * 0.5;
-        final y = lerpDouble(bounds.bottom - 5, liquidTopBase + 12, riseSeed)!;
-        final r =
-            lerpDouble(2.0, 6.0, sin(time * pi * 0.65 + i * 1.3) * 0.5 + 0.5)!;
+      // Her kabarcığın kendi döngü fazı: farklı hızlar ve başlangıç ofsetleri
+      // ile dipten yüzeye doğru bağımsız yükseliyor
+      const int bubbleCount = 26;
+      for (int i = 0; i < bubbleCount; i++) {
+        // Her kabarcığın birbirinden farklı yükselme hızı (yavaş)
+        final speed = 0.018 + (i % 7) * 0.006; // 0.018..0.054 (çok yavaş)
+        // Döngü fazı: 0..1 arası, 1'e ulaşınca dipten yeniden başlar
+        final phase = ((time * speed + i * 0.13) % 1.0);
+        // Hafif yatay titreme — kabarcık yükselirken sağa-sola sallanır
+        final wobble = sin(time * pi * 0.4 + i * 1.7) * 3.5;
+        // Yatay konum — her kabarcığın sabit bir "şeridi" var
+        final laneRatio = (i % 9) / 8.0;
+        final x = lerpDouble(bounds.left + 12, bounds.right - 12, laneRatio)! +
+            wobble +
+            sloshShift * 0.4;
+        // Dikey konum: phase=0 → dip, phase=1 → yüzey
+        final y = lerpDouble(bounds.bottom - 4, liquidTopBase + 8, phase)!;
+        // Yüzeye yaklaşınca küçülüp solar (patlar)
+        final nearSurface = (phase > 0.80) ? ((1.0 - phase) / 0.20) : 1.0;
+        final r = lerpDouble(1.5, 4.5, (i % 5) / 4.0)! * nearSurface;
+        final alpha = nearSurface;
 
-        if (y < liquidTopBase || y > bounds.bottom - 2) continue;
+        if (y < liquidTopBase - 2 || y > bounds.bottom - 1 || r < 0.3) continue;
 
         canvas.drawCircle(
             Offset(x, y),
             r,
             Paint()
-              ..color = kLavaGlow.withValues(alpha: 0.13)
-              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
-        canvas.drawCircle(Offset(x, y), r * 0.40,
-            Paint()..color = kLavaCore.withValues(alpha: 0.50));
+              ..color = kLavaGlow.withValues(alpha: 0.16 * alpha)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5));
+        canvas.drawCircle(Offset(x, y), r * 0.38,
+            Paint()..color = kLavaCore.withValues(alpha: 0.55 * alpha));
       }
     }
 
@@ -7568,7 +7560,7 @@ class _LiquidPainter extends CustomPainter {
       old.lavaTime != lavaTime;
 }
 
-class _BasinPainter extends CustomPainter {
+class BasinPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()

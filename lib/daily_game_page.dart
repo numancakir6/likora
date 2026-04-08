@@ -50,8 +50,9 @@ class _DailyGamePageState extends State<DailyGamePage> {
       _loading = false;
     });
 
-    if (!_alreadyCompleted) {
+    if (!_alreadyCompleted && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _alreadyCompleted) return;
         _openGame();
       });
     }
@@ -151,7 +152,11 @@ class _DailyGamePageState extends State<DailyGamePage> {
       await DailyPuzzleProgress.clearInProgressState();
 
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      setState(() {
+        _alreadyCompleted = true;
+        _savedState = null;
+        _loading = false;
+      });
       return;
     }
 
