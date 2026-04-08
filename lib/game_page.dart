@@ -536,22 +536,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   late final AnimationController _bgCtrl;
   late final MapTheme _theme;
-  final GlobalKey _mountainReservoirKey = GlobalKey();
-  Offset? _getMountainFixedEntry() {
-    final ctx = _mountainReservoirKey.currentContext;
-    if (ctx == null) return null;
-
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return null;
-
-    final topLeft = box.localToGlobal(Offset.zero);
-    final size = box.size;
-
-    return Offset(
-      topLeft.dx + size.width * 0.5,
-      topLeft.dy + size.height * 0.22,
-    );
-  }
 
   late int _lockedAdTubeIndex;
   PuzzlePreset? _preset;
@@ -934,6 +918,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
   }
 
+  @override
   @override
   void initState() {
     super.initState();
@@ -3283,8 +3268,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                               ...?_preset
                                                   ?.sourceRefill?.tubeIndexes,
                                             },
-                                            mountainReservoirKey:
-                                                _mountainReservoirKey,
                                           ),
                                         ),
                                       ),
@@ -3339,62 +3322,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-              // Sıvı animasyonu — PNG'nin arkasında, bottom:0 ile tam alta hizalı
-              if (widget.mapNumber == 3)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: LayoutBuilder(
-                    builder: (ctx, _) {
-                      final screenW =
-                          MediaQuery.of(ctx).size.width.clamp(280.0, 500.0);
-                      final reservoirH = screenW / 1.776;
-                      return TweenAnimationBuilder<double>(
-                        tween: Tween<double>(
-                          begin: 0.0,
-                          end: _mountainFillPercent,
-                        ),
-                        duration: const Duration(milliseconds: 1200),
-                        curve: Curves.easeInOut,
-                        builder: (ctx, animatedFill, _) {
-                          return MountainTubeReservoir(
-                            key: _mountainReservoirKey,
-                            width: screenW,
-                            height: reservoirH,
-                            fillPercent: animatedFill,
-                            liquidColor: _mountainLayers.isEmpty
-                                ? const Color(0xFFFF6A00)
-                                : (kColors[_mountainLayers.last.colorIdx]
-                                    ['fill'] as Color),
-                            glow: false,
-                            onTap: _handleMountainTap,
-                            layers: List<_VisualLayer>.from(
-                                _mountainLayers.map((l) => l.copyWith())),
-                            capacity: _mountainCapacity,
-                            gameWon: _gameWon,
-                            loopEruption: _loopCompletedVolcano,
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              // Dağ resmi — ekranın tam altına hizalı, tam genişlikte (animasyonun üstünde)
-              if (widget.mapNumber == 3)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    child: Image.asset(
-                      kVolcanoReservoirSvgAsset,
-                      width: double.infinity,
-                      fit: BoxFit.fitWidth,
-                      alignment: Alignment.bottomCenter,
-                    ),
-                  ),
-                ),
               if (_showTutorial) _buildTutorialOverlay(),
             ],
           ),
@@ -4068,8 +3995,6 @@ class _TubeStage extends StatefulWidget {
   final List<_VisualLayer> mountainLayers;
   final int mountainCapacity;
   final Set<int> sourceRefillTubeIndexes;
-  final GlobalKey? mountainReservoirKey;
-
   const _TubeStage({
     required this.mapNumber,
     required this.stageLayout,
@@ -4096,7 +4021,6 @@ class _TubeStage extends StatefulWidget {
     this.mountainLayers = const [],
     this.mountainCapacity = 18,
     this.sourceRefillTubeIndexes = const <int>{},
-    this.mountainReservoirKey,
   });
 
   @override
@@ -4105,10 +4029,9 @@ class _TubeStage extends StatefulWidget {
 
 class _TubeStageState extends State<_TubeStage> {
   late List<GlobalKey> _keys;
-  final GlobalKey _ownMountainKey = GlobalKey();
-  GlobalKey get _mountainKey => widget.mountainReservoirKey ?? _ownMountainKey;
+  final GlobalKey _mountainKey = GlobalKey();
 
-  bool get showMountainReservoir =>
+  bool get _showMountainReservoir =>
       widget.mapNumber == 3 &&
       !widget.tubeStyles.values.contains(PuzzleTubeStyle.largeCollector);
 
@@ -4130,10 +4053,9 @@ class _TubeStageState extends State<_TubeStage> {
       return null;
     if (!stageBox.hasSize || !mountainBox.hasSize) return null;
 
-    // Ağız merkezi: clip path ağzıyla hizalı (h * 0.10)
     final localMouth = Offset(
       mountainBox.size.width / 2,
-      mountainBox.size.height * 0.10,
+      mountainBox.size.height * 0.11,
     );
 
     return mountainBox.localToGlobal(localMouth, ancestor: stageBox);
@@ -4153,11 +4075,8 @@ class _TubeStageState extends State<_TubeStage> {
 
     final fillRatio = (units / widget.mountainCapacity).clamp(0.0, 1.0);
 
-    // İç dolgu alanı: SVG’ye daha uygun dar bölge
-    // İç dolgu alanı: clip path boyun yüksekliğiyle (h*0.30) tutarlı
-    // Doldurulabilir alan: agiz (h*0.10) ile dip (h*1.0) arasi
-    final topInset = h * 0.10;
-    const bottomInset = 0.0;
+    final topInset = h * 0.24;
+    final bottomInset = h * 0.12;
     final usableHeight = h - topInset - bottomInset;
 
     final localY = h - bottomInset - usableHeight * fillRatio;
@@ -4503,6 +4422,29 @@ class _TubeStageState extends State<_TubeStage> {
     return Stack(
       clipBehavior: Clip.none,
       children: [
+        if (_showMountainReservoir)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: -34,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: MountainTubeReservoir(
+                key: _mountainKey,
+                width: 348,
+                height: 196,
+                fillPercent: widget.mountainFillPercent,
+                liquidColor: widget.mountainLayers.isEmpty
+                    ? const Color(0xFFFF6A00)
+                    : (kColors[widget.mountainLayers.last.colorIdx]['fill']
+                        as Color),
+                glow: false,
+                onTap: widget.onMountainTap,
+                layers: widget.mountainLayers,
+                capacity: widget.mountainCapacity,
+              ),
+            ),
+          ),
         Positioned.fill(
           child: Align(
             alignment: Alignment.topCenter,
@@ -4660,6 +4602,7 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
   static const double _sloshSpring = 0.010;
   double _wavePhase = 0.0; // yavaş dalga fazı (0..1 döngü)
 
+  @override
   @override
   void initState() {
     super.initState();
@@ -5625,6 +5568,7 @@ class _TubeDoneBurstState extends State<_TubeDoneBurst>
   late final AnimationController _ctrl;
 
   @override
+  @override
   void initState() {
     super.initState();
     final dur = widget.isGameWin
@@ -5854,6 +5798,7 @@ class _FlyingTubeState extends State<_FlyingTube>
   double _liquidTilt = 0.0;
 
   @override
+  @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(vsync: this, duration: kPourDuration)
@@ -5920,21 +5865,12 @@ class _FlyingTubeState extends State<_FlyingTube>
   Widget build(BuildContext context) {
     final fromPos = widget.getPos(widget.plan.fromIdx);
 
-    final targetSurface = widget.plan.isMountainTarget
-        ? widget.getMountainSurface(widget.plan.mountainFillBefore.toDouble())
-        : widget.getRealTargetSurface(
-            widget.plan.toIdx,
-            widget.plan.toSnapshot.length.toDouble(),
-          );
-
-    // Artık sabit local ağız noktası değil,
-    // hedef tüpün gerçek render edilmiş ağız merkezi kullanılıyor.
     final targetMouthEntry = widget.plan.isMountainTarget
         ? widget.getMountainMouth()
         : widget.getRealTargetMouth(widget.plan.toIdx);
 
     final targetSurface = widget.plan.isMountainTarget
-        ? widget.getMountainMouth()
+        ? widget.getMountainSurface(widget.plan.mountainFillBefore.toDouble())
         : widget.getRealTargetSurface(
             widget.plan.toIdx,
             widget.plan.toSnapshot.length.toDouble(),
@@ -6037,11 +5973,10 @@ class _FlyingTubeState extends State<_FlyingTube>
         final currentToVolume =
             (widget.plan.toSnapshot.length + widget.plan.count * drainProgress)
                 .clamp(0.0, widget.targetCapacity.toDouble());
+        final currentMountainVolume =
+            widget.plan.mountainFillBefore + widget.plan.count * drainProgress;
         final dynamicTargetSurface = widget.plan.isMountainTarget
-            ? (widget.getMountainSurface(
-                  widget.plan.mountainFillBefore +
-                      (widget.plan.count * drainProgress),
-                ) ??
+            ? (widget.getMountainSurface(currentMountainVolume) ??
                 targetSurface)
             : (widget.getRealTargetSurface(
                   widget.plan.toIdx,
@@ -6354,6 +6289,7 @@ class _TubeWidgetState extends State<_TubeWidget>
     return false;
   }
 
+  @override
   @override
   void initState() {
     super.initState();
