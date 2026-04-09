@@ -2252,9 +2252,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       if (decision.rewindCount > 0) {
         await _rewindHistoryForJoker(decision.rewindCount);
+        // Rewind sonrası tubes değişti — hamleyi taze state üzerinde yeniden hesapla
+        final freshDecision = _findSmartJokerDecision();
+        if (freshDecision == null) {
+          _vibrateLight();
+          _showBottomHint('Joker için uygun hamle bulunamadı');
+          return;
+        }
+        await _startPour(freshDecision.from, freshDecision.to);
+      } else {
+        await _startPour(decision.from, decision.to);
       }
-
-      await _startPour(decision.from, decision.to);
     } finally {
       if (mounted) {
         setState(() {
