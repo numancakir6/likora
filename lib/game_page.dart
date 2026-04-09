@@ -439,6 +439,18 @@ class _JokerDecision {
   });
 }
 
+class _PresetGuidedDecision {
+  final _JokerDecision decision;
+  final int progressIndex;
+  final bool usedRecovery;
+
+  const _PresetGuidedDecision({
+    required this.decision,
+    required this.progressIndex,
+    required this.usedRecovery,
+  });
+}
+
 // ─────────────────────────────────────────────
 // ORTAK TEMAS HESABI
 // ─────────────────────────────────────────────
@@ -1706,6 +1718,146 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       .map((t) => List<int>.from(t, growable: true))
       .toList(growable: true);
 
+  String _presetBoardSignature(List<List<int>> tubes) {
+    return PuzzlePresets.signatureOf(tubes);
+  }
+
+  _PresetGuidedDecision? _findPresetRecoveryDecisionForBoard(
+    List<List<int>> board, {
+    required int rewindCount,
+  }) {
+    final preset = _preset;
+    if (preset == null || preset.jokerRecoveryMoves.isEmpty) return null;
+
+    final move = preset.jokerRecoveryMoves[_presetBoardSignature(board)];
+    if (move == null) return null;
+    if (!_solverCanPour(
+      board,
+      move.from,
+      move.to,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    )) {
+      return null;
+    }
+
+    return _PresetGuidedDecision(
+      decision: _JokerDecision(
+        from: move.from,
+        to: move.to,
+        rewindCount: rewindCount,
+      ),
+      progressIndex: 1000000,
+      usedRecovery: true,
+    );
+  }
+
+  _PresetGuidedDecision? _findPresetBranchDecisionForBoard(
+    List<List<int>> board, {
+    required int rewindCount,
+  }) {
+    final preset = _preset;
+    if (preset == null || preset.solutionBranches.isEmpty) return null;
+
+    final boardSig = _presetBoardSignature(board);
+    final initial = _buildInitialTubes();
+    _PresetGuidedDecision? best;
+
+    for (final branch in preset.solutionBranches) {
+      final state = _cloneTubes(initial);
+
+      for (int step = 0; step < branch.length; step++) {
+        if (_presetBoardSignature(state) == boardSig) {
+          final move = branch[step];
+          if (_solverCanPour(
+            board,
+            move.from,
+            move.to,
+            includeUnlockedAdTube: _adTubeUnlocked,
+          )) {
+            final candidate = _PresetGuidedDecision(
+              decision: _JokerDecision(
+                from: move.from,
+                to: move.to,
+                rewindCount: rewindCount,
+              ),
+              progressIndex: step,
+              usedRecovery: false,
+            );
+            if (best == null || candidate.progressIndex > best.progressIndex) {
+              best = candidate;
+            }
+          }
+        }
+
+        final move = branch[step];
+        if (!_solverCanPour(
+          state,
+          move.from,
+          move.to,
+          includeUnlockedAdTube: true,
+        )) {
+          break;
+        }
+        _doPourIn(state, move.from, move.to);
+      }
+    }
+
+    return best;
+  }
+
+  _JokerDecision? _findPresetGuidedJokerDecision() {
+    final preset = _preset;
+    if (preset == null) return null;
+    if (preset.solutionBranches.isEmpty && preset.jokerRecoveryMoves.isEmpty) {
+      return null;
+    }
+
+    final directRecovery = _findPresetRecoveryDecisionForBoard(
+      _tubes,
+      rewindCount: 0,
+    );
+    if (directRecovery != null) return directRecovery.decision;
+
+    final directBranch = _findPresetBranchDecisionForBoard(
+      _tubes,
+      rewindCount: 0,
+    );
+    if (directBranch != null) return directBranch.decision;
+
+    for (final keepDone in [true, false]) {
+      final maxPresetHistory = _history.length < 18 ? _history.length : 18;
+
+      for (int rewindCount = 1;
+          rewindCount <= maxPresetHistory;
+          rewindCount++) {
+        final snapshot =
+            _cloneTubes(_history[_history.length - rewindCount].tubes);
+        final preservesDone = _preservesCompletedTubes(_tubes, snapshot);
+
+        if (keepDone && !preservesDone) continue;
+        if (!keepDone && preservesDone) continue;
+
+        final recovery = _findPresetRecoveryDecisionForBoard(
+          snapshot,
+          rewindCount: rewindCount,
+        );
+        if (recovery != null) {
+          return recovery.decision;
+        }
+
+        final branch = _findPresetBranchDecisionForBoard(
+          snapshot,
+          rewindCount: rewindCount,
+        );
+        if (branch != null) {
+          return branch.decision;
+        }
+      }
+    }
+
+    return null;
+  }
+
   bool _solverCanUseTube(int idx, {bool? includeUnlockedAdTube}) {
     final allowAd = includeUnlockedAdTube ?? _adTubeUnlocked;
     if (idx != _lockedAdTubeIndex) return true;
@@ -1986,158 +2138,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     return null;
-  }
-
-  String _indexedBoardSignature(List<List<int>> tubes) {
-    return PuzzlePresets.signatureOf(tubes);
-  }
-
-  bool _isGuidedMovePlayable(
-    List<List<int>> tubes,
-    PuzzleMove move, {
-    required bool includeUnlockedAdTube,
-  }) {
-    if (!_solverCanUseTube(
-      move.from,
-      includeUnlockedAdTube: includeUnlockedAdTube,
-    )) {
-      return false;
-    }
-    if (!_solverCanUseTube(
-      move.to,
-      includeUnlockedAdTube: includeUnlockedAdTube,
-    )) {
-      return false;
-    }
-    if (move.from < 0 ||
-        move.from >= tubes.length ||
-        move.to < 0 ||
-        move.to >= tubes.length) {
-      return false;
-    }
-    return canPour(tubes, move.from, move.to);
-  }
-
-  PuzzleMove? _nextMoveOnGuidedBranch(
-    List<List<int>> state,
-    List<PuzzleMove> branch, {
-    required bool includeUnlockedAdTube,
-  }) {
-    if (branch.isEmpty) return null;
-
-    final targetSig = _indexedBoardSignature(state);
-    final working = _cloneTubes(_preset!.tubes);
-
-    if (targetSig == _indexedBoardSignature(working)) {
-      final first = branch.first;
-      return _isGuidedMovePlayable(
-        state,
-        first,
-        includeUnlockedAdTube: includeUnlockedAdTube,
-      )
-          ? first
-          : null;
-    }
-
-    for (int i = 0; i < branch.length; i++) {
-      final move = branch[i];
-      if (!_isGuidedMovePlayable(
-        working,
-        move,
-        includeUnlockedAdTube: true,
-      )) {
-        return null;
-      }
-
-      doPour(working, move.from, move.to);
-
-      if (targetSig == _indexedBoardSignature(working)) {
-        if (i + 1 >= branch.length) return null;
-        final next = branch[i + 1];
-        return _isGuidedMovePlayable(
-          state,
-          next,
-          includeUnlockedAdTube: includeUnlockedAdTube,
-        )
-            ? next
-            : null;
-      }
-    }
-
-    return null;
-  }
-
-  PuzzleMove? _findPresetGuidedMoveForState(
-    List<List<int>> state, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final preset = _preset;
-    if (preset == null) return null;
-
-    final exactSig = _indexedBoardSignature(state);
-    final recoveryMove = preset.jokerRecoveryMoves[exactSig];
-    if (recoveryMove != null &&
-        _isGuidedMovePlayable(
-          state,
-          recoveryMove,
-          includeUnlockedAdTube: includeUnlockedAdTube,
-        )) {
-      return recoveryMove;
-    }
-
-    for (final branch in preset.solutionBranches) {
-      final next = _nextMoveOnGuidedBranch(
-        state,
-        branch,
-        includeUnlockedAdTube: includeUnlockedAdTube,
-      );
-      if (next != null) return next;
-    }
-
-    return null;
-  }
-
-  _JokerDecision? _findPresetGuidedJokerDecision() {
-    final preset = _preset;
-    if (preset == null) return null;
-    if (preset.solutionBranches.isEmpty && preset.jokerRecoveryMoves.isEmpty) {
-      return null;
-    }
-
-    final direct = _findPresetGuidedMoveForState(
-      _tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
-    );
-    if (direct != null) {
-      return _JokerDecision(from: direct.from, to: direct.to);
-    }
-
-    _JokerDecision? fallbackKeepingDone;
-    _JokerDecision? fallbackAny;
-
-    for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
-      final snapshot =
-          _cloneTubes(_history[_history.length - rewindCount].tubes);
-      final move = _findPresetGuidedMoveForState(
-        snapshot,
-        includeUnlockedAdTube: _adTubeUnlocked,
-      );
-      if (move == null) continue;
-
-      final candidate = _JokerDecision(
-        from: move.from,
-        to: move.to,
-        rewindCount: rewindCount,
-      );
-
-      if (_preservesCompletedTubes(_tubes, snapshot)) {
-        fallbackKeepingDone ??= candidate;
-      } else {
-        fallbackAny ??= candidate;
-      }
-    }
-
-    return fallbackKeepingDone ?? fallbackAny;
   }
 
   _JokerDecision? _findSmartJokerDecision() {
@@ -2463,6 +2463,22 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   (int, int)? _findTutorialMove() {
+    final preset = _preset;
+    if (preset != null && preset.solutionBranches.isNotEmpty) {
+      final firstBranch = preset.solutionBranches.first;
+      if (firstBranch.isNotEmpty) {
+        final move = firstBranch.first;
+        if (_solverCanPour(
+          _tubes,
+          move.from,
+          move.to,
+          includeUnlockedAdTube: _adTubeUnlocked,
+        )) {
+          return (move.from, move.to);
+        }
+      }
+    }
+
     final preferredSources = <int>[];
     for (int i = 4; i < _tubes.length; i++) {
       if (!_isLockedAdTubeIndex(i)) preferredSources.add(i);
