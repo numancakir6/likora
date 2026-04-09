@@ -152,11 +152,7 @@ class _DailyGamePageState extends State<DailyGamePage> {
       await DailyPuzzleProgress.clearInProgressState();
 
       if (!mounted) return;
-      setState(() {
-        _alreadyCompleted = true;
-        _savedState = null;
-        _loading = false;
-      });
+      Navigator.of(context).pop(true);
       return;
     }
 
@@ -167,7 +163,7 @@ class _DailyGamePageState extends State<DailyGamePage> {
     await _playClick();
     await _vibrateTap();
     if (!mounted) return;
-    Navigator.of(context).pop(false);
+    Navigator.of(context).pop(true);
   }
 
   @override
@@ -307,7 +303,7 @@ class _DailyGamePageState extends State<DailyGamePage> {
         ),
         const SizedBox(height: 20),
         const Text(
-          'BUGÜNKÜ BULMACA ZATEN TAMAMLANDI',
+          'BUGÜNÜN BULMACASI TAMAMLANDI',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.white,
@@ -318,7 +314,7 @@ class _DailyGamePageState extends State<DailyGamePage> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Bu gün için ödül alındı. Yeni günlük bulmaca gece 00:00’da açılacak.',
+          'Ödülünü aldın. Yeni günlük bulmaca gece 00:00\'da açılacak.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.68),
