@@ -1682,7 +1682,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return count;
   }
 
-  bool _preservesCompletedTubes(
+  bool preservesCompletedTubes(
     List<List<int>> current,
     List<List<int>> candidate,
   ) {
@@ -1937,89 +1937,111 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return null;
   }
 
-  _JokerDecision? _findSmartJokerDecision() {
-    // Önce bulunduğumuz noktadan hızlıca çözüm var mı bak.
-    final directQuick = _quickSolveFromState(
-      _tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
+  bool _wouldCreateRecentLoop(
+    List<List<int>> board,
+    int from,
+    int to, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final next = _cloneTubes(board);
+    _doPourIn(next, from, to);
+    final nextSig = _canonicalBoardSignature(
+      next,
+      includeUnlockedAdTube: includeUnlockedAdTube,
     );
-    if (directQuick != null && directQuick.isNotEmpty) {
-      return _JokerDecision(
-        from: directQuick.first.$1,
-        to: directQuick.first.$2,
+
+    final start = _history.length > 8 ? _history.length - 8 : 0;
+    for (int i = start; i < _history.length; i++) {
+      final sig = _canonicalBoardSignature(
+        _history[i].tubes,
+        includeUnlockedAdTube: includeUnlockedAdTube,
       );
-    }
-
-    // Çıkmaza girilmişse hızlıca geçmişte çözülebilen en yakın noktayı bul.
-    // Önce tamamlanmış tüpleri koruyan state'leri, sonra diğerlerini tara.
-    for (final keepDone in [true, false]) {
-      final maxQuickHistory = _history.length < 10 ? _history.length : 10;
-
-      for (int rewindCount = 1; rewindCount <= maxQuickHistory; rewindCount++) {
-        final snapshot =
-            _cloneTubes(_history[_history.length - rewindCount].tubes);
-        final preservesDone = _preservesCompletedTubes(_tubes, snapshot);
-
-        if (keepDone && !preservesDone) continue;
-        if (!keepDone && preservesDone) continue;
-
-        final quick = _quickSolveFromState(
-          snapshot,
-          includeUnlockedAdTube: _adTubeUnlocked,
-        );
-        if (quick != null && quick.isNotEmpty) {
-          return _JokerDecision(
-            from: quick.first.$1,
-            to: quick.first.$2,
-            rewindCount: rewindCount,
-          );
-        }
+      if (sig == nextSig) {
+        return true;
       }
     }
 
-    // Hızlı tarama bulamazsa bulunduğumuz noktada biraz daha derin çözüm dene.
-    final directMedium = _mediumSolveFromState(
-      _tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
+    return false;
+  }
+
+  (int, int)? findBestEffortMove(
+    List<List<int>> board, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final moves = _orderedSolverMoves(
+      board,
+      includeUnlockedAdTube: includeUnlockedAdTube,
     );
-    if (directMedium != null && directMedium.isNotEmpty) {
+    if (moves.isEmpty) return null;
+
+    for (final move in moves) {
+      if (!_wouldCreateRecentLoop(
+        board,
+        move.$1,
+        move.$2,
+        includeUnlockedAdTube: includeUnlockedAdTube,
+      )) {
+        return move;
+      }
+    }
+
+    return null;
+  }
+
+  _JokerDecision? _findSmartJokerDecision() {
+    List<(int, int)>? solveBoard(List<List<int>> board) {
+      final quick = _quickSolveFromState(
+        board,
+        includeUnlockedAdTube: _adTubeUnlocked,
+      );
+      if (quick != null && quick.isNotEmpty) return quick;
+
+      final medium = _mediumSolveFromState(
+        board,
+        includeUnlockedAdTube: _adTubeUnlocked,
+      );
+      if (medium != null && medium.isNotEmpty) return medium;
+
+      return null;
+    }
+
+    // 1) Önce bulunduğumuz state gerçekten çözülebiliyor mu ona bak.
+    // Çözülebiliyorsa ASLA rewind yapma.
+    final directSolution = solveBoard(_tubes);
+    if (directSolution != null) {
       return _JokerDecision(
-        from: directMedium.first.$1,
-        to: directMedium.first.$2,
+        from: directSolution.first.$1,
+        to: directSolution.first.$2,
       );
     }
 
-    // Sonra bütün geçmişte çözülebilen en yakın state'i ara.
-    _JokerDecision? fallbackKeepingDone;
-    _JokerDecision? fallbackAny;
-
+    // 2) Bulunduğumuz state çözülemiyorsa geçmişte çözülebilen en yakın state'i bul.
     for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
       final snapshot =
           _cloneTubes(_history[_history.length - rewindCount].tubes);
-      final preservesDone = _preservesCompletedTubes(_tubes, snapshot);
-
-      final solution = _mediumSolveFromState(
-        snapshot,
-        includeUnlockedAdTube: _adTubeUnlocked,
-      );
-      if (solution != null && solution.isNotEmpty) {
-        final candidate = _JokerDecision(
+      final solution = solveBoard(snapshot);
+      if (solution != null) {
+        return _JokerDecision(
           from: solution.first.$1,
           to: solution.first.$2,
           rewindCount: rewindCount,
         );
-
-        if (preservesDone) {
-          fallbackKeepingDone ??= candidate;
-        } else {
-          fallbackAny ??= candidate;
-        }
       }
     }
 
-    if (fallbackKeepingDone != null) return fallbackKeepingDone;
-    if (fallbackAny != null) return fallbackAny;
+    // 3) Her ihtimale karşı en baştaki kurulu state'i de dene.
+    // Kullanıcı tamamen yanlış gittiyse bile joker oyunun başına kadar dönebilir.
+    final initialBoard = _buildInitialTubes();
+    final initialSolution = solveBoard(initialBoard);
+    if (initialSolution != null) {
+      return _JokerDecision(
+        from: initialSolution.first.$1,
+        to: initialSolution.first.$2,
+        rewindCount: _history.length,
+      );
+    }
 
+    // 4) Buraya düşmesi normalde beklenmez. Level tasarımı gerçekten çözümsüzse olur.
     return null;
   }
 
@@ -2104,10 +2126,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     final completer = Completer<bool>();
     var rewardEarned = false;
-    final jokerAd = _jokerAd;
-    if (jokerAd == null) return false;
 
-    jokerAd.fullScreenContentCallback = FullScreenContentCallback(
+    _jokerAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         _jokerAd = null;
@@ -2128,7 +2148,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       },
     );
 
-    jokerAd.show(
+    _jokerAd!.show(
       onUserEarnedReward: (ad, reward) {
         rewardEarned = true;
       },
@@ -2161,10 +2181,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     final completer = Completer<bool>();
     var rewardEarned = false;
-    final extraTubeAd = _extraTubeAd;
-    if (extraTubeAd == null) return false;
 
-    extraTubeAd.fullScreenContentCallback = FullScreenContentCallback(
+    _extraTubeAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         _extraTubeAd = null;
@@ -2192,7 +2210,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       },
     );
 
-    extraTubeAd.show(
+    _extraTubeAd!.show(
       onUserEarnedReward: (ad, reward) {
         rewardEarned = true;
       },
@@ -6331,6 +6349,7 @@ class _TubeWidgetState extends State<_TubeWidget>
   Widget build(BuildContext context) {
     if (widget.tubeStyle == PuzzleTubeStyle.largeCollector) {
       // largeCollector da lavaCtrl ile çalışır — her zaman lava var
+      final lavaTime = _lavaCtrl?.value ?? 0.0;
       Widget basinWidget(double t) => SizedBox(
             width: kBasinW,
             height: kBasinH,

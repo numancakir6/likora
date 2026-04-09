@@ -3,9 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'audio_service.dart';
-import 'daily_game_page.dart';
 import 'daily_puzzle_generator.dart';
 import 'daily_puzzle_progress.dart';
+import 'game_page.dart';
+import 'player_progress.dart';
 import 'settings_page.dart';
 
 class DailyPuzzlePage extends StatefulWidget {
@@ -49,7 +50,9 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
     final dailyPuzzle = DailyPuzzleGenerator.generateForDate(now);
     final dateKey = dailyPuzzle.dateKey;
 
+    await PlayerProgress.ensureLoaded();
     await DailyPuzzleProgress.prepareForDate(dateKey);
+
     final completed = await DailyPuzzleProgress.isCompleted(dateKey);
 
     _countdownTimer?.cancel();
@@ -133,6 +136,29 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
     }
   }
 
+  int _syntheticDailyLevelId(String dateKey) {
+    if (dateKey.length >= 6) {
+      return int.tryParse(dateKey.substring(dateKey.length - 6)) ?? 900001;
+    }
+    return 900001;
+  }
+
+  List<Color> _dailyBackground(String dateKey) {
+    final seed = int.tryParse(dateKey) ?? 1;
+
+    const palettes = <List<Color>>[
+      [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
+      [Color(0xFF141E30), Color(0xFF243B55)],
+      [Color(0xFF1A2980), Color(0xFF26D0CE)],
+      [Color(0xFF000046), Color(0xFF1CB5E0)],
+      [Color(0xFF232526), Color(0xFF414345)],
+      [Color(0xFF0B132B), Color(0xFF1C2541), Color(0xFF3A506B)],
+      [Color(0xFF0A1931), Color(0xFF185ADB), Color(0xFF00A8CC)],
+    ];
+
+    return palettes[seed % palettes.length];
+  }
+
   Color _accentColor() {
     return _isBlindPuzzle ? const Color(0xFF8E63D8) : const Color(0xFFFF8A3D);
   }
@@ -150,24 +176,60 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
 
     if (!mounted) return;
 
-    final result = await Navigator.of(context).push<bool>(
+    final reward = _rewardForDifficulty(_dailyPuzzle.difficulty);
+
+    DailyPuzzleSaveState? savedState;
+    if (!_completedToday) {
+      savedState =
+          await DailyPuzzleProgress.getInProgressState(_dailyPuzzle.dateKey);
+    }
+
+    if (!mounted) return;
+
+    final result = await Navigator.of(context).push<GamePageResult>(
       MaterialPageRoute(
-        builder: (_) => DailyGamePage(
-          puzzle: _dailyPuzzle,
+        builder: (_) => GamePage(
+          level: _syntheticDailyLevelId(_dailyPuzzle.dateKey),
+          mapNumber: _dailyPuzzle.mapNumber,
+          difficulty: _dailyPuzzle.difficulty,
+          initialCoins: PlayerProgress.coins.value,
+          customPuzzleTubes: _dailyPuzzle.tubes,
+          customLockedAdTubeIndex: _dailyPuzzle.lockedAdTubeIndex,
+          customStageLayout: _dailyPuzzle.layout,
+          isDailyPuzzleMode: true,
+          dailyPuzzleDateKey: _dailyPuzzle.dateKey,
+          dailyRewardCoins: reward,
+          restoredDailyState: savedState,
+          customTitle: 'GÜNLÜK BULMACA',
+          customBackground: _dailyBackground(_dailyPuzzle.dateKey),
         ),
       ),
     );
 
     if (!mounted) return;
 
+    if (result?.completed == true) {
+      await DailyPuzzleProgress.markCompleted(_dailyPuzzle.dateKey);
+
+      final rewardClaimed =
+          await DailyPuzzleProgress.isRewardClaimed(_dailyPuzzle.dateKey);
+
+      if (!rewardClaimed) {
+        PlayerProgress.addCoins(reward);
+        await DailyPuzzleProgress.markRewardClaimed(_dailyPuzzle.dateKey);
+      }
+
+      await DailyPuzzleProgress.clearInProgressState();
+    }
+
     await _loadPage();
 
-    if (result == true) {
+    if (!mounted) return;
+
+    if (result?.completed == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Günlük bulmaca tamamlandı. +${_rewardForDifficulty(_dailyPuzzle.difficulty)}',
-          ),
+          content: Text('Günlük bulmacayı tamamladın. +$reward'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: Colors.green.shade600,
         ),
@@ -176,16 +238,6 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
   }
 
   Widget _rewardCoinIcon() {
-    // BURAYI kendi coin simgenle değiştir.
-    // Eğer CoinPill içinde kullandığın asset'i biliyorsan burada onu kullan:
-    //
-    // return Image.asset(
-    //   'assets/....png',
-    //   width: 18,
-    //   height: 18,
-    // );
-    //
-    // Şimdilik placeholder olarak bunu bıraktım:
     return const Icon(
       Icons.toll_rounded,
       color: Color(0xFFFFC83D),
@@ -282,7 +334,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 22),
           const Text(
-            'GÜNLÜK BULMACA HAZIR',
+            'BUGÜNÜN BULMACASI HAZIR',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
@@ -351,7 +403,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 18),
           Text(
-            'Bugünkü ortak bulmacayı tamamla. Ödülünü al ve yeni bulmaca için gece 00:00\'ı bekle.',
+            'Bugünkü ortak bulmacayı tamamla, ödülünü al ve yeni bulmaca için gece 00:00\'ı bekle.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.68),
@@ -426,7 +478,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 22),
           const Text(
-            'BUGÜNKÜ BULMACAYI TAMAMLADIN',
+            'BUGÜNÜN BULMACASINI TAMAMLADIN',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
@@ -483,7 +535,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Saat 00:00 olduğunda herkes için yeni günlük bulmaca açılacak.',
+            'Ödülünü aldın. Yeni günlük bulmaca gece 00:00\'da açılacak.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.58),
