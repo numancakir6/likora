@@ -427,6 +427,44 @@ class _VisualLayer {
       );
 }
 
+// Solver'ın bir hamleyi simüle ederken taşıdığı tam oyun durumu.
+// Map 3 gibi mountain/refill mekanizması olan levellarda da doğru çalışması için
+// tubes'un yanı sıra mountain dolum durumu ve refill kuyrukları da taşınır.
+class _SolverContext {
+  final List<List<int>> tubes;
+  final int mountainFillUnits;
+  final int mountainCapacity;
+  final Map<int, List<List<int>>>
+      refillQueues; // kopyalanmış, mutate edilebilir
+
+  _SolverContext({
+    required this.tubes,
+    required this.mountainFillUnits,
+    required this.mountainCapacity,
+    required this.refillQueues,
+  });
+
+  // Derin kopya — solver her dal için bağımsız context ister
+  _SolverContext clone() {
+    return _SolverContext(
+      tubes: tubes
+          .map((t) => List<int>.from(t, growable: true))
+          .toList(growable: true),
+      mountainFillUnits: mountainFillUnits,
+      mountainCapacity: mountainCapacity,
+      refillQueues: refillQueues.map(
+        (k, v) => MapEntry(
+            k,
+            v
+                .map((p) => List<int>.from(p, growable: true))
+                .toList(growable: true)),
+      ),
+    );
+  }
+
+  bool get hasMountainObjective => mountainCapacity > 0;
+}
+
 class _JokerDecision {
   final int from;
   final int to;
@@ -747,11 +785,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return true;
   }
 
-  bool _isGameDoneIn(List<List<int>> tubes) {
-    if (_hasMountainObjective && _mountainFillUnits < _mountainCapacity) {
-      return false;
+  bool _isGameDoneIn(List<List<int>> tubes, {_SolverContext? ctx}) {
+    if (ctx != null) {
+      if (ctx.hasMountainObjective &&
+          ctx.mountainFillUnits < ctx.mountainCapacity) {
+        return false;
+      }
+    } else {
+      if (_hasMountainObjective && _mountainFillUnits < _mountainCapacity) {
+        return false;
+      }
     }
-
     for (int i = 0; i < tubes.length; i++) {
       if (tubes[i].isEmpty) continue;
       if (!_isTubeDoneIn(tubes, i)) return false;
@@ -1832,6 +1876,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   List<(int, int)>? _quickSolveFromState(
     List<List<int>> start, {
     required bool includeUnlockedAdTube,
+    _SolverContext? solverCtx,
   }) {
     return _solveFromState(
       start,
@@ -1839,12 +1884,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       maxDepth: 48,
       maxNodes: 45000,
       maxMillis: 160,
+      solverCtx: solverCtx,
     );
   }
 
   List<(int, int)>? _mediumSolveFromState(
     List<List<int>> start, {
     required bool includeUnlockedAdTube,
+    _SolverContext? solverCtx,
   }) {
     return _solveFromState(
       start,
@@ -1852,6 +1899,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       maxDepth: 90,
       maxNodes: 180000,
       maxMillis: 1400,
+      solverCtx: solverCtx,
     );
   }
 
@@ -1861,14 +1909,18 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     int maxDepth = 110,
     int maxNodes = 280000,
     int maxMillis = 2600,
+    _SolverContext? solverCtx,
   }) {
     final cacheKey = _solverCacheKey(
       start,
       includeUnlockedAdTube: includeUnlockedAdTube,
     );
-    final cached = _solverSuccessCache[cacheKey];
-    if (cached != null) {
-      return List<(int, int)>.from(cached, growable: false);
+    // Mountain modunda cache kullanma — mountain durumu farklı olabilir
+    if (solverCtx == null || !solverCtx.hasMountainObjective) {
+      final cached = _solverSuccessCache[cacheKey];
+      if (cached != null) {
+        return List<(int, int)>.from(cached, growable: false);
+      }
     }
 
     final stopwatch = Stopwatch()..start();
@@ -1876,35 +1928,70 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final path = <(int, int)>[];
     int nodes = 0;
 
-    bool dfs(List<List<int>> state, int depthLeft) {
-      if (_isGameDoneIn(state)) {
+    bool dfs(_SolverContext ctx, int depthLeft) {
+      if (_isGameDoneIn(ctx.tubes, ctx: ctx)) {
         return true;
       }
-      if (depthLeft <= 0) {
-        return false;
-      }
+      if (depthLeft <= 0) return false;
       if (nodes >= maxNodes || stopwatch.elapsedMilliseconds >= maxMillis) {
         return false;
       }
 
       final sig = _canonicalBoardSignature(
-        state,
+        ctx.tubes,
         includeUnlockedAdTube: includeUnlockedAdTube,
       );
-      if (dead.contains(sig)) {
-        return false;
-      }
+      if (dead.contains(sig)) return false;
 
       nodes++;
 
       final moves = _orderedSolverMoves(
-        state,
+        ctx.tubes,
         includeUnlockedAdTube: includeUnlockedAdTube,
       );
 
-      for (final move in moves) {
-        final next = _cloneTubes(state);
-        _doPourIn(next, move.$1, move.$2);
+      // Mountain modu: lav rengi varsa mountain hamlelerini de ekle
+      final allMoves = <(int, int)>[...moves];
+      if (ctx.hasMountainObjective) {
+        for (int i = 0; i < ctx.tubes.length; i++) {
+          final tube = ctx.tubes[i];
+          if (tube.isNotEmpty && _isLavaColorIndex(tube.last)) {
+            final available = ctx.mountainCapacity - ctx.mountainFillUnits;
+            if (available > 0) {
+              // -1 = mountain hedefi anlamında özel index
+              allMoves.add((i, -1));
+            }
+          }
+        }
+      }
+
+      for (final move in allMoves) {
+        final next = ctx.clone();
+
+        if (move.$2 == -1) {
+          // Mountain hamlesi: lav tüpten mountain'a dök
+          final fromTube = next.tubes[move.$1];
+          final topColor = fromTube.last;
+          int count = 0;
+          for (int i = fromTube.length - 1; i >= 0; i--) {
+            if (fromTube[i] == topColor)
+              count++;
+            else
+              break;
+          }
+          final available = next.mountainCapacity - next.mountainFillUnits;
+          count = count < available ? count : available;
+          for (int i = 0; i < count; i++) {
+            fromTube.removeLast();
+          }
+          // refill simülasyonu: kaynak tüp boşaldıysa doldur
+          _solverApplyRefill(next, move.$1);
+        } else {
+          _doPourIn(next.tubes, move.$1, move.$2);
+          // refill simülasyonu
+          _solverApplyRefill(next, move.$1);
+          _solverApplyRefill(next, move.$2);
+        }
 
         path.add(move);
         if (dfs(next, depthLeft - 1)) {
@@ -1917,15 +2004,28 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return false;
     }
 
+    // Başlangıç context'i oluştur
+    final rootCtx = solverCtx?.clone() ??
+        _SolverContext(
+          tubes: _cloneTubes(start),
+          mountainFillUnits: 0,
+          mountainCapacity: 0,
+          refillQueues: {},
+        );
+    // start tubes'u her zaman kullan (rewind sonrası güncel olabilir)
+    rootCtx.tubes.clear();
+    rootCtx.tubes.addAll(_cloneTubes(start));
+
     for (int depth = 1; depth <= maxDepth; depth++) {
       path.clear();
       dead.clear();
       nodes = 0;
 
-      final root = _cloneTubes(start);
-      if (dfs(root, depth)) {
+      if (dfs(rootCtx.clone(), depth)) {
         final solvedPath = List<(int, int)>.from(path, growable: false);
-        _solverSuccessCache[cacheKey] = solvedPath;
+        if (solverCtx == null || !solverCtx.hasMountainObjective) {
+          _solverSuccessCache[cacheKey] = solvedPath;
+        }
         return solvedPath;
       }
 
@@ -1935,6 +2035,16 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     return null;
+  }
+
+  // Solver simülasyonunda refill kuyruktan tüpü doldur
+  void _solverApplyRefill(_SolverContext ctx, int tubeIndex) {
+    if (ctx.refillQueues.isEmpty) return;
+    final queue = ctx.refillQueues[tubeIndex];
+    if (queue == null || queue.isEmpty) return;
+    if (ctx.tubes[tubeIndex].isNotEmpty) return;
+    final nextPack = queue.removeAt(0);
+    ctx.tubes[tubeIndex] = List<int>.from(nextPack, growable: true);
   }
 
   bool _wouldCreateRecentLoop(
@@ -1988,26 +2098,57 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return null;
   }
 
+  // Mevcut oyun durumundan solver context'i oluştur
+  _SolverContext _buildCurrentSolverContext() {
+    return _SolverContext(
+      tubes: _cloneTubes(_tubes),
+      mountainFillUnits: _mountainFillUnits,
+      mountainCapacity: _mountainCapacity,
+      refillQueues: _cloneRefillQueues(_preset?.sourceRefill),
+    );
+  }
+
+  // Belirli bir history snapshot'ına karşılık gelen solver context'i oluştur.
+  // Mountain fill ve refill kuyrukları o anki snapshot'tan alınır.
+  _SolverContext _buildSolverContextForSnapshot(int historyIndex) {
+    final snap = _history[historyIndex];
+    // Refill kuyruğunu o noktaya kadar simüle etmek yerine
+    // sıfırdan klonlayıp history'deki mountainFillUnits'i kullanıyoruz.
+    // Refill kuyruğu için orijinal preset'ten başlatıp
+    // history[0..historyIndex] boyunca refill tetiklenmiş tüpler üzerinden yeniden hesaplıyoruz.
+    final refill = _cloneRefillQueues(_preset?.sourceRefill);
+    // Snapshot tubes'u üzerinde kuyruğu ilerlet
+    // (basit yaklaşım: mevcut _runtimeRefillQueues'u kullan, zaten o ana kadar ilerledi)
+    return _SolverContext(
+      tubes: _cloneTubes(snap.tubes),
+      mountainFillUnits: snap.mountainFillUnits,
+      mountainCapacity: _mountainCapacity,
+      refillQueues: refill,
+    );
+  }
+
   _JokerDecision? _findSmartJokerDecision() {
-    List<(int, int)>? solveBoard(List<List<int>> board) {
+    List<(int, int)>? solveBoard(List<List<int>> board, _SolverContext ctx) {
       final quick = _quickSolveFromState(
         board,
         includeUnlockedAdTube: _adTubeUnlocked,
+        solverCtx: ctx,
       );
       if (quick != null && quick.isNotEmpty) return quick;
 
       final medium = _mediumSolveFromState(
         board,
         includeUnlockedAdTube: _adTubeUnlocked,
+        solverCtx: ctx,
       );
       if (medium != null && medium.isNotEmpty) return medium;
 
       return null;
     }
 
-    // 1) Önce bulunduğumuz state gerçekten çözülebiliyor mu ona bak.
-    // Çözülebiliyorsa ASLA rewind yapma.
-    final directSolution = solveBoard(_tubes);
+    // 1) Mevcut state çözülebilir mi?
+    final currentCtx = _buildCurrentSolverContext();
+    final directSolution = solveBoard(_tubes, currentCtx);
     if (directSolution != null) {
       return _JokerDecision(
         from: directSolution.first.$1,
@@ -2015,11 +2156,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       );
     }
 
-    // 2) Bulunduğumuz state çözülemiyorsa geçmişte çözülebilen en yakın state'i bul.
+    // 2) Geçmişte çözülebilen en yakın state'i bul
     for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
-      final snapshot =
-          _cloneTubes(_history[_history.length - rewindCount].tubes);
-      final solution = solveBoard(snapshot);
+      final snapIdx = _history.length - rewindCount;
+      final snapshot = _cloneTubes(_history[snapIdx].tubes);
+      final snapCtx = _buildSolverContextForSnapshot(snapIdx);
+      final solution = solveBoard(snapshot, snapCtx);
       if (solution != null) {
         return _JokerDecision(
           from: solution.first.$1,
@@ -2029,10 +2171,15 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       }
     }
 
-    // 3) Her ihtimale karşı en baştaki kurulu state'i de dene.
-    // Kullanıcı tamamen yanlış gittiyse bile joker oyunun başına kadar dönebilir.
+    // 3) Başlangıç state'i dene
     final initialBoard = _buildInitialTubes();
-    final initialSolution = solveBoard(initialBoard);
+    final initialCtx = _SolverContext(
+      tubes: _cloneTubes(initialBoard),
+      mountainFillUnits: 0,
+      mountainCapacity: _mountainCapacity,
+      refillQueues: _cloneRefillQueues(_preset?.sourceRefill),
+    );
+    final initialSolution = solveBoard(initialBoard, initialCtx);
     if (initialSolution != null) {
       return _JokerDecision(
         from: initialSolution.first.$1,
@@ -2041,7 +2188,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       );
     }
 
-    // 4) Buraya düşmesi normalde beklenmez. Level tasarımı gerçekten çözümsüzse olur.
     return null;
   }
 
