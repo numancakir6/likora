@@ -1728,6 +1728,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return _canPourIn(tubes, from, to);
   }
 
+  int _topRunLength(List<int> tube) {
+    if (tube.isEmpty) return 0;
+    final top = tube.last;
+    var count = 0;
+    for (int i = tube.length - 1; i >= 0; i--) {
+      if (tube[i] != top) break;
+      count++;
+    }
+    return count;
+  }
+
   List<(int, int)> _orderedSolverMoves(
     List<List<int>> tubes, {
     bool? includeUnlockedAdTube,
@@ -1751,6 +1762,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       final sourceTop = source.last;
       final sourceUniform = source.every((c) => c == sourceTop);
+      final sourceRun = _topRunLength(source);
 
       for (final to in usable) {
         if (from == to) continue;
@@ -1764,6 +1776,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         }
 
         final target = tubes[to];
+        final targetCap = _tubeCapacityIn(tubes, to);
+        final freeSlots = targetCap - target.length;
+        final moved = _pourCountIn(tubes, from, to);
 
         if (target.isEmpty &&
             emptyTargets.isNotEmpty &&
@@ -1779,14 +1794,33 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
         if (target.isNotEmpty && target.last == sourceTop) {
           score += 120;
-          if (target.length + _pourCountIn(tubes, from, to) ==
-              _tubeCapacityIn(tubes, to)) {
-            score += 80;
+
+          final fillsTarget = target.length + moved == targetCap;
+          if (fillsTarget) {
+            score += 120;
+          } else {
+            // Aynı rengi neredeyse dolu tüpe sadece kısmen eklemek çoğu zaman
+            // sonuç odaklı değildir. Özellikle elde 2 parça varken karşıda tek
+            // boşluk olması gibi yarım birleştirmeleri sert düşür.
+            if (moved < sourceRun) {
+              score -= 160;
+            }
+            if (freeSlots == 1) {
+              score -= 120;
+            } else if (freeSlots == 2) {
+              score -= 45;
+            }
           }
         }
 
         if (target.isEmpty) {
-          score += 15;
+          score += 12;
+          if (moved == 1) {
+            score -= 30;
+          }
+          if (sourceRun >= 2) {
+            score += 10;
+          }
         }
 
         final next = _cloneTubes(tubes);
@@ -1802,6 +1836,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         final beforeDone = _doneTubeCountOf(tubes);
         final afterDone = _doneTubeCountOf(next);
         score += (afterDone - beforeDone) * 50;
+
+        // Hedefte hâlâ karışık / yarım bir yapı bırakılıyorsa ve bu hamle yeni
+        // tamamlanmış tüp üretmiyorsa biraz daha aşağı it.
+        if (target.isNotEmpty &&
+            !_isTubeDoneIn(next, to) &&
+            target.length + moved < targetCap) {
+          score -= 25;
+        }
 
         moves.add((from: from, to: to, score: score));
       }
