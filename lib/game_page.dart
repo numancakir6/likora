@@ -2053,7 +2053,23 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return null;
   }
 
+  bool get _isScriptedLevelOne =>
+      widget.mapNumber == 1 &&
+      widget.level == 1 &&
+      (_preset?.solutionBranches.isNotEmpty ?? false);
+
   _JokerDecision? _findSmartJokerDecision() {
+    // Scripted tutorial level: önce preset branch ağına bak.
+    if (_isScriptedLevelOne) {
+      final scriptedMove = _firstValidPresetBranchMove(
+        _tubes,
+        includeUnlockedAdTube: _adTubeUnlocked,
+      );
+      if (scriptedMove != null) {
+        return _JokerDecision(from: scriptedMove.$1, to: scriptedMove.$2);
+      }
+    }
+
     // 1) Önce mevcut state: çözülebiliyorsa geri sarma YASAK.
     final directQuick = _quickSolveFromState(
       _tubes,
@@ -3485,60 +3501,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-              if (_jokerBusy) _buildJokerThinkingOverlay(),
               if (_showTutorial) _buildTutorialOverlay(),
             ],
           ),
         ));
-  }
-
-  Widget _buildJokerThinkingOverlay() {
-    return IgnorePointer(
-      ignoring: false,
-      child: Container(
-        color: Colors.black.withValues(alpha: 0.20),
-        alignment: Alignment.center,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1C1730).withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x33000000),
-                blurRadius: 18,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.6,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Joker hesaplıyor...',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildTutorialOverlay() {
