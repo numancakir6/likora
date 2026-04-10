@@ -2030,6 +2030,29 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return null;
   }
 
+  (int, int)? _firstValidPresetBranchMove(
+    List<List<int>> board, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final preset = _preset;
+    if (preset == null || preset.solutionBranches.isEmpty) return null;
+
+    for (final branch in preset.solutionBranches) {
+      for (final move in branch) {
+        final from = move.from;
+        final to = move.to;
+        if (_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) {
+          if (!includeUnlockedAdTube) continue;
+        }
+        if (_canPourIn(board, from, to)) {
+          return (from, to);
+        }
+      }
+    }
+
+    return null;
+  }
+
   _JokerDecision? _findSmartJokerDecision() {
     // 1) Önce mevcut state: çözülebiliyorsa geri sarma YASAK.
     final directQuick = _quickSolveFromState(
@@ -2120,6 +2143,18 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return _JokerDecision(
         from: initialMedium.first.$1,
         to: initialMedium.first.$2,
+        rewindCount: _history.length,
+      );
+    }
+
+    final initialBranchMove = _firstValidPresetBranchMove(
+      initial,
+      includeUnlockedAdTube: false,
+    );
+    if (initialBranchMove != null) {
+      return _JokerDecision(
+        from: initialBranchMove.$1,
+        to: initialBranchMove.$2,
         rewindCount: _history.length,
       );
     }
@@ -2325,7 +2360,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         return;
       }
 
-      final decision = _findSmartJokerDecision();
+      var decision = _findSmartJokerDecision();
       if (decision == null) {
         _vibrateLight();
         _showBottomHint('Joker için uygun hamle bulunamadı');
@@ -2334,6 +2369,20 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       if (decision.rewindCount > 0) {
         await _rewindHistoryForJoker(decision.rewindCount);
+        decision = _findSmartJokerDecision();
+        if (decision == null) {
+          final branchMove = _firstValidPresetBranchMove(
+            _tubes,
+            includeUnlockedAdTube: _adTubeUnlocked,
+          );
+          if (branchMove == null) {
+            _vibrateLight();
+            _showBottomHint('Joker için uygun hamle bulunamadı');
+            return;
+          }
+          await _startPour(branchMove.$1, branchMove.$2);
+          return;
+        }
       }
 
       await _startPour(decision.from, decision.to);
