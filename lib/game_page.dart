@@ -1964,7 +1964,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return false;
   }
 
-  (int, int)? _findBestEffortMove(
+  (int, int)? findBestEffortMove(
     List<List<int>> board, {
     required bool includeUnlockedAdTube,
   }) {
