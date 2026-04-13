@@ -617,6 +617,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   late int _coins;
   bool _jokerBusy = false;
+  bool _jokerThinking = false;
   bool _adTubeUnlocked = false;
   bool _levelRewardGranted = false;
   bool _restoringLevelState = true;
@@ -2385,7 +2386,18 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         return;
       }
 
+      if (mounted)
+        setState(() {
+          _jokerThinking = true;
+        });
+      // Kısa bir frame bekle — setState'in render edilmesi için
+      await Future.delayed(const Duration(milliseconds: 32));
+
       var decision = _findSmartJokerDecision();
+      if (mounted)
+        setState(() {
+          _jokerThinking = false;
+        });
       if (decision == null) {
         _vibrateLight();
         _showBottomHint('Joker için uygun hamle bulunamadı');
@@ -2401,6 +2413,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _jokerBusy = false;
+          _jokerThinking = false;
         });
       }
     }
@@ -3497,9 +3510,57 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   ),
                 ),
               if (_showTutorial) _buildTutorialOverlay(),
+              _buildJokerThinkingOverlay(),
             ],
           ),
         ));
+  }
+
+  Widget _buildJokerThinkingOverlay() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: _jokerThinking ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 200),
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+              decoration: BoxDecoration(
+                color: const Color(0xE6180F2D),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFF9B5DE5).withValues(alpha: 0.55),
+                  width: 1.4,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x889B5DE5),
+                    blurRadius: 28,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const _JokerThinkingDots(),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Joker düşünüyor...',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildTutorialOverlay() {
@@ -6259,7 +6320,7 @@ class _LiquidStreamPainter extends CustomPainter {
     required this.flowRate,
   });
 
-  bool get _isLava => color.value == _solidColorForIndex(kLavaColorIndex).value;
+  bool get _isLava => color == _solidColorForIndex(kLavaColorIndex);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -7715,4 +7776,78 @@ class BasinPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// JOKER DÜŞÜNÜYOR — üç nokta animasyonu
+// ─────────────────────────────────────────────────────────────────
+class _JokerThinkingDots extends StatefulWidget {
+  const _JokerThinkingDots();
+
+  @override
+  State<_JokerThinkingDots> createState() => _JokerThinkingDotsState();
+}
+
+class _JokerThinkingDotsState extends State<_JokerThinkingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            // Her nokta 300ms arayla pulses
+            final phase = ((_ctrl.value * 3) - i).clamp(0.0, 1.0);
+            final scale =
+                0.6 + 0.7 * (phase < 0.5 ? phase * 2 : (1 - phase) * 2);
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Transform.scale(
+                scale: scale,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color.lerp(
+                      const Color(0xFF9B5DE5),
+                      const Color(0xFFE040FB),
+                      scale - 0.6,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF9B5DE5)
+                            .withValues(alpha: 0.7 * scale),
+                        blurRadius: 6,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
 }
