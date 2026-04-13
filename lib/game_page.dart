@@ -2175,6 +2175,15 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       );
     }
 
+    // 4) Son çare: rewind gerektirmeden mevcut state'te geçerli herhangi bir hamle.
+    final bestEffort = findBestEffortMove(
+      _tubes,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    );
+    if (bestEffort != null) {
+      return _JokerDecision(from: bestEffort.$1, to: bestEffort.$2);
+    }
+
     return null;
   }
 
@@ -2184,7 +2193,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     for (int i = 0; i < rewindCount; i++) {
       if (_history.isEmpty || _activePlans.isNotEmpty) break;
       _undo();
-      await Future.delayed(const Duration(milliseconds: 520));
+      await Future.delayed(const Duration(milliseconds: 180));
     }
   }
 
@@ -2385,20 +2394,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       if (decision.rewindCount > 0) {
         await _rewindHistoryForJoker(decision.rewindCount);
-        decision = _findSmartJokerDecision();
-        if (decision == null) {
-          final branchMove = _firstValidPresetBranchMove(
-            _tubes,
-            includeUnlockedAdTube: _adTubeUnlocked,
-          );
-          if (branchMove == null) {
-            _vibrateLight();
-            _showBottomHint('Joker için uygun hamle bulunamadı');
-            return;
-          }
-          await _startPour(branchMove.$1, branchMove.$2);
-          return;
-        }
       }
 
       await _startPour(decision.from, decision.to);
