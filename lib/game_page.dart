@@ -618,6 +618,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   late int _coins;
   bool _jokerBusy = false;
   bool _jokerThinking = false;
+  bool _showJokerPopup = false;
   bool _adTubeUnlocked = false;
   bool _levelRewardGranted = false;
   bool _restoringLevelState = true;
@@ -2127,6 +2128,43 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             rewindCount: rewindCount,
           );
         }
+
+        // Snapshot çözücü bulamazsa bile, oradaki herhangi bir geçerli hamleyi kabul et.
+        final snapshotBranch = _firstValidPresetBranchMove(
+          snapshot,
+          includeUnlockedAdTube: _adTubeUnlocked,
+        );
+        if (snapshotBranch != null) {
+          return _JokerDecision(
+            from: snapshotBranch.$1,
+            to: snapshotBranch.$2,
+            rewindCount: rewindCount,
+          );
+        }
+
+        final snapshotBestEffort = findBestEffortMove(
+          snapshot,
+          includeUnlockedAdTube: _adTubeUnlocked,
+        );
+        if (snapshotBestEffort != null) {
+          return _JokerDecision(
+            from: snapshotBestEffort.$1,
+            to: snapshotBestEffort.$2,
+            rewindCount: rewindCount,
+          );
+        }
+
+        final snapshotAllMoves = _orderedSolverMoves(
+          snapshot,
+          includeUnlockedAdTube: _adTubeUnlocked,
+        );
+        if (snapshotAllMoves.isNotEmpty) {
+          return _JokerDecision(
+            from: snapshotAllMoves.first.$1,
+            to: snapshotAllMoves.first.$2,
+            rewindCount: rewindCount,
+          );
+        }
       }
     }
 
@@ -2172,6 +2210,31 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return _JokerDecision(
         from: initialBranchMove.$1,
         to: initialBranchMove.$2,
+        rewindCount: _history.length,
+      );
+    }
+
+    // BAŞLANGIÇ STATE İÇİN ZORUNLU FALLBACK
+    final initialBestEffort = findBestEffortMove(
+      initial,
+      includeUnlockedAdTube: false,
+    );
+    if (initialBestEffort != null) {
+      return _JokerDecision(
+        from: initialBestEffort.$1,
+        to: initialBestEffort.$2,
+        rewindCount: _history.length,
+      );
+    }
+
+    final initialAllMoves = _orderedSolverMoves(
+      initial,
+      includeUnlockedAdTube: false,
+    );
+    if (initialAllMoves.isNotEmpty) {
+      return _JokerDecision(
+        from: initialAllMoves.first.$1,
+        to: initialAllMoves.first.$2,
         rewindCount: _history.length,
       );
     }
@@ -2254,6 +2317,20 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         elevation: 0,
       ),
     );
+  }
+
+  void _openJokerPopup() {
+    if (!mounted) return;
+    setState(() {
+      _showJokerPopup = true;
+    });
+  }
+
+  void _closeJokerPopup() {
+    if (!mounted) return;
+    setState(() {
+      _showJokerPopup = false;
+    });
   }
 
   Future<bool> _showRewardedJokerAdGate() async {
@@ -2395,20 +2472,24 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         return;
       }
 
-      if (mounted)
+      _openJokerPopup();
+
+      if (mounted) {
         setState(() {
           _jokerThinking = true;
         });
+      }
 
-      // Event loop'un bir sonraki turunu bekle — setState render edilsin,
-      // sonra senkron DFS başlasın.
-      final decision = await Future(() => _findSmartJokerDecision());
+      var decision = await Future(() => _findSmartJokerDecision());
 
-      if (mounted)
+      if (mounted) {
         setState(() {
           _jokerThinking = false;
         });
+      }
+
       if (decision == null) {
+        _closeJokerPopup();
         _vibrateLight();
         _showBottomHint('Joker için uygun hamle bulunamadı');
         return;
@@ -2416,8 +2497,40 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       if (decision.rewindCount > 0) {
         await _rewindHistoryForJoker(decision.rewindCount);
+
+        // Rewind sonrası state değiştiği için hamleyi tekrar doğrula.
+        if (!_canPourIn(_tubes, decision.from, decision.to)) {
+          decision = _findSmartJokerDecision();
+          if (decision == null) {
+            _closeJokerPopup();
+            _vibrateLight();
+            _showBottomHint('Joker için uygun hamle bulunamadı');
+            return;
+          }
+        }
       }
 
+      if (!_canPourIn(_tubes, decision.from, decision.to)) {
+        final fallback = findBestEffortMove(
+          _tubes,
+          includeUnlockedAdTube: _adTubeUnlocked,
+        );
+
+        if (fallback == null) {
+          _closeJokerPopup();
+          _vibrateLight();
+          _showBottomHint('Joker için uygun hamle bulunamadı');
+          return;
+        }
+
+        // Joker ilk pour hamlesi başlamadan hemen önce popup kapansın
+        _closeJokerPopup();
+        await _startPour(fallback.$1, fallback.$2);
+        return;
+      }
+
+      // Joker ilk pour hamlesi başlamadan hemen önce popup kapansın
+      _closeJokerPopup();
       await _startPour(decision.from, decision.to);
     } finally {
       if (mounted) {
@@ -3520,10 +3633,65 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   ),
                 ),
               if (_showTutorial) _buildTutorialOverlay(),
+              _buildJokerPopupOverlay(),
               _buildJokerThinkingOverlay(),
             ],
           ),
         ));
+  }
+
+  Widget _buildJokerPopupOverlay() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: true,
+        child: AnimatedOpacity(
+          opacity: _showJokerPopup ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 180),
+          child: Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 28),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+              decoration: BoxDecoration(
+                color: const Color(0xEE1A112B),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: const Color(0xFF9B5DE5).withValues(alpha: 0.70),
+                  width: 1.5,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x669B5DE5),
+                    blurRadius: 26,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.auto_awesome,
+                    color: Colors.white.withValues(alpha: 0.95),
+                    size: 30,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Joker hamleyi hazırlıyor',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.95),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildJokerThinkingOverlay() {
