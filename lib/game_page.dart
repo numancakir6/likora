@@ -2185,6 +2185,15 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return _JokerDecision(from: bestEffort.$1, to: bestEffort.$2);
     }
 
+    // 5) Ultimate fallback: loop kontrolünü yok say, sadece _canPourIn bak.
+    final allMoves = _orderedSolverMoves(
+      _tubes,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    );
+    if (allMoves.isNotEmpty) {
+      return _JokerDecision(from: allMoves.first.$1, to: allMoves.first.$2);
+    }
+
     return null;
   }
 
@@ -2390,10 +2399,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         setState(() {
           _jokerThinking = true;
         });
-      // Kısa bir frame bekle — setState'in render edilmesi için
-      await Future.delayed(const Duration(milliseconds: 32));
 
-      var decision = _findSmartJokerDecision();
+      // Event loop'un bir sonraki turunu bekle — setState render edilsin,
+      // sonra senkron DFS başlasın.
+      final decision = await Future(() => _findSmartJokerDecision());
+
       if (mounted)
         setState(() {
           _jokerThinking = false;
@@ -6320,7 +6330,7 @@ class _LiquidStreamPainter extends CustomPainter {
     required this.flowRate,
   });
 
-  bool get _isLava => color == _solidColorForIndex(kLavaColorIndex);
+  bool get _isLava => color.value == _solidColorForIndex(kLavaColorIndex).value;
 
   @override
   void paint(Canvas canvas, Size size) {
