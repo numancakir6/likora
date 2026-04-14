@@ -627,6 +627,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   final List<_VisualLayer> _mountainLayers = [];
   bool _loopCompletedVolcano = false;
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
+  (int, int)? _jokerBannedMove;
 
   // Rewarded reklam
   RewardedAd? _jokerAd;
@@ -2173,11 +2174,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   _JokerDecision? _findGuidedJokerDecision() {
+    bool isBanned((int, int) move) {
+      final banned = _jokerBannedMove;
+      if (banned == null) return false;
+      return banned.$1 == move.$1 && banned.$2 == move.$2;
+    }
+
     final directMove = _exactPresetRecoveryMove(
       _tubes,
       includeUnlockedAdTube: _adTubeUnlocked,
     );
-    if (directMove != null) {
+    if (directMove != null && !isBanned(directMove)) {
       return _JokerDecision(from: directMove.$1, to: directMove.$2);
     }
 
@@ -2188,7 +2195,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         snapshot,
         includeUnlockedAdTube: _adTubeUnlocked,
       );
-      if (snapshotMove != null) {
+      if (snapshotMove != null && !isBanned(snapshotMove)) {
         return _JokerDecision(
           from: snapshotMove.$1,
           to: snapshotMove.$2,
@@ -2198,7 +2205,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     final initialMove = _guidedInitialOpeningMove();
-    if (initialMove != null) {
+    if (initialMove != null && !isBanned(initialMove)) {
       return _JokerDecision(
         from: initialMove.$1,
         to: initialMove.$2,
@@ -2608,6 +2615,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       }
 
       if (_isGuidedJokerLevel) {
+        _jokerBannedMove = null;
         var decision = _findGuidedJokerDecision();
 
         if (decision == null) {
@@ -2627,12 +2635,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         }
 
         if (decision.rewindCount > 0) {
+          final banned = _history.isNotEmpty
+              ? (_history.last.fromIdx, _history.last.toIdx)
+              : null;
           await _rewindHistoryForJoker(decision.rewindCount);
+          _jokerBannedMove = banned;
           decision = _findGuidedJokerDecision();
 
           if (decision == null) {
             final opening = _guidedInitialOpeningMove();
-            if (opening != null) {
+            if (opening != null &&
+                (_jokerBannedMove == null ||
+                    _jokerBannedMove!.$1 != opening.$1 ||
+                    _jokerBannedMove!.$2 != opening.$2)) {
               decision = _JokerDecision(from: opening.$1, to: opening.$2);
             }
           }
@@ -2641,17 +2656,23 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         if (decision == null ||
             !_canPourIn(_tubes, decision.from, decision.to)) {
           final opening = _guidedInitialOpeningMove();
-          if (opening != null && _canPourIn(_tubes, opening.$1, opening.$2)) {
+          if (opening != null &&
+              _canPourIn(_tubes, opening.$1, opening.$2) &&
+              (_jokerBannedMove == null ||
+                  _jokerBannedMove!.$1 != opening.$1 ||
+                  _jokerBannedMove!.$2 != opening.$2)) {
             decision = _JokerDecision(from: opening.$1, to: opening.$2);
           }
         }
 
         if (decision == null ||
             !_canPourIn(_tubes, decision.from, decision.to)) {
+          _jokerBannedMove = null;
           _vibrateLight();
           return;
         }
 
+        _jokerBannedMove = null;
         await _startPour(decision.from, decision.to);
         return;
       }
