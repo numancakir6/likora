@@ -2032,27 +2032,115 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return null;
   }
 
-  (int, int)? _firstValidPresetBranchMove(
+  (int, int)? _exactPresetRecoveryMove(
     List<List<int>> board, {
     required bool includeUnlockedAdTube,
   }) {
     final preset = _preset;
+    if (preset == null || preset.jokerRecoveryMoves.isEmpty) return null;
+
+    final signature = PuzzlePresets.signatureOf(board);
+    final move = preset.jokerRecoveryMoves[signature];
+    if (move == null) return null;
+
+    final from = move.from;
+    final to = move.to;
+    if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
+        !includeUnlockedAdTube) {
+      return null;
+    }
+    if (!_canPourIn(board, from, to)) return null;
+
+    return (from, to);
+  }
+
+  (int, int)? _firstValidPresetBranchMove(
+    List<List<int>> board, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final exactRecoveryMove = _exactPresetRecoveryMove(
+      board,
+      includeUnlockedAdTube: includeUnlockedAdTube,
+    );
+    if (exactRecoveryMove != null) {
+      return exactRecoveryMove;
+    }
+
+    final preset = _preset;
     if (preset == null || preset.solutionBranches.isEmpty) return null;
+
+    final validMoves = <(int, int)>[];
+    final seen = <String>{};
 
     for (final branch in preset.solutionBranches) {
       for (final move in branch) {
         final from = move.from;
         final to = move.to;
-        if (_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) {
-          if (!includeUnlockedAdTube) continue;
+        if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
+            !includeUnlockedAdTube) {
+          continue;
         }
-        if (_canPourIn(board, from, to)) {
-          return (from, to);
+        if (!_canPourIn(board, from, to)) continue;
+
+        final key = '$from->$to';
+        if (seen.add(key)) {
+          validMoves.add((from, to));
         }
       }
     }
 
-    return null;
+    if (validMoves.isEmpty) return null;
+
+    List<(int, int)> _preferredMoves() {
+      final completing = <(int, int)>[];
+      final matching = <(int, int)>[];
+      final empty = <(int, int)>[];
+      final rest = <(int, int)>[];
+
+      for (final move in validMoves) {
+        final from = move.$1;
+        final to = move.$2;
+        final next = _cloneTubes(board);
+        _doPourIn(next, from, to);
+
+        final completesTarget = _isTubeDoneIn(next, to);
+        final targetWasEmpty = board[to].isEmpty;
+        final targetMatchesTop = board[to].isNotEmpty &&
+            board[from].isNotEmpty &&
+            board[to].last == board[from].last;
+
+        if (completesTarget) {
+          completing.add(move);
+        } else if (targetMatchesTop) {
+          matching.add(move);
+        } else if (targetWasEmpty) {
+          empty.add(move);
+        } else {
+          rest.add(move);
+        }
+      }
+
+      return <(int, int)>[
+        ...completing,
+        ...matching,
+        ...empty,
+        ...rest,
+      ];
+    }
+
+    final ordered = _preferredMoves();
+    for (final move in ordered) {
+      if (!_wouldCreateRecentLoop(
+        board,
+        move.$1,
+        move.$2,
+        includeUnlockedAdTube: includeUnlockedAdTube,
+      )) {
+        return move;
+      }
+    }
+
+    return ordered.first;
   }
 
   bool get _isScriptedLevelOne =>
