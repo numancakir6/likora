@@ -2401,7 +2401,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     for (int i = 0; i < rewindCount; i++) {
       if (_history.isEmpty || _activePlans.isNotEmpty) break;
       _undo();
-      await Future.delayed(const Duration(milliseconds: 180));
+      await Future.delayed(const Duration(milliseconds: 760));
     }
   }
 

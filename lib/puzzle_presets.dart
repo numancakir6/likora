@@ -625,62 +625,118 @@ class PuzzlePresets {
       4: PuzzlePreset(
         mapNumber: 1,
         levelId: 4,
-        difficulty: 2,
+        difficulty: 4,
         tubes: [
-          [2, 0, 4, 0],
-          [7, 6, 6, 0],
-          [4, 4, 6, 1],
-          [7, 2, 1, 1],
-          [5, 0, 2, 2],
-          [3, 7, 3, 3],
-          [8, 8, 5, 4],
-          [5, 3, 7, 5],
-          [8, 1, 8, 6],
-          [],
+          [2, 1, 0, 0],
+          [3, 3, 1, 0],
+          [4, 2, 2, 1],
+          [5, 4, 3, 1],
+          [6, 5, 4, 2],
+          [6, 6, 5, 3],
+          [7, 7, 6, 4],
+          [7, 5, 3, 2],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(10),
+        lockedAdTubeIndex: 9,
         solutionBranches: [
+          // TEK ANA ÇÖZÜM (çok dar)
           [
-            PuzzleMove(2, 9),
-            PuzzleMove(3, 9),
-            PuzzleMove(0, 10),
-            PuzzleMove(1, 10),
-            PuzzleMove(8, 1),
-            PuzzleMove(6, 0),
-            PuzzleMove(7, 6),
-            PuzzleMove(4, 3),
+            PuzzleMove(0, 8),
+            PuzzleMove(1, 8),
+            PuzzleMove(2, 0),
+            PuzzleMove(3, 1),
+            PuzzleMove(4, 2),
+            PuzzleMove(5, 3),
+            PuzzleMove(6, 4),
+            PuzzleMove(7, 5),
+            PuzzleMove(0, 9),
+            PuzzleMove(1, 9),
+            PuzzleMove(2, 0),
+            PuzzleMove(3, 1),
+            PuzzleMove(4, 2),
+            PuzzleMove(5, 3),
+            PuzzleMove(6, 4),
+            PuzzleMove(7, 5),
+            PuzzleMove(2, 6),
+            PuzzleMove(3, 7),
+            PuzzleMove(4, 0),
+            PuzzleMove(5, 1),
           ],
+
+          // sadece açılış varyasyonu (bilerek az)
           [
-            PuzzleMove(0, 10),
-            PuzzleMove(1, 10),
-            PuzzleMove(2, 9),
-            PuzzleMove(3, 9),
-            PuzzleMove(8, 1),
-            PuzzleMove(6, 0),
-            PuzzleMove(4, 3),
-            PuzzleMove(7, 6),
+            PuzzleMove(1, 8),
+            PuzzleMove(0, 8),
+            PuzzleMove(2, 0),
+            PuzzleMove(3, 1),
+            PuzzleMove(4, 2),
+            PuzzleMove(5, 3),
+            PuzzleMove(6, 4),
+            PuzzleMove(7, 5),
+            PuzzleMove(0, 9),
+            PuzzleMove(1, 9),
+            PuzzleMove(2, 0),
+            PuzzleMove(3, 1),
+            PuzzleMove(4, 2),
+            PuzzleMove(5, 3),
+            PuzzleMove(6, 4),
+            PuzzleMove(7, 5),
+            PuzzleMove(2, 6),
+            PuzzleMove(3, 7),
+            PuzzleMove(4, 0),
+            PuzzleMove(5, 1),
           ],
         ],
         jokerRecoveryMoves: {
-          '2,0,4,0|7,6,6,0|4,4,6,1|7,2,1,1|5,0,2,2|3,7,3,3|8,8,5,4|5,3,7,5|8,1,8,6|||':
-              PuzzleMove(2, 9),
-          '2,0,4,0|7,6,6,0|4,4,6|7,2,1,1|5,0,2,2|3,7,3,3|8,8,5,4|5,3,7,5|8,1,8,6|1||':
-              PuzzleMove(3, 9),
-          '2,0,4,0|7,6,6,0|4,4,6|7,2|5,0,2,2|3,7,3,3|8,8,5,4|5,3,7,5|8,1,8,6|1,1,1||':
-              PuzzleMove(0, 10),
-          '2,0,4|7,6,6,0|4,4,6|7,2|5,0,2,2|3,7,3,3|8,8,5,4|5,3,7,5|8,1,8,6|1,1,1|0|':
-              PuzzleMove(1, 10),
-          '2,0,4|7,6,6|4,4,6|7,2|5,0,2,2|3,7,3,3|8,8,5,4|5,3,7,5|8,1,8,6|1,1,1|0,0|':
-              PuzzleMove(8, 1),
-          '2,0,4|7,6,6,6|4,4,6|7,2|5,0,2,2|3,7,3,3|8,8,5,4|5,3,7,5|8,1,8|1,1,1|0,0|':
-              PuzzleMove(6, 0),
-          '2,0,4,4|7,6,6,6|4,4,6|7,2|5,0,2,2|3,7,3,3|8,8,5|5,3,7,5|8,1,8|1,1,1|0,0|':
-              PuzzleMove(7, 6),
-          '2,0,4,4|7,6,6,6|4,4,6|7,2|5,0,2,2|3,7,3,3|8,8,5,5|5,3,7|8,1,8|1,1,1|0,0|':
-              PuzzleMove(4, 3),
+          // başlangıç
+          '2,1,0,0|3,3,1,0|4,2,2,1|5,4,3,1|6,5,4,2|6,6,5,3|7,7,6,4|7,5,3,2||':
+              PuzzleMove(0, 8),
+
+          // açılış
+          '2,1|3,3,1,0|4,2,2,1|5,4,3,1|6,5,4,2|6,6,5,3|7,7,6,4|7,5,3,2|0,0|':
+              PuzzleMove(1, 8),
+
+          '2,1|3,3,1|4,2,2,1|5,4,3,1|6,5,4,2|6,6,5,3|7,7,6,4|7,5,3,2|0,0,0|':
+              PuzzleMove(2, 0),
+
+          '2,1,1|3,3,1|4,2,2|5,4,3,1|6,5,4,2|6,6,5,3|7,7,6,4|7,5,3,2|0,0,0|':
+              PuzzleMove(3, 1),
+
+          // orta blok
+          '2,1,1|3,3,1,1|4,2,2|5,4,3|6,5,4,2|6,6,5,3|7,7,6,4|7,5,3,2|0,0,0|':
+              PuzzleMove(4, 2),
+
+          '2,1,1|3,3,1,1|4,2,2,2|5,4,3|6,5,4|6,6,5,3|7,7,6,4|7,5,3,2|0,0,0|':
+              PuzzleMove(5, 3),
+
+          '2,1,1|3,3,1,1|4,2,2,2|5,4,3,3|6,5,4|6,6,5|7,7,6,4|7,5,3,2|0,0,0|':
+              PuzzleMove(6, 4),
+
+          '2,1,1|3,3,1,1|4,2,2,2|5,4,3,3|6,5,4,4|6,6,5|7,7,6|7,5,3,2|0,0,0|':
+              PuzzleMove(7, 5),
+
+          // ikinci boş tüp kullanımı
+          '2,1,1|3,3,1,1|4,2,2,2|5,4,3,3|6,5,4,4|6,6,5,5|7,7,6|7,5,3|0,0,0|':
+              PuzzleMove(0, 9),
+
+          '2|3,3,1,1|4,2,2,2|5,4,3,3|6,5,4,4|6,6,5,5|7,7,6|7,5,3|0,0,0|1,1,1':
+              PuzzleMove(1, 9),
+
+          // sıkı kapanış
+          '|3,3|4,2,2,2|5,4,3,3|6,5,4,4|6,6,5,5|7,7,6|7,5,3|0,0,0,0|1,1,1,1':
+              PuzzleMove(2, 6),
+
+          '|3,3||5,4,3,3|6,5,4,4|6,6,5,5|7,7,6,6|7,5,3|0,0,0,0|1,1,1,1':
+              PuzzleMove(3, 7),
+
+          // final
+          '|3,3||5,4|6,5,4,4|6,6,5,5|7,7,6,6|7,5,3,3|0,0,0,0|1,1,1,1':
+              PuzzleMove(4, 0),
+
+          '|3,3||5,4,4,4|6,5|6,6,5,5|7,7,6,6|7,5,3,3|0,0,0,0|1,1,1,1':
+              PuzzleMove(5, 1),
         },
       ),
       5: PuzzlePreset(
