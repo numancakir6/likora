@@ -2150,8 +2150,33 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool get _isScriptedLevelOne =>
       widget.mapNumber == 1 && widget.level == 1 && _isGuidedJokerLevel;
 
+  (int, int)? _guidedOpeningMove(
+    List<List<int>> board, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final preset = _preset;
+    if (preset == null) return null;
+
+    for (final branch in preset.solutionBranches) {
+      if (branch.isEmpty) continue;
+      final move = branch.first;
+      final from = move.from;
+      final to = move.to;
+
+      if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
+          !includeUnlockedAdTube) {
+        continue;
+      }
+      if (_canPourIn(board, from, to)) {
+        return (from, to);
+      }
+    }
+
+    return null;
+  }
+
   _JokerDecision? _findGuidedJokerDecision() {
-    final directMove = _firstValidPresetBranchMove(
+    final directMove = _exactPresetRecoveryMove(
       _tubes,
       includeUnlockedAdTube: _adTubeUnlocked,
     );
@@ -2168,7 +2193,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         if (keepDone && !preservesDone) continue;
         if (!keepDone && preservesDone) continue;
 
-        final snapshotMove = _firstValidPresetBranchMove(
+        final snapshotMove = _exactPresetRecoveryMove(
           snapshot,
           includeUnlockedAdTube: _adTubeUnlocked,
         );
@@ -2191,14 +2216,26 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 difficulty: widget.difficulty,
               ));
 
-    final initialMove = _firstValidPresetBranchMove(
+    final initialExact = _exactPresetRecoveryMove(
       initial,
       includeUnlockedAdTube: false,
     );
-    if (initialMove != null) {
+    if (initialExact != null) {
       return _JokerDecision(
-        from: initialMove.$1,
-        to: initialMove.$2,
+        from: initialExact.$1,
+        to: initialExact.$2,
+        rewindCount: _history.length,
+      );
+    }
+
+    final openingMove = _guidedOpeningMove(
+      initial,
+      includeUnlockedAdTube: false,
+    );
+    if (openingMove != null) {
+      return _JokerDecision(
+        from: openingMove.$1,
+        to: openingMove.$2,
         rewindCount: _history.length,
       );
     }
