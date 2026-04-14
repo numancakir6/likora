@@ -2143,24 +2143,74 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return ordered.first;
   }
 
-  bool get _isScriptedLevelOne =>
-      widget.mapNumber == 1 &&
-      widget.level == 1 &&
-      (_preset?.solutionBranches.isNotEmpty ?? false);
+  bool get _isGuidedJokerLevel =>
+      (_preset?.solutionBranches.isNotEmpty ?? false) &&
+      widget.customPuzzleTubes == null;
 
-  _JokerDecision? _findSmartJokerDecision() {
-    // Scripted tutorial level: önce preset branch ağına bak.
-    if (_isScriptedLevelOne) {
-      final scriptedMove = _firstValidPresetBranchMove(
-        _tubes,
-        includeUnlockedAdTube: _adTubeUnlocked,
-      );
-      if (scriptedMove != null) {
-        return _JokerDecision(from: scriptedMove.$1, to: scriptedMove.$2);
+  bool get _isScriptedLevelOne =>
+      widget.mapNumber == 1 && widget.level == 1 && _isGuidedJokerLevel;
+
+  _JokerDecision? _findGuidedJokerDecision() {
+    final directMove = _firstValidPresetBranchMove(
+      _tubes,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    );
+    if (directMove != null) {
+      return _JokerDecision(from: directMove.$1, to: directMove.$2);
+    }
+
+    for (final keepDone in [true, false]) {
+      for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
+        final snapshot =
+            _cloneTubes(_history[_history.length - rewindCount].tubes);
+        final preservesDone = _preservesCompletedTubes(_tubes, snapshot);
+
+        if (keepDone && !preservesDone) continue;
+        if (!keepDone && preservesDone) continue;
+
+        final snapshotMove = _firstValidPresetBranchMove(
+          snapshot,
+          includeUnlockedAdTube: _adTubeUnlocked,
+        );
+        if (snapshotMove != null) {
+          return _JokerDecision(
+            from: snapshotMove.$1,
+            to: snapshotMove.$2,
+            rewindCount: rewindCount,
+          );
+        }
       }
     }
 
-    // 1) Önce mevcut state: çözülebiliyorsa geri sarma YASAK.
+    final initial = widget.customPuzzleTubes != null
+        ? _cloneTubes(widget.customPuzzleTubes!)
+        : (_preset != null
+            ? _cloneTubes(_preset!.tubes)
+            : legacyGenerateTubes(
+                level: widget.level,
+                difficulty: widget.difficulty,
+              ));
+
+    final initialMove = _firstValidPresetBranchMove(
+      initial,
+      includeUnlockedAdTube: false,
+    );
+    if (initialMove != null) {
+      return _JokerDecision(
+        from: initialMove.$1,
+        to: initialMove.$2,
+        rewindCount: _history.length,
+      );
+    }
+
+    return null;
+  }
+
+  _JokerDecision? _findSmartJokerDecision() {
+    if (_isGuidedJokerLevel) {
+      return _findGuidedJokerDecision();
+    }
+
     final directQuick = _quickSolveFromState(
       _tubes,
       includeUnlockedAdTube: _adTubeUnlocked,
@@ -2183,7 +2233,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       );
     }
 
-    // 2) Sadece mevcut state çözülemiyorsa geçmişte çözülebilen EN YAKIN state'i ara.
     for (final keepDone in [true, false]) {
       for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
         final snapshot =
@@ -2217,7 +2266,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           );
         }
 
-        // Snapshot çözücü bulamazsa bile, oradaki herhangi bir geçerli hamleyi kabul et.
         final snapshotBranch = _firstValidPresetBranchMove(
           snapshot,
           includeUnlockedAdTube: _adTubeUnlocked,
@@ -2256,7 +2304,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       }
     }
 
-    // 3) En kötü ihtimal: levelin en başına dönüp oradan doğru hamleyi ver.
     final initial = widget.customPuzzleTubes != null
         ? _cloneTubes(widget.customPuzzleTubes!)
         : (_preset != null
@@ -2302,7 +2349,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       );
     }
 
-    // BAŞLANGIÇ STATE İÇİN ZORUNLU FALLBACK
     final initialBestEffort = findBestEffortMove(
       initial,
       includeUnlockedAdTube: false,
@@ -2327,7 +2373,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       );
     }
 
-    // 4) Son çare: rewind gerektirmeden mevcut state'te geçerli herhangi bir hamle.
     final bestEffort = findBestEffortMove(
       _tubes,
       includeUnlockedAdTube: _adTubeUnlocked,
@@ -2336,7 +2381,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return _JokerDecision(from: bestEffort.$1, to: bestEffort.$2);
     }
 
-    // 5) Ultimate fallback: loop kontrolünü yok say, sadece _canPourIn bak.
     final allMoves = _orderedSolverMoves(
       _tubes,
       includeUnlockedAdTube: _adTubeUnlocked,
@@ -2560,64 +2604,63 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         return;
       }
 
-      _openJokerPopup();
+      _JokerDecision? decision;
 
-      if (mounted) {
-        setState(() {
-          _jokerThinking = true;
-        });
+      if (_isGuidedJokerLevel) {
+        decision = _findGuidedJokerDecision();
       }
 
-      var decision = await Future(() => _findSmartJokerDecision());
+      if (decision == null) {
+        _openJokerPopup();
 
-      if (mounted) {
-        setState(() {
-          _jokerThinking = false;
-        });
+        if (mounted) {
+          setState(() {
+            _jokerThinking = true;
+          });
+        }
+
+        decision = await Future(() => _findSmartJokerDecision());
+
+        if (mounted) {
+          setState(() {
+            _jokerThinking = false;
+          });
+        }
       }
 
       if (decision == null) {
         _closeJokerPopup();
         _vibrateLight();
-        _showBottomHint('Joker için uygun hamle bulunamadı');
         return;
       }
 
       if (decision.rewindCount > 0) {
         await _rewindHistoryForJoker(decision.rewindCount);
 
-        // Rewind sonrası state değiştiği için hamleyi tekrar doğrula.
-        if (!_canPourIn(_tubes, decision.from, decision.to)) {
-          decision = _findSmartJokerDecision();
-          if (decision == null) {
-            _closeJokerPopup();
-            _vibrateLight();
-            _showBottomHint('Joker için uygun hamle bulunamadı');
-            return;
-          }
+        decision = _isGuidedJokerLevel
+            ? _findGuidedJokerDecision()
+            : _findSmartJokerDecision();
+
+        if (decision == null) {
+          _closeJokerPopup();
+          _vibrateLight();
+          return;
         }
       }
 
       if (!_canPourIn(_tubes, decision.from, decision.to)) {
-        final fallback = findBestEffortMove(
-          _tubes,
-          includeUnlockedAdTube: _adTubeUnlocked,
-        );
+        decision = _isGuidedJokerLevel
+            ? _findGuidedJokerDecision()
+            : _findSmartJokerDecision();
 
-        if (fallback == null) {
+        if (decision == null ||
+            !_canPourIn(_tubes, decision.from, decision.to)) {
           _closeJokerPopup();
           _vibrateLight();
-          _showBottomHint('Joker için uygun hamle bulunamadı');
           return;
         }
-
-        // Joker ilk pour hamlesi başlamadan hemen önce popup kapansın
-        _closeJokerPopup();
-        await _startPour(fallback.$1, fallback.$2);
-        return;
       }
 
-      // Joker ilk pour hamlesi başlamadan hemen önce popup kapansın
       _closeJokerPopup();
       await _startPour(decision.from, decision.to);
     } finally {
