@@ -2069,78 +2069,45 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final preset = _preset;
     if (preset == null || preset.solutionBranches.isEmpty) return null;
 
-    final validMoves = <(int, int)>[];
+    // Guided joker current/snapshot state'te branch içinden herhangi bir legal
+    // hamle seçmemeli. Bu helper yalnızca initial board'da açılış hamlesi
+    // bulmak için kullanılmalı. Bu yüzden sadece branch'lerin ilk hamlelerine bak.
     final seen = <String>{};
-
     for (final branch in preset.solutionBranches) {
-      for (final move in branch) {
-        final from = move.from;
-        final to = move.to;
-        if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
-            !includeUnlockedAdTube) {
-          continue;
-        }
-        if (!_canPourIn(board, from, to)) continue;
+      if (branch.isEmpty) continue;
 
-        final key = '$from->$to';
-        if (seen.add(key)) {
-          validMoves.add((from, to));
-        }
+      final move = branch.first;
+      final from = move.from;
+      final to = move.to;
+      if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
+          !includeUnlockedAdTube) {
+        continue;
+      }
+      if (!_canPourIn(board, from, to)) continue;
+
+      final key = '$from->$to';
+      if (seen.add(key)) {
+        return (from, to);
       }
     }
 
-    if (validMoves.isEmpty) return null;
+    return null;
+  }
 
-    List<(int, int)> _preferredMoves() {
-      final completing = <(int, int)>[];
-      final matching = <(int, int)>[];
-      final empty = <(int, int)>[];
-      final rest = <(int, int)>[];
+  (int, int)? _guidedInitialOpeningMove() {
+    final initial = widget.customPuzzleTubes != null
+        ? _cloneTubes(widget.customPuzzleTubes!)
+        : (_preset != null
+            ? _cloneTubes(_preset!.tubes)
+            : legacyGenerateTubes(
+                level: widget.level,
+                difficulty: widget.difficulty,
+              ));
 
-      for (final move in validMoves) {
-        final from = move.$1;
-        final to = move.$2;
-        final next = _cloneTubes(board);
-        _doPourIn(next, from, to);
-
-        final completesTarget = _isTubeDoneIn(next, to);
-        final targetWasEmpty = board[to].isEmpty;
-        final targetMatchesTop = board[to].isNotEmpty &&
-            board[from].isNotEmpty &&
-            board[to].last == board[from].last;
-
-        if (completesTarget) {
-          completing.add(move);
-        } else if (targetMatchesTop) {
-          matching.add(move);
-        } else if (targetWasEmpty) {
-          empty.add(move);
-        } else {
-          rest.add(move);
-        }
-      }
-
-      return <(int, int)>[
-        ...completing,
-        ...matching,
-        ...empty,
-        ...rest,
-      ];
-    }
-
-    final ordered = _preferredMoves();
-    for (final move in ordered) {
-      if (!_wouldCreateRecentLoop(
-        board,
-        move.$1,
-        move.$2,
-        includeUnlockedAdTube: includeUnlockedAdTube,
-      )) {
-        return move;
-      }
-    }
-
-    return ordered.first;
+    return _firstValidPresetBranchMove(
+      initial,
+      includeUnlockedAdTube: false,
+    );
   }
 
   bool get _isGuidedJokerLevel =>
@@ -2149,31 +2116,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   bool get _isScriptedLevelOne =>
       widget.mapNumber == 1 && widget.level == 1 && _isGuidedJokerLevel;
-
-  (int, int)? _guidedOpeningMove(
-    List<List<int>> board, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final preset = _preset;
-    if (preset == null) return null;
-
-    for (final branch in preset.solutionBranches) {
-      if (branch.isEmpty) continue;
-      final move = branch.first;
-      final from = move.from;
-      final to = move.to;
-
-      if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
-          !includeUnlockedAdTube) {
-        continue;
-      }
-      if (_canPourIn(board, from, to)) {
-        return (from, to);
-      }
-    }
-
-    return null;
-  }
 
   _JokerDecision? _findGuidedJokerDecision() {
     final directMove = _exactPresetRecoveryMove(
@@ -2207,35 +2149,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       }
     }
 
-    final initial = widget.customPuzzleTubes != null
-        ? _cloneTubes(widget.customPuzzleTubes!)
-        : (_preset != null
-            ? _cloneTubes(_preset!.tubes)
-            : legacyGenerateTubes(
-                level: widget.level,
-                difficulty: widget.difficulty,
-              ));
-
-    final initialExact = _exactPresetRecoveryMove(
-      initial,
-      includeUnlockedAdTube: false,
-    );
-    if (initialExact != null) {
+    final initialMove = _guidedInitialOpeningMove();
+    if (initialMove != null) {
       return _JokerDecision(
-        from: initialExact.$1,
-        to: initialExact.$2,
-        rewindCount: _history.length,
-      );
-    }
-
-    final openingMove = _guidedOpeningMove(
-      initial,
-      includeUnlockedAdTube: false,
-    );
-    if (openingMove != null) {
-      return _JokerDecision(
-        from: openingMove.$1,
-        to: openingMove.$2,
+        from: initialMove.$1,
+        to: initialMove.$2,
         rewindCount: _history.length,
       );
     }
@@ -2665,6 +2583,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         }
       }
 
+      if (decision == null && _isGuidedJokerLevel) {
+        final forcedMove = _guidedInitialOpeningMove();
+        if (forcedMove != null) {
+          decision = _JokerDecision(
+            from: forcedMove.$1,
+            to: forcedMove.$2,
+            rewindCount: _history.length,
+          );
+        }
+      }
+
       if (decision == null) {
         _closeJokerPopup();
         _vibrateLight();
@@ -2678,6 +2607,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             ? _findGuidedJokerDecision()
             : _findSmartJokerDecision();
 
+        if (decision == null && _isGuidedJokerLevel) {
+          final forcedMove = _guidedInitialOpeningMove();
+          if (forcedMove != null) {
+            decision = _JokerDecision(
+              from: forcedMove.$1,
+              to: forcedMove.$2,
+              rewindCount: _history.length,
+            );
+          }
+        }
+
         if (decision == null) {
           _closeJokerPopup();
           _vibrateLight();
@@ -2689,6 +2629,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         decision = _isGuidedJokerLevel
             ? _findGuidedJokerDecision()
             : _findSmartJokerDecision();
+
+        if ((decision == null ||
+                !_canPourIn(_tubes, decision.from, decision.to)) &&
+            _isGuidedJokerLevel) {
+          final forcedMove = _guidedInitialOpeningMove();
+          if (forcedMove != null) {
+            decision = _JokerDecision(
+              from: forcedMove.$1,
+              to: forcedMove.$2,
+              rewindCount: _history.length,
+            );
+          }
+        }
 
         if (decision == null ||
             !_canPourIn(_tubes, decision.from, decision.to)) {
