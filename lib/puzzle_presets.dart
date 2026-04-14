@@ -328,6 +328,7 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(10),
         lockedAdTubeIndex: 9,
         solutionBranches: [
+          // Ana rota A
           [
             PuzzleMove(0, 7),
             PuzzleMove(1, 7),
@@ -349,6 +350,8 @@ class PuzzlePresets {
             PuzzleMove(4, 2),
             PuzzleMove(2, 6),
           ],
+
+          // Açılışın alternatifi
           [
             PuzzleMove(1, 8),
             PuzzleMove(0, 8),
@@ -370,13 +373,59 @@ class PuzzlePresets {
             PuzzleMove(4, 2),
             PuzzleMove(2, 6),
           ],
+
+          // Geç oyunda küçük sıra farkı: 5->1 ile 5->9 yer değişebilir
+          [
+            PuzzleMove(0, 7),
+            PuzzleMove(1, 7),
+            PuzzleMove(2, 0),
+            PuzzleMove(4, 2),
+            PuzzleMove(4, 0),
+            PuzzleMove(0, 8),
+            PuzzleMove(3, 0),
+            PuzzleMove(2, 3),
+            PuzzleMove(2, 8),
+            PuzzleMove(3, 9),
+            PuzzleMove(0, 3),
+            PuzzleMove(1, 0),
+            PuzzleMove(6, 0),
+            PuzzleMove(6, 7),
+            PuzzleMove(5, 9),
+            PuzzleMove(5, 1),
+            PuzzleMove(1, 5),
+            PuzzleMove(4, 2),
+            PuzzleMove(2, 6),
+          ],
+
+          // Açılış B + geç oyun varyasyonu
+          [
+            PuzzleMove(1, 8),
+            PuzzleMove(0, 8),
+            PuzzleMove(2, 0),
+            PuzzleMove(4, 2),
+            PuzzleMove(4, 0),
+            PuzzleMove(0, 7),
+            PuzzleMove(3, 0),
+            PuzzleMove(2, 3),
+            PuzzleMove(2, 7),
+            PuzzleMove(3, 9),
+            PuzzleMove(0, 3),
+            PuzzleMove(1, 0),
+            PuzzleMove(6, 0),
+            PuzzleMove(6, 8),
+            PuzzleMove(5, 9),
+            PuzzleMove(5, 1),
+            PuzzleMove(1, 5),
+            PuzzleMove(4, 2),
+            PuzzleMove(2, 6),
+          ],
         ],
         jokerRecoveryMoves: {
-          // başlangıç
+          // Ana başlangıç
           '2,1,0,0|4,5,5,0|6,1,3,1|2,3,2,2|6,6,1,3|4,4,3,4|6,0,5,5|||':
               PuzzleMove(0, 7),
 
-          // branch A
+          // Açılış A
           '2,1|4,5,5,0|6,1,3,1|2,3,2,2|6,6,1,3|4,4,3,4|6,0,5,5|0,0||':
               PuzzleMove(1, 7),
           '2,1|4,5,5|6,1,3,1|2,3,2,2|6,6,1,3|4,4,3,4|6,0,5,5|0,0,0||':
@@ -403,18 +452,8 @@ class PuzzlePresets {
               PuzzleMove(6, 0),
           '5,5,5,5|4|6|2,2,2,2|6,6|4,4,3,4|6,0|0,0,0|1,1,1,1|3,3,3':
               PuzzleMove(6, 7),
-          '5,5,5,5|4|6|2,2,2,2|6,6|4,4,3,4|6|0,0,0,0|1,1,1,1|3,3,3':
-              PuzzleMove(5, 1),
-          '5,5,5,5|4,4|6|2,2,2,2|6,6|4,4,3|6|0,0,0,0|1,1,1,1|3,3,3':
-              PuzzleMove(5, 9),
-          '5,5,5,5|4,4|6|2,2,2,2|6,6|4,4|6|0,0,0,0|1,1,1,1|3,3,3,3':
-              PuzzleMove(1, 5),
-          '5,5,5,5||6|2,2,2,2|6,6|4,4,4,4|6|0,0,0,0|1,1,1,1|3,3,3,3':
-              PuzzleMove(4, 2),
-          '5,5,5,5||6,6,6|2,2,2,2||4,4,4,4|6|0,0,0,0|1,1,1,1|3,3,3,3':
-              PuzzleMove(2, 6),
 
-          // branch B
+          // Açılış B
           '2,1,0,0|4,5,5|6,1,3,1|2,3,2,2|6,6,1,3|4,4,3,4|6,0,5,5||0|':
               PuzzleMove(0, 8),
           '2,1|4,5,5|6,1,3,1|2,3,2,2|6,6,1,3|4,4,3,4|6,0,5,5||0,0,0|':
@@ -441,16 +480,6 @@ class PuzzlePresets {
               PuzzleMove(6, 0),
           '5,5,5,5|4|6|2,2,2,2|6,6|4,4,3,4|6,0|1,1,1,1|0,0,0|3,3,3':
               PuzzleMove(6, 8),
-          '5,5,5,5|4|6|2,2,2,2|6,6|4,4,3,4|6|1,1,1,1|0,0,0,0|3,3,3':
-              PuzzleMove(5, 1),
-          '5,5,5,5|4,4|6|2,2,2,2|6,6|4,4,3|6|1,1,1,1|0,0,0,0|3,3,3':
-              PuzzleMove(5, 9),
-          '5,5,5,5|4,4|6|2,2,2,2|6,6|4,4|6|1,1,1,1|0,0,0,0|3,3,3,3':
-              PuzzleMove(1, 5),
-          '5,5,5,5||6|2,2,2,2|6,6|4,4,4,4|6|1,1,1,1|0,0,0,0|3,3,3,3':
-              PuzzleMove(4, 2),
-          '5,5,5,5||6,6,6|2,2,2,2||4,4,4,4|6|1,1,1,1|0,0,0,0|3,3,3,3':
-              PuzzleMove(2, 6),
         },
       ),
       3: PuzzlePreset(
@@ -500,7 +529,7 @@ class PuzzlePresets {
             PuzzleMove(4, 5),
           ],
 
-          // Açılışta 0 ve 1 tarafı farklı sırayla açılabilir
+          // Açılış varyasyonu
           [
             PuzzleMove(0, 9),
             PuzzleMove(6, 9),
@@ -527,12 +556,39 @@ class PuzzlePresets {
             PuzzleMove(4, 5),
           ],
 
-          // Sonlara doğru 5 ve 7 tarafındaki toplama sırası değişebilir
+          // Geç oyunda toplama sırası varyasyonu
           [
             PuzzleMove(1, 8),
             PuzzleMove(0, 8),
             PuzzleMove(0, 9),
             PuzzleMove(6, 9),
+            PuzzleMove(6, 8),
+            PuzzleMove(4, 0),
+            PuzzleMove(5, 4),
+            PuzzleMove(3, 10),
+            PuzzleMove(2, 10),
+            PuzzleMove(2, 5),
+            PuzzleMove(2, 10),
+            PuzzleMove(3, 6),
+            PuzzleMove(1, 2),
+            PuzzleMove(2, 3),
+            PuzzleMove(4, 1),
+            PuzzleMove(4, 0),
+            PuzzleMove(7, 2),
+            PuzzleMove(5, 2),
+            PuzzleMove(7, 6),
+            PuzzleMove(5, 6),
+            PuzzleMove(0, 7),
+            PuzzleMove(1, 4),
+            PuzzleMove(4, 5),
+          ],
+
+          // Açılış + geç oyun varyasyonu birlikte
+          [
+            PuzzleMove(0, 9),
+            PuzzleMove(6, 9),
+            PuzzleMove(1, 8),
+            PuzzleMove(0, 8),
             PuzzleMove(6, 8),
             PuzzleMove(4, 0),
             PuzzleMove(5, 4),
@@ -601,19 +657,25 @@ class PuzzlePresets {
           '2,2|3,3||6,6,6,6|3,2|3,7,5,5|7,7|2,7,5,5|0,0,0,0|4,4,4,4|1,1,1,1':
               PuzzleMove(4, 0),
 
-          // son bölüm
+          // son bölüm - yol A
           '2,2,2|3,3||6,6,6,6|3|3,7,5,5|7,7|2,7,5,5|0,0,0,0|4,4,4,4|1,1,1,1':
               PuzzleMove(5, 2),
           '2,2,2|3,3|5,5|6,6,6,6|3|3,7|7,7|2,7,5,5|0,0,0,0|4,4,4,4|1,1,1,1':
-              PuzzleMove(7, 2),
-
-          // son varyasyon
-          '2,2,2|3,3||6,6,6,6|3|3,7,5,5|7,7|2,7,5,5|0,0,0,0|4,4,4,4|1,1,1,1':
               PuzzleMove(7, 2),
           '2,2,2|3,3|5,5,5,5|6,6,6,6|3|3,7|7,7|2,7|0,0,0,0|4,4,4,4|1,1,1,1':
               PuzzleMove(5, 6),
           '2,2,2|3,3|5,5,5,5|6,6,6,6|3|3|7,7,7|2,7|0,0,0,0|4,4,4,4|1,1,1,1':
               PuzzleMove(7, 6),
+
+          // son bölüm - yol B
+          '2,2,2|3,3||6,6,6,6|3|3,7,5,5|7,7|2,7,5,5|0,0,0,0|4,4,4,4|1,1,1,1':
+              PuzzleMove(7, 2),
+          '2,2,2|3,3|5,5|6,6,6,6|3|3,7|7,7,7,7|2,7|0,0,0,0|4,4,4,4|1,1,1,1':
+              PuzzleMove(5, 2),
+          '2,2,2|3,3|5,5,5,5|6,6,6,6|3|3,7|7,7,7,7|2|0,0,0,0|4,4,4,4|1,1,1,1':
+              PuzzleMove(5, 6),
+
+          // final
           '2,2,2|3,3|5,5,5,5|6,6,6,6|3|3|7,7,7,7|2|0,0,0,0|4,4,4,4|1,1,1,1':
               PuzzleMove(0, 7),
           '|3,3|5,5,5,5|6,6,6,6|3|3|7,7,7,7|2,2,2,2|0,0,0,0|4,4,4,4|1,1,1,1':

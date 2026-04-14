@@ -439,6 +439,20 @@ class _JokerDecision {
   });
 }
 
+class _GuidedBranchStepMatch {
+  final int branchIndex;
+  final int nextStepIndex;
+  final int from;
+  final int to;
+
+  const _GuidedBranchStepMatch({
+    required this.branchIndex,
+    required this.nextStepIndex,
+    required this.from,
+    required this.to,
+  });
+}
+
 // ─────────────────────────────────────────────
 // ORTAK TEMAS HESABI
 // ─────────────────────────────────────────────
@@ -2151,21 +2165,110 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool get _isScriptedLevelOne =>
       widget.mapNumber == 1 && widget.level == 1 && _isGuidedJokerLevel;
 
+  bool _sameBoardState(List<List<int>> a, List<List<int>> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      final ta = a[i];
+      final tb = b[i];
+      if (ta.length != tb.length) return false;
+      for (int j = 0; j < ta.length; j++) {
+        if (ta[j] != tb[j]) return false;
+      }
+    }
+    return true;
+  }
+
+  _GuidedBranchStepMatch? _matchGuidedBranchStep(
+    List<List<int>> board, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final preset = _preset;
+    if (preset == null || preset.solutionBranches.isEmpty) return null;
+
+    bool isBannedMove(int from, int to) {
+      final banned = _jokerBannedMove;
+      if (banned == null) return false;
+      return banned.$1 == from && banned.$2 == to;
+    }
+
+    for (int branchIndex = 0;
+        branchIndex < preset.solutionBranches.length;
+        branchIndex++) {
+      final branch = preset.solutionBranches[branchIndex];
+      final sim = _cloneTubes(preset.tubes);
+
+      if (_sameBoardState(sim, board)) {
+        if (branch.isNotEmpty) {
+          final move = branch.first;
+          if ((!_isLockedAdTubeIndex(move.from) &&
+                  !_isLockedAdTubeIndex(move.to)) ||
+              includeUnlockedAdTube) {
+            if (_canPourIn(sim, move.from, move.to) &&
+                !isBannedMove(move.from, move.to)) {
+              return _GuidedBranchStepMatch(
+                branchIndex: branchIndex,
+                nextStepIndex: 0,
+                from: move.from,
+                to: move.to,
+              );
+            }
+          }
+        }
+      }
+
+      for (int stepIndex = 0; stepIndex < branch.length; stepIndex++) {
+        final move = branch[stepIndex];
+        if ((!_isLockedAdTubeIndex(move.from) &&
+                !_isLockedAdTubeIndex(move.to)) ||
+            includeUnlockedAdTube) {
+          if (_canPourIn(sim, move.from, move.to)) {
+            _doPourIn(sim, move.from, move.to);
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+
+        if (_sameBoardState(sim, board)) {
+          final nextStepIndex = stepIndex + 1;
+          if (nextStepIndex >= branch.length) {
+            return null;
+          }
+          final nextMove = branch[nextStepIndex];
+          if (((!_isLockedAdTubeIndex(nextMove.from) &&
+                      !_isLockedAdTubeIndex(nextMove.to)) ||
+                  includeUnlockedAdTube) &&
+              _canPourIn(sim, nextMove.from, nextMove.to) &&
+              !isBannedMove(nextMove.from, nextMove.to)) {
+            return _GuidedBranchStepMatch(
+              branchIndex: branchIndex,
+              nextStepIndex: nextStepIndex,
+              from: nextMove.from,
+              to: nextMove.to,
+            );
+          }
+          return null;
+        }
+      }
+    }
+
+    return null;
+  }
+
   (int, int)? _guidedInitialOpeningMove() {
     final preset = _preset;
-    if (preset == null) return null;
+    if (preset == null || preset.solutionBranches.isEmpty) return null;
 
     final initialBoard = _cloneTubes(preset.tubes);
-    final exact = _exactPresetRecoveryMove(
-      initialBoard,
-      includeUnlockedAdTube: false,
-    );
-    if (exact != null) return exact;
-
     for (final branch in preset.solutionBranches) {
       if (branch.isEmpty) continue;
       final move = branch.first;
       if (_canPourIn(initialBoard, move.from, move.to)) {
+        final banned = _jokerBannedMove;
+        if (banned != null && banned.$1 == move.from && banned.$2 == move.to) {
+          continue;
+        }
         return (move.from, move.to);
       }
     }
@@ -2174,43 +2277,69 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   _JokerDecision? _findGuidedJokerDecision() {
-    bool isBanned((int, int) move) {
-      final banned = _jokerBannedMove;
-      if (banned == null) return false;
-      return banned.$1 == move.$1 && banned.$2 == move.$2;
-    }
-
-    final directMove = _exactPresetRecoveryMove(
+    final direct = _matchGuidedBranchStep(
       _tubes,
       includeUnlockedAdTube: _adTubeUnlocked,
     );
-    if (directMove != null && !isBanned(directMove)) {
-      return _JokerDecision(from: directMove.$1, to: directMove.$2);
+    if (direct != null) {
+      return _JokerDecision(from: direct.from, to: direct.to);
     }
 
     for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
       final snapshot =
           _cloneTubes(_history[_history.length - rewindCount].tubes);
-      final snapshotMove = _exactPresetRecoveryMove(
+      final match = _matchGuidedBranchStep(
         snapshot,
         includeUnlockedAdTube: _adTubeUnlocked,
       );
-      if (snapshotMove != null && !isBanned(snapshotMove)) {
+      if (match != null) {
         return _JokerDecision(
-          from: snapshotMove.$1,
-          to: snapshotMove.$2,
+          from: match.from,
+          to: match.to,
           rewindCount: rewindCount,
         );
       }
     }
 
     final initialMove = _guidedInitialOpeningMove();
-    if (initialMove != null && !isBanned(initialMove)) {
+    if (initialMove != null) {
       return _JokerDecision(
         from: initialMove.$1,
         to: initialMove.$2,
         rewindCount: _history.length,
       );
+    }
+
+    final exactRecovery = _exactPresetRecoveryMove(
+      _tubes,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    );
+    if (exactRecovery != null) {
+      final banned = _jokerBannedMove;
+      if (banned == null ||
+          banned.$1 != exactRecovery.$1 ||
+          banned.$2 != exactRecovery.$2) {
+        return _JokerDecision(from: exactRecovery.$1, to: exactRecovery.$2);
+      }
+    }
+
+    for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
+      final snapshot =
+          _cloneTubes(_history[_history.length - rewindCount].tubes);
+      final exact = _exactPresetRecoveryMove(
+        snapshot,
+        includeUnlockedAdTube: _adTubeUnlocked,
+      );
+      if (exact != null) {
+        final banned = _jokerBannedMove;
+        if (banned == null || banned.$1 != exact.$1 || banned.$2 != exact.$2) {
+          return _JokerDecision(
+            from: exact.$1,
+            to: exact.$2,
+            rewindCount: rewindCount,
+          );
+        }
+      }
     }
 
     return null;
