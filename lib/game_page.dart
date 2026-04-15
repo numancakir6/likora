@@ -1730,27 +1730,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   bool _canMoveInDynamicSolver(List<List<int>> tubes, int from, int to) {
-    if (!_canPourIn(tubes, from, to)) return false;
-
-    final fromTube = tubes[from];
-    final toTube = tubes[to];
-
-    if (toTube.isEmpty &&
-        fromTube.length == _tubeCapacityIn(tubes, from) &&
-        _isUniformTube(fromTube)) {
-      return false;
-    }
-
-    if (toTube.isNotEmpty &&
-        _isUniformTube(toTube) &&
-        toTube.last == fromTube.last) {
-      final capacity = _tubeCapacityIn(tubes, to);
-      if (toTube.length < capacity && _isUniformTube(fromTube)) {
-        return false;
-      }
-    }
-
-    return true;
+    // Solver, gerçek oyun kuralından daha dar davranmamalı.
+    // Aksi halde yapılabilir ama çözüm için gerekli hamleleri yanlışlıkla eler.
+    return _canPourIn(tubes, from, to);
   }
 
   _SolverMove? _solveCurrentStateDynamically(
