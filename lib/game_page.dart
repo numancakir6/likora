@@ -3040,10 +3040,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                           _JokerButton(
                             enabled: !_jokerBusy &&
                                 _activePlans.isEmpty &&
-                                !_gameWon &&
-                                !_adTubeUnlocked &&
-                                (_preset?.jokerRecoveryMoves.isNotEmpty ??
-                                    false),
+                                !_gameWon,
                             busy: _jokerBusy,
                             accentColor: _theme.accentColor,
                             canBuy: _canBuyJoker,
