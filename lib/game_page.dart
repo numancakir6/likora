@@ -1753,14 +1753,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final visited = <String>{
       _encodeDynamicSolverState(initialBoard, activeIndexes),
     };
-    final queue = Queue<_SolverNode>()
-      ..add(
-        _SolverNode(
-          board: initialBoard,
-          firstMove: null,
-          depth: 0,
-        ),
-      );
+    final queue = Queue<_SolverNode>();
+    queue.add(
+      _SolverNode(
+        board: initialBoard,
+        firstMove: null,
+        depth: 0,
+      ),
+    );
 
     while (queue.isNotEmpty && visited.length < maxVisited) {
       final node = queue.removeFirst();
