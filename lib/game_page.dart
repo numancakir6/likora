@@ -3142,6 +3142,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     if (!busy.contains(from) && !busy.contains(to)) {
+      _clearGuidedBranchLock();
       await _startPour(from, to);
 
       if (_showTutorial &&
@@ -3473,8 +3474,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         ? last.tubes[last.fromIdx].last
         : (_tubes[last.toIdx].isNotEmpty ? _tubes[last.toIdx].last : 0);
     final toColor = _tubes[last.toIdx].isNotEmpty ? _tubes[last.toIdx].last : 0;
-
-    _clearGuidedBranchLock();
 
     setState(() {
       _tubes = last.tubes;
