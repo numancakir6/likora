@@ -427,32 +427,6 @@ class _VisualLayer {
       );
 }
 
-class _JokerDecision {
-  final int from;
-  final int to;
-  final int rewindCount;
-
-  const _JokerDecision({
-    required this.from,
-    required this.to,
-    this.rewindCount = 0,
-  });
-}
-
-class _GuidedBranchStepMatch {
-  final int branchIndex;
-  final int nextStepIndex;
-  final int from;
-  final int to;
-
-  const _GuidedBranchStepMatch({
-    required this.branchIndex,
-    required this.nextStepIndex,
-    required this.from,
-    required this.to,
-  });
-}
-
 // ─────────────────────────────────────────────
 // ORTAK TEMAS HESABI
 // ─────────────────────────────────────────────
@@ -602,7 +576,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   // Geri alma animasyonu — hangi tüpler sloshing yapıyor
   final Map<int, int> _undoSloshingTubes = {}; // tubeIdx → colorIdx
 
-  static const int _jokerCost = 50;
   static const String _tutorialSeenKey = 'likora_tutorial_seen_v1';
 
   bool _showTutorial = false;
@@ -630,9 +603,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   ];
 
   late int _coins;
-  bool _jokerBusy = false;
-  bool _jokerThinking = false;
-  bool _showJokerPopup = false;
   bool _adTubeUnlocked = false;
   bool _levelRewardGranted = false;
   bool _restoringLevelState = true;
@@ -640,14 +610,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   int _mountainFillUnits = 0;
   final List<_VisualLayer> _mountainLayers = [];
   bool _loopCompletedVolcano = false;
-  final Map<String, List<(int, int)>> _solverSuccessCache = {};
-  (int, int)? _jokerBannedMove;
-
   // Rewarded reklam
-  RewardedAd? _jokerAd;
   RewardedAd? _extraTubeAd;
-  bool _isJokerAdReady = false;
   bool _isExtraTubeAdReady = false;
+  RewardedAd? _jokerRewardAd;
+  bool _isJokerRewardAdReady = false;
+  bool _jokerBusy = false;
+  static const int _jokerCost = 25;
 
   bool get _adsEnabledOnThisPlatform {
     if (kIsWeb) return false;
@@ -655,7 +624,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         defaultTargetPlatform == TargetPlatform.android;
   }
 
-  bool get _canBuyJoker => _coins >= _jokerCost;
   bool get _isDailyMode =>
       widget.isDailyPuzzleMode && widget.dailyPuzzleDateKey != null;
 
@@ -962,8 +930,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _coins = widget.initialCoins;
     _restoreOrResetLevel();
     if (_adsEnabledOnThisPlatform) {
-      _loadJokerAd();
       _loadExtraTubeAd();
+      _loadJokerRewardAd();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowTutorial();
@@ -1109,33 +1077,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   @override
   void dispose() {
     SfxService.stopWater();
-    _jokerAd?.dispose();
     _extraTubeAd?.dispose();
+    _jokerRewardAd?.dispose();
     _bgCtrl.dispose();
     super.dispose();
   }
 
   bool get _showLockedAdTube => !_adTubeUnlocked;
-
-  void _loadJokerAd() {
-    if (!_adsEnabledOnThisPlatform) return;
-
-    RewardedAd.load(
-      adUnitId: 'ca-app-pub-3080345587906246/7193577467',
-      request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: (ad) {
-          _jokerAd?.dispose();
-          _jokerAd = ad;
-          _isJokerAdReady = true;
-        },
-        onAdFailedToLoad: (error) {
-          _jokerAd = null;
-          _isJokerAdReady = false;
-        },
-      ),
-    );
-  }
 
   void _loadExtraTubeAd() {
     if (!_adsEnabledOnThisPlatform) return;
@@ -1155,6 +1103,81 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         },
       ),
     );
+  }
+
+  void _loadJokerRewardAd() {
+    if (!_adsEnabledOnThisPlatform) return;
+
+    RewardedAd.load(
+      adUnitId: 'ca-app-pub-3080345587906246/3174441406',
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) {
+          _jokerRewardAd?.dispose();
+          _jokerRewardAd = ad;
+          _isJokerRewardAdReady = true;
+        },
+        onAdFailedToLoad: (error) {
+          _jokerRewardAd = null;
+          _isJokerRewardAdReady = false;
+        },
+      ),
+    );
+  }
+
+  bool get _canBuyJoker => _coins >= _jokerCost;
+
+  Future<bool> _showRewardedJokerAdGate() async {
+    if (!_adsEnabledOnThisPlatform) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Web testinde reklam kapalı')),
+        );
+      }
+      return false;
+    }
+
+    if (_jokerRewardAd == null || !_isJokerRewardAdReady) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reklam hazır değil')),
+        );
+      }
+      _loadJokerRewardAd();
+      return false;
+    }
+
+    final completer = Completer<bool>();
+    var rewardEarned = false;
+
+    _jokerRewardAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _jokerRewardAd = null;
+        _isJokerRewardAdReady = false;
+        _loadJokerRewardAd();
+        if (!completer.isCompleted) {
+          completer.complete(rewardEarned);
+        }
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        ad.dispose();
+        _jokerRewardAd = null;
+        _isJokerRewardAdReady = false;
+        _loadJokerRewardAd();
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
+      },
+    );
+
+    _jokerRewardAd!.show(
+      onUserEarnedReward: (ad, reward) {
+        rewardEarned = true;
+      },
+    );
+
+    return completer.future;
   }
 
   bool get _blindModeEnabled => widget.mapNumber == 2;
@@ -1644,665 +1667,104 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     await _persistRefillState();
   }
 
-  String _canonicalBoardSignature(
-    List<List<int>> tubes, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final playable = <String>[];
-    String? locked;
+  String _currentBoardSignature() => PuzzlePresets.signatureOf(_tubes);
 
-    for (int i = 0; i < tubes.length; i++) {
-      final sig = tubes[i].join(',');
-
-      if (i == _lockedAdTubeIndex && !includeUnlockedAdTube) {
-        locked = 'LOCK:$sig';
-      } else {
-        playable.add(sig);
-      }
-    }
-
-    playable.sort((a, b) {
-      final aEmpty = a.isEmpty;
-      final bEmpty = b.isEmpty;
-
-      if (aEmpty && !bEmpty) return 1;
-      if (!aEmpty && bEmpty) return -1;
-      return a.compareTo(b);
-    });
-
-    if (locked != null) {
-      playable.add(locked);
-    }
-
-    return playable.join('|');
+  PuzzleMove? _currentPresetJokerMove() {
+    final recovery = _preset?.jokerRecoveryMoves;
+    if (recovery == null || recovery.isEmpty) return null;
+    return recovery[_currentBoardSignature()];
   }
 
-  List<int> _completedTubeColorsOf(List<List<int>> tubes) {
-    final colors = <int>[];
-    for (int i = 0; i < tubes.length; i++) {
-      if (!_adTubeUnlocked && i == _lockedAdTubeIndex) continue;
-      final tube = tubes[i];
-      if (_isTubeDoneIn(tubes, i)) {
-        colors.add(tube.first);
-      }
-    }
-    colors.sort();
-    return colors;
-  }
-
-  int _doneTubeCountOf(List<List<int>> tubes) {
-    int count = 0;
-    for (int i = 0; i < tubes.length; i++) {
-      if (!_adTubeUnlocked && i == _lockedAdTubeIndex) continue;
-      if (_isTubeDoneIn(tubes, i)) count++;
-    }
-    return count;
-  }
-
-  bool _preservesCompletedTubes(
-    List<List<int>> current,
-    List<List<int>> candidate,
-  ) {
-    if (_doneTubeCountOf(candidate) < _doneTubeCountOf(current)) {
-      return false;
-    }
-
-    final currentDone = _completedTubeColorsOf(current);
-    final candidateDone = _completedTubeColorsOf(candidate);
-
-    for (final color in currentDone) {
-      if (!candidateDone.contains(color)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  List<List<int>> _cloneTubes(List<List<int>> tubes) => tubes
-      .map((t) => List<int>.from(t, growable: true))
-      .toList(growable: true);
-
-  bool _solverCanUseTube(int idx, {bool? includeUnlockedAdTube}) {
-    final allowAd = includeUnlockedAdTube ?? _adTubeUnlocked;
-    if (idx != _lockedAdTubeIndex) return true;
-    return allowAd;
-  }
-
-  bool _solverCanPour(
-    List<List<int>> tubes,
-    int from,
-    int to, {
-    bool? includeUnlockedAdTube,
-  }) {
-    if (!_solverCanUseTube(from,
-        includeUnlockedAdTube: includeUnlockedAdTube)) {
-      return false;
-    }
-    if (!_solverCanUseTube(to, includeUnlockedAdTube: includeUnlockedAdTube)) {
-      return false;
-    }
-    return _canPourIn(tubes, from, to);
-  }
-
-  int _topRunLength(List<int> tube) {
-    if (tube.isEmpty) return 0;
-    final top = tube.last;
-    var count = 0;
-    for (int i = tube.length - 1; i >= 0; i--) {
-      if (tube[i] != top) break;
-      count++;
-    }
-    return count;
-  }
-
-  List<(int, int)> _orderedSolverMoves(
-    List<List<int>> tubes, {
-    bool? includeUnlockedAdTube,
-  }) {
-    final moves = <({int from, int to, int score})>[];
-    final usable = <int>[];
-
-    for (int i = 0; i < tubes.length; i++) {
-      if (_solverCanUseTube(i, includeUnlockedAdTube: includeUnlockedAdTube)) {
-        usable.add(i);
-      }
-    }
-
-    final emptyTargets =
-        usable.where((i) => tubes[i].isEmpty).toList(growable: false);
-
-    for (final from in usable) {
-      final source = tubes[from];
-      if (source.isEmpty) continue;
-      if (_isTubeDoneIn(tubes, from)) continue;
-
-      final sourceTop = source.last;
-      final sourceUniform = source.every((c) => c == sourceTop);
-      final sourceRun = _topRunLength(source);
-
-      for (final to in usable) {
-        if (from == to) continue;
-        if (!_solverCanPour(
-          tubes,
-          from,
-          to,
-          includeUnlockedAdTube: includeUnlockedAdTube,
-        )) {
-          continue;
-        }
-
-        final target = tubes[to];
-        final targetCap = _tubeCapacityIn(tubes, to);
-        final freeSlots = targetCap - target.length;
-        final moved = _pourCountIn(tubes, from, to);
-
-        if (target.isEmpty &&
-            emptyTargets.isNotEmpty &&
-            to != emptyTargets.first) {
-          continue;
-        }
-
-        if (target.isEmpty && sourceUniform) {
-          continue;
-        }
-
-        int score = 0;
-
-        if (target.isNotEmpty && target.last == sourceTop) {
-          score += 120;
-
-          final fillsTarget = target.length + moved == targetCap;
-          if (fillsTarget) {
-            score += 120;
-          } else {
-            // Aynı rengi neredeyse dolu tüpe sadece kısmen eklemek çoğu zaman
-            // sonuç odaklı değildir. Özellikle elde 2 parça varken karşıda tek
-            // boşluk olması gibi yarım birleştirmeleri sert düşür.
-            if (moved < sourceRun) {
-              score -= 160;
-            }
-            if (freeSlots == 1) {
-              score -= 120;
-            } else if (freeSlots == 2) {
-              score -= 45;
-            }
-          }
-        }
-
-        if (target.isEmpty) {
-          score += 12;
-          if (moved == 1) {
-            score -= 30;
-          }
-          if (sourceRun >= 2) {
-            score += 10;
-          }
-        }
-
-        final next = _cloneTubes(tubes);
-        _doPourIn(next, from, to);
-
-        if (_isTubeDoneIn(next, to)) {
-          score += 60;
-        }
-        if (_isTubeDoneIn(next, from)) {
-          score += 8;
-        }
-
-        final beforeDone = _doneTubeCountOf(tubes);
-        final afterDone = _doneTubeCountOf(next);
-        score += (afterDone - beforeDone) * 50;
-
-        // Hedefte hâlâ karışık / yarım bir yapı bırakılıyorsa ve bu hamle yeni
-        // tamamlanmış tüp üretmiyorsa biraz daha aşağı it.
-        if (target.isNotEmpty &&
-            !_isTubeDoneIn(next, to) &&
-            target.length + moved < targetCap) {
-          score -= 25;
-        }
-
-        moves.add((from: from, to: to, score: score));
-      }
-    }
-
-    moves.sort((a, b) {
-      final byScore = b.score.compareTo(a.score);
-      if (byScore != 0) return byScore;
-      final byFrom = a.from.compareTo(b.from);
-      if (byFrom != 0) return byFrom;
-      return a.to.compareTo(b.to);
-    });
-
-    return moves.map((m) => (m.from, m.to)).toList(growable: false);
-  }
-
-  String _solverCacheKey(
-    List<List<int>> tubes, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final sig = _canonicalBoardSignature(
-      tubes,
-      includeUnlockedAdTube: includeUnlockedAdTube,
-    );
-    return '${includeUnlockedAdTube ? 1 : 0}:$sig';
-  }
-
-  List<(int, int)>? _quickSolveFromState(
-    List<List<int>> start, {
-    required bool includeUnlockedAdTube,
-  }) {
-    return _solveFromState(
-      start,
-      includeUnlockedAdTube: includeUnlockedAdTube,
-      maxDepth: 48,
-      maxNodes: 45000,
-      maxMillis: 160,
-    );
-  }
-
-  List<(int, int)>? _mediumSolveFromState(
-    List<List<int>> start, {
-    required bool includeUnlockedAdTube,
-  }) {
-    return _solveFromState(
-      start,
-      includeUnlockedAdTube: includeUnlockedAdTube,
-      maxDepth: 90,
-      maxNodes: 180000,
-      maxMillis: 1400,
-    );
-  }
-
-  List<(int, int)>? _solveFromState(
-    List<List<int>> start, {
-    required bool includeUnlockedAdTube,
-    int maxDepth = 110,
-    int maxNodes = 280000,
-    int maxMillis = 2600,
-  }) {
-    final cacheKey = _solverCacheKey(
-      start,
-      includeUnlockedAdTube: includeUnlockedAdTube,
-    );
-    final cached = _solverSuccessCache[cacheKey];
-    if (cached != null) {
-      return List<(int, int)>.from(cached, growable: false);
-    }
-
-    final stopwatch = Stopwatch()..start();
-    final dead = <String>{};
-    final path = <(int, int)>[];
-    int nodes = 0;
-
-    bool dfs(List<List<int>> state, int depthLeft) {
-      if (_isGameDoneIn(state)) {
-        return true;
-      }
-      if (depthLeft <= 0) {
-        return false;
-      }
-      if (nodes >= maxNodes || stopwatch.elapsedMilliseconds >= maxMillis) {
-        return false;
-      }
-
-      final sig = _canonicalBoardSignature(
-        state,
-        includeUnlockedAdTube: includeUnlockedAdTube,
-      );
-      if (dead.contains(sig)) {
-        return false;
-      }
-
-      nodes++;
-
-      final moves = _orderedSolverMoves(
-        state,
-        includeUnlockedAdTube: includeUnlockedAdTube,
-      );
-
-      for (final move in moves) {
-        final next = _cloneTubes(state);
-        _doPourIn(next, move.$1, move.$2);
-
-        path.add(move);
-        if (dfs(next, depthLeft - 1)) {
-          return true;
-        }
-        path.removeLast();
-      }
-
-      dead.add(sig);
-      return false;
-    }
-
-    for (int depth = 1; depth <= maxDepth; depth++) {
-      path.clear();
-      dead.clear();
-      nodes = 0;
-
-      final root = _cloneTubes(start);
-      if (dfs(root, depth)) {
-        final solvedPath = List<(int, int)>.from(path, growable: false);
-        _solverSuccessCache[cacheKey] = solvedPath;
-        return solvedPath;
-      }
-
-      if (stopwatch.elapsedMilliseconds >= maxMillis || nodes >= maxNodes) {
-        break;
-      }
-    }
-
-    return null;
-  }
-
-  bool _wouldCreateRecentLoop(
-    List<List<int>> board,
-    int from,
-    int to, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final next = _cloneTubes(board);
-    _doPourIn(next, from, to);
-    final nextSig = _canonicalBoardSignature(
-      next,
-      includeUnlockedAdTube: includeUnlockedAdTube,
-    );
-
-    final start = _history.length > 8 ? _history.length - 8 : 0;
-    for (int i = start; i < _history.length; i++) {
-      final sig = _canonicalBoardSignature(
-        _history[i].tubes,
-        includeUnlockedAdTube: includeUnlockedAdTube,
-      );
-      if (sig == nextSig) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  (int, int)? findBestEffortMove(
-    List<List<int>> board, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final moves = _orderedSolverMoves(
-      board,
-      includeUnlockedAdTube: includeUnlockedAdTube,
-    );
-    if (moves.isEmpty) return null;
-
-    for (final move in moves) {
-      if (!_wouldCreateRecentLoop(
-        board,
-        move.$1,
-        move.$2,
-        includeUnlockedAdTube: includeUnlockedAdTube,
-      )) {
-        return move;
-      }
-    }
-
-    return null;
-  }
-
-  (int, int)? _exactPresetRecoveryMove(
-    List<List<int>> board, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final preset = _preset;
-    if (preset == null || preset.jokerRecoveryMoves.isEmpty) return null;
-
-    final signature = PuzzlePresets.signatureOf(board);
-    final move = preset.jokerRecoveryMoves[signature];
-    if (move == null) return null;
-
-    final from = move.from;
-    final to = move.to;
-    if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
-        !includeUnlockedAdTube) {
-      return null;
-    }
-    if (!_canPourIn(board, from, to)) return null;
-
-    return (from, to);
-  }
-
-  bool get _isGuidedJokerLevel =>
-      (_preset?.solutionBranches.isNotEmpty ?? false) &&
-      widget.customPuzzleTubes == null;
-
-  _JokerDecision? _findGuidedJokerDecision() {
-    final preset = _preset;
-    if (preset == null || preset.jokerRecoveryMoves.isEmpty) return null;
-
-    final banned = _jokerBannedMove;
-
-    bool isBanned(int from, int to) =>
-        banned != null && banned.$1 == from && banned.$2 == to;
-
-    final directMove = _lookupRecoveryMove(
-      _tubes,
-      preset: preset,
-      includeUnlockedAdTube: _adTubeUnlocked,
-    );
-    if (directMove != null && !isBanned(directMove.$1, directMove.$2)) {
-      return _JokerDecision(from: directMove.$1, to: directMove.$2);
-    }
+  int? _findJokerRewindCount() {
+    final recovery = _preset?.jokerRecoveryMoves;
+    if (recovery == null || recovery.isEmpty) return null;
 
     for (int i = _history.length - 1; i >= 0; i--) {
-      final snap = _history[i].tubes;
-      final snapMove = _lookupRecoveryMove(
-        snap,
-        preset: preset,
-        includeUnlockedAdTube: _adTubeUnlocked,
-      );
-      if (snapMove != null && !isBanned(snapMove.$1, snapMove.$2)) {
-        final rewindCount = _history.length - i;
-        return _JokerDecision(
-          from: snapMove.$1,
-          to: snapMove.$2,
-          rewindCount: rewindCount,
-        );
+      final sig = PuzzlePresets.signatureOf(_history[i].tubes);
+      final move = recovery[sig];
+      if (move == null) continue;
+      if (_canPourIn(_history[i].tubes, move.from, move.to)) {
+        return _history.length - i;
       }
     }
-
-    final initialMove = _lookupRecoveryMove(
-      _cloneTubes(preset.tubes),
-      preset: preset,
-      includeUnlockedAdTube: false,
-    );
-    if (initialMove != null && !isBanned(initialMove.$1, initialMove.$2)) {
-      return _JokerDecision(
-        from: initialMove.$1,
-        to: initialMove.$2,
-        rewindCount: _history.length,
-      );
-    }
-
-    return null;
-  }
-
-  (int, int)? _lookupRecoveryMove(
-    List<List<int>> board, {
-    required PuzzlePreset preset,
-    required bool includeUnlockedAdTube,
-  }) {
-    final sig = PuzzlePresets.signatureOf(board);
-    final move = preset.jokerRecoveryMoves[sig];
-    if (move == null) return null;
-
-    final from = move.from;
-    final to = move.to;
-    if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
-        !includeUnlockedAdTube) {
-      return null;
-    }
-    if (!_canPourIn(board, from, to)) return null;
-
-    return (from, to);
-  }
-
-  _JokerDecision? _findSmartJokerDecision() {
-    if (_isGuidedJokerLevel) {
-      final guided = _findGuidedJokerDecision();
-      if (guided != null) return guided;
-      return null;
-    }
-
-    final directQuick = _quickSolveFromState(
-      _tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
-    );
-    if (directQuick != null && directQuick.isNotEmpty) {
-      return _JokerDecision(
-        from: directQuick.first.$1,
-        to: directQuick.first.$2,
-      );
-    }
-
-    final directMedium = _mediumSolveFromState(
-      _tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
-    );
-    if (directMedium != null && directMedium.isNotEmpty) {
-      return _JokerDecision(
-        from: directMedium.first.$1,
-        to: directMedium.first.$2,
-      );
-    }
-
-    for (final keepDone in [true, false]) {
-      for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
-        final snapshot =
-            _cloneTubes(_history[_history.length - rewindCount].tubes);
-        final preservesDone = _preservesCompletedTubes(_tubes, snapshot);
-
-        if (keepDone && !preservesDone) continue;
-        if (!keepDone && preservesDone) continue;
-
-        final quick = _quickSolveFromState(snapshot,
-            includeUnlockedAdTube: _adTubeUnlocked);
-        if (quick != null && quick.isNotEmpty) {
-          return _JokerDecision(
-              from: quick.first.$1,
-              to: quick.first.$2,
-              rewindCount: rewindCount);
-        }
-
-        final medium = _mediumSolveFromState(snapshot,
-            includeUnlockedAdTube: _adTubeUnlocked);
-        if (medium != null && medium.isNotEmpty) {
-          return _JokerDecision(
-              from: medium.first.$1,
-              to: medium.first.$2,
-              rewindCount: rewindCount);
-        }
-
-        final branchMove = _exactPresetRecoveryMove(snapshot,
-            includeUnlockedAdTube: _adTubeUnlocked);
-        if (branchMove != null) {
-          return _JokerDecision(
-              from: branchMove.$1, to: branchMove.$2, rewindCount: rewindCount);
-        }
-
-        final bestEffort = findBestEffortMove(snapshot,
-            includeUnlockedAdTube: _adTubeUnlocked);
-        if (bestEffort != null) {
-          return _JokerDecision(
-              from: bestEffort.$1, to: bestEffort.$2, rewindCount: rewindCount);
-        }
-
-        final allMoves = _orderedSolverMoves(snapshot,
-            includeUnlockedAdTube: _adTubeUnlocked);
-        if (allMoves.isNotEmpty) {
-          return _JokerDecision(
-              from: allMoves.first.$1,
-              to: allMoves.first.$2,
-              rewindCount: rewindCount);
-        }
-      }
-    }
-
-    final initial = widget.customPuzzleTubes != null
-        ? _cloneTubes(widget.customPuzzleTubes!)
-        : (_preset != null
-            ? _cloneTubes(_preset!.tubes)
-            : legacyGenerateTubes(
-                level: widget.level, difficulty: widget.difficulty));
-
-    final initialQuick =
-        _quickSolveFromState(initial, includeUnlockedAdTube: false);
-    if (initialQuick != null && initialQuick.isNotEmpty) {
-      return _JokerDecision(
-          from: initialQuick.first.$1,
-          to: initialQuick.first.$2,
-          rewindCount: _history.length);
-    }
-
-    final initialMedium =
-        _mediumSolveFromState(initial, includeUnlockedAdTube: false);
-    if (initialMedium != null && initialMedium.isNotEmpty) {
-      return _JokerDecision(
-          from: initialMedium.first.$1,
-          to: initialMedium.first.$2,
-          rewindCount: _history.length);
-    }
-
-    final initialBranch =
-        _exactPresetRecoveryMove(initial, includeUnlockedAdTube: false);
-    if (initialBranch != null) {
-      return _JokerDecision(
-          from: initialBranch.$1,
-          to: initialBranch.$2,
-          rewindCount: _history.length);
-    }
-
-    final initialBestEffort =
-        findBestEffortMove(initial, includeUnlockedAdTube: false);
-    if (initialBestEffort != null) {
-      return _JokerDecision(
-          from: initialBestEffort.$1,
-          to: initialBestEffort.$2,
-          rewindCount: _history.length);
-    }
-
-    final initialAllMoves =
-        _orderedSolverMoves(initial, includeUnlockedAdTube: false);
-    if (initialAllMoves.isNotEmpty) {
-      return _JokerDecision(
-          from: initialAllMoves.first.$1,
-          to: initialAllMoves.first.$2,
-          rewindCount: _history.length);
-    }
-
-    final bestEffort =
-        findBestEffortMove(_tubes, includeUnlockedAdTube: _adTubeUnlocked);
-    if (bestEffort != null) {
-      return _JokerDecision(from: bestEffort.$1, to: bestEffort.$2);
-    }
-
-    final allMoves =
-        _orderedSolverMoves(_tubes, includeUnlockedAdTube: _adTubeUnlocked);
-    if (allMoves.isNotEmpty) {
-      return _JokerDecision(from: allMoves.first.$1, to: allMoves.first.$2);
-    }
-
     return null;
   }
 
   Future<void> _rewindHistoryForJoker(int rewindCount) async {
-    if (rewindCount <= 0) return;
-
     for (int i = 0; i < rewindCount; i++) {
-      if (_history.isEmpty || _activePlans.isNotEmpty) break;
+      if (_history.isEmpty || !mounted) break;
       _undo();
       await Future.delayed(const Duration(milliseconds: 760));
     }
   }
 
-  void _spendCoins(int amount) {
+  Future<void> _useJokerWithEconomy() async {
+    if (_jokerBusy || _activePlans.isNotEmpty || _gameWon) return;
+
+    await _playClick();
+    await _vibrateTap();
+
+    if (_showTutorial) {
+      showBottomHint('Önce öğreticiyi tamamla');
+      return;
+    }
+
+    if (_adTubeUnlocked) {
+      showBottomHint('Joker şimdilik 3. tüp açılmadan çalışır');
+      return;
+    }
+
+    final recovery = _preset?.jokerRecoveryMoves;
+    if (_preset == null || recovery == null || recovery.isEmpty) {
+      showBottomHint('Bu level için joker henüz hazır değil');
+      return;
+    }
+
+    setState(() {
+      _jokerBusy = true;
+    });
+
+    try {
+      var jokerGranted = false;
+      if (_canBuyJoker) {
+        spendCoins(_jokerCost);
+        jokerGranted = true;
+      } else {
+        jokerGranted = await _showRewardedJokerAdGate();
+      }
+
+      if (!jokerGranted) return;
+
+      var move = _currentPresetJokerMove();
+      if (move == null) {
+        final rewindCount = _findJokerRewindCount();
+        if (rewindCount == null || rewindCount <= 0) {
+          _vibrateLight();
+          showBottomHint('Joker için uygun yol bulunamadı');
+          return;
+        }
+
+        await _rewindHistoryForJoker(rewindCount);
+        move = _currentPresetJokerMove();
+      }
+
+      if (move == null || !_canPourIn(_tubes, move.from, move.to)) {
+        _vibrateLight();
+        showBottomHint('Joker hamlesi uygulanamadı');
+        return;
+      }
+
+      await _startPour(move.from, move.to);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _jokerBusy = false;
+        });
+      }
+    }
+  }
+
+  void spendCoins(int amount) {
     setState(() {
       _coins = max(0, _coins - amount);
     });
@@ -2323,7 +1785,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       widget.dailyRewardCoins ??
       PlayerProgress.rewardForDifficultyDots(widget.difficulty);
 
-  void _showBottomHint(String text) {
+  void showBottomHint(String text) {
     if (!mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
@@ -2349,73 +1811,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         elevation: 0,
       ),
     );
-  }
-
-  void _openJokerPopup() {
-    if (!mounted) return;
-    setState(() {
-      _showJokerPopup = true;
-    });
-  }
-
-  void _closeJokerPopup() {
-    if (!mounted) return;
-    setState(() {
-      _showJokerPopup = false;
-    });
-  }
-
-  Future<bool> _showRewardedJokerAdGate() async {
-    if (!_adsEnabledOnThisPlatform) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Web testinde reklam kapalı')),
-        );
-      }
-      return false;
-    }
-
-    if (_jokerAd == null || !_isJokerAdReady) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Reklam hazır değil')),
-        );
-      }
-      _loadJokerAd();
-      return false;
-    }
-
-    final completer = Completer<bool>();
-    var rewardEarned = false;
-
-    _jokerAd!.fullScreenContentCallback = FullScreenContentCallback(
-      onAdDismissedFullScreenContent: (ad) {
-        ad.dispose();
-        _jokerAd = null;
-        _isJokerAdReady = false;
-        _loadJokerAd();
-        if (!completer.isCompleted) {
-          completer.complete(rewardEarned);
-        }
-      },
-      onAdFailedToShowFullScreenContent: (ad, error) {
-        ad.dispose();
-        _jokerAd = null;
-        _isJokerAdReady = false;
-        _loadJokerAd();
-        if (!completer.isCompleted) {
-          completer.complete(false);
-        }
-      },
-    );
-
-    _jokerAd!.show(
-      onUserEarnedReward: (ad, reward) {
-        rewardEarned = true;
-      },
-    );
-
-    return completer.future;
   }
 
   Future<bool> _tryUnlockAdTube() async {
@@ -2478,115 +1873,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
 
     return completer.future;
-  }
-
-  Future<void> _useJokerWithEconomy() async {
-    if (_jokerBusy || _activePlans.isNotEmpty || _gameWon) return;
-
-    await _playClick();
-    await _vibrateTap();
-
-    setState(() {
-      _jokerBusy = true;
-    });
-
-    try {
-      var jokerGranted = false;
-
-      if (_canBuyJoker) {
-        _spendCoins(_jokerCost);
-        jokerGranted = true;
-      } else {
-        jokerGranted = await _showRewardedJokerAdGate();
-      }
-
-      if (!jokerGranted) {
-        return;
-      }
-
-      if (_isGuidedJokerLevel) {
-        _jokerBannedMove = null;
-
-        var decision = _findGuidedJokerDecision();
-
-        if (decision == null) {
-          await _rewindHistoryForJoker(_history.length);
-          _jokerBannedMove = null;
-          decision = _findGuidedJokerDecision();
-        } else if (decision.rewindCount > 0) {
-          final banned = _history.isNotEmpty
-              ? (_history.last.fromIdx, _history.last.toIdx)
-              : null;
-          await _rewindHistoryForJoker(decision.rewindCount);
-          _jokerBannedMove = banned;
-          decision = _findGuidedJokerDecision();
-        }
-
-        if (decision == null ||
-            !_canPourIn(_tubes, decision.from, decision.to)) {
-          _jokerBannedMove = null;
-          _vibrateLight();
-          return;
-        }
-
-        _jokerBannedMove = null;
-        await _startPour(decision.from, decision.to);
-        return;
-      }
-
-      _openJokerPopup();
-
-      if (mounted) {
-        setState(() {
-          _jokerThinking = true;
-        });
-      }
-
-      var decision = await Future(() => _findSmartJokerDecision());
-
-      if (mounted) {
-        setState(() {
-          _jokerThinking = false;
-        });
-      }
-
-      if (decision == null) {
-        _closeJokerPopup();
-        _vibrateLight();
-        return;
-      }
-
-      if (decision.rewindCount > 0) {
-        await _rewindHistoryForJoker(decision.rewindCount);
-        decision = _findSmartJokerDecision();
-        if (decision == null) {
-          _closeJokerPopup();
-          _vibrateLight();
-          return;
-        }
-      }
-
-      if (!_canPourIn(_tubes, decision.from, decision.to)) {
-        decision = _findSmartJokerDecision();
-        if (decision == null ||
-            !_canPourIn(_tubes, decision.from, decision.to)) {
-          _closeJokerPopup();
-          _vibrateLight();
-          return;
-        }
-      }
-
-      _closeJokerPopup();
-      await _startPour(decision.from, decision.to);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _jokerBusy = false;
-          _jokerThinking = false;
-          _showJokerPopup = false;
-        });
-      }
-    }
   }
 
   (int, int)? _findTutorialMove() {
@@ -3599,23 +2885,26 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
+                          _JokerButton(
+                            enabled: !_jokerBusy &&
+                                _activePlans.isEmpty &&
+                                !_gameWon &&
+                                !_adTubeUnlocked &&
+                                (_preset?.jokerRecoveryMoves.isNotEmpty ??
+                                    false),
+                            busy: _jokerBusy,
+                            accentColor: _theme.accentColor,
+                            canBuy: _canBuyJoker,
+                            cost: _jokerCost,
+                            onTap: _useJokerWithEconomy,
+                          ),
+                          const SizedBox(height: 10),
                           _UndoButton(
                             canUndo: _history.isNotEmpty &&
                                 _activePlans.isEmpty &&
                                 !_gameWon,
                             accentColor: _theme.accentColor,
                             onTap: _undo,
-                          ),
-                          const SizedBox(height: 8),
-                          _JokerButton(
-                            enabled: !_gameWon &&
-                                _activePlans.isEmpty &&
-                                !_jokerBusy,
-                            busy: _jokerBusy,
-                            canBuy: _canBuyJoker,
-                            cost: _jokerCost,
-                            accentColor: _theme.accentColor,
-                            onTap: _useJokerWithEconomy,
                           ),
                         ],
                       ),
@@ -3680,112 +2969,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   ),
                 ),
               if (_showTutorial) _buildTutorialOverlay(),
-              _buildJokerPopupOverlay(),
-              _buildJokerThinkingOverlay(),
             ],
           ),
         ));
-  }
-
-  Widget _buildJokerPopupOverlay() {
-    return Positioned.fill(
-      child: IgnorePointer(
-        ignoring: true,
-        child: AnimatedOpacity(
-          opacity: _showJokerPopup ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 180),
-          child: Center(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 28),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-              decoration: BoxDecoration(
-                color: const Color(0xEE1A112B),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: const Color(0xFF9B5DE5).withValues(alpha: 0.70),
-                  width: 1.5,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x669B5DE5),
-                    blurRadius: 26,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.auto_awesome,
-                    color: Colors.white.withValues(alpha: 0.95),
-                    size: 30,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Joker hamleyi hazırlıyor',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.95),
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildJokerThinkingOverlay() {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: AnimatedOpacity(
-          opacity: _jokerThinking ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 200),
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
-              decoration: BoxDecoration(
-                color: const Color(0xE6180F2D),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: const Color(0xFF9B5DE5).withValues(alpha: 0.55),
-                  width: 1.4,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x889B5DE5),
-                    blurRadius: 28,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const _JokerThinkingDots(),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Joker düşünüyor...',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.92),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildTutorialOverlay() {
@@ -4160,9 +3346,10 @@ class _JokerButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final text = busy ? '...' : (canBuy ? '$cost' : 'AD');
     return AnimatedOpacity(
-      opacity: enabled ? 1.0 : 0.4,
-      duration: const Duration(milliseconds: 220),
+      opacity: enabled ? 1.0 : 0.32,
+      duration: const Duration(milliseconds: 250),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -4170,63 +3357,51 @@ class _JokerButton extends StatelessWidget {
               const BorderRadius.horizontal(left: Radius.circular(14)),
           onTap: enabled ? onTap : null,
           child: Ink(
-            width: 44,
+            width: 58,
             height: 44,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.08),
               borderRadius:
                   const BorderRadius.horizontal(left: Radius.circular(14)),
               border: Border.all(
-                color: canBuy
-                    ? accentColor.withValues(alpha: 0.60)
-                    : Colors.white.withValues(alpha: 0.24),
-                width: 1.5,
+                color: enabled
+                    ? accentColor.withValues(alpha: 0.45)
+                    : Colors.white.withValues(alpha: 0.14),
+                width: 1.4,
               ),
-              boxShadow: canBuy
+              boxShadow: enabled
                   ? [
                       BoxShadow(
-                        color: accentColor.withValues(alpha: 0.22),
-                        blurRadius: 14,
+                        color: accentColor.withValues(alpha: 0.18),
+                        blurRadius: 12,
                         spreadRadius: 1,
                       ),
                     ]
                   : null,
             ),
-            child: busy
-                ? Center(
-                    child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          canBuy ? accentColor : Colors.white,
-                        ),
-                      ),
-                    ),
-                  )
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        canBuy
-                            ? Icons.auto_fix_high_rounded
-                            : Icons.ondemand_video_rounded,
-                        color: canBuy ? accentColor : Colors.white,
-                        size: 18,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        canBuy ? '$cost' : 'İzle',
-                        style: TextStyle(
-                          color: canBuy ? accentColor : Colors.white,
-                          fontSize: canBuy ? 13 : 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.auto_fix_high_rounded,
+                  size: 18,
+                  color: enabled
+                      ? accentColor
+                      : Colors.white.withValues(alpha: 0.45),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: enabled
+                        ? accentColor
+                        : Colors.white.withValues(alpha: 0.45),
                   ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -6545,7 +5720,7 @@ class _LiquidStreamPainter extends CustomPainter {
     required this.flowRate,
   });
 
-  bool get _isLava => color.value == _solidColorForIndex(kLavaColorIndex).value;
+  bool get _isLava => color == _solidColorForIndex(kLavaColorIndex);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -8001,78 +7176,4 @@ class BasinPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// ─────────────────────────────────────────────────────────────────
-// JOKER DÜŞÜNÜYOR — üç nokta animasyonu
-// ─────────────────────────────────────────────────────────────────
-class _JokerThinkingDots extends StatefulWidget {
-  const _JokerThinkingDots();
-
-  @override
-  State<_JokerThinkingDots> createState() => _JokerThinkingDotsState();
-}
-
-class _JokerThinkingDotsState extends State<_JokerThinkingDots>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (_, __) {
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(3, (i) {
-            // Her nokta 300ms arayla pulses
-            final phase = ((_ctrl.value * 3) - i).clamp(0.0, 1.0);
-            final scale =
-                0.6 + 0.7 * (phase < 0.5 ? phase * 2 : (1 - phase) * 2);
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Transform.scale(
-                scale: scale,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color.lerp(
-                      const Color(0xFF9B5DE5),
-                      const Color(0xFFE040FB),
-                      scale - 0.6,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF9B5DE5)
-                            .withValues(alpha: 0.7 * scale),
-                        blurRadius: 6,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-        );
-      },
-    );
-  }
 }

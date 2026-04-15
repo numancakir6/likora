@@ -151,7 +151,6 @@ class PuzzlePreset {
   final Map<int, PuzzleTubeStyle> tubeStyles;
 
   /// Tüm çözüm yolları (her biri baştan sona hamle listesi).
-  /// Yeni workflow: sadece bunları yaz — jokerRecoveryMap otomatik üretilir.
   final List<List<PuzzleMove>> solutionBranches;
 
   /// Otomatik üretilen imza→hamle haritası.
@@ -177,7 +176,6 @@ class PuzzlePreset {
     this.sourceRefill,
   });
 
-  /// solutionBranches'tan otomatik üretilmiş jokerRecoveryMoves ile
   /// yeni bir PuzzlePreset döndürür.
   PuzzlePreset withBuiltRecoveryMap() {
     final built = PuzzlePresets.buildRecoveryMap(tubes, solutionBranches);
@@ -217,7 +215,6 @@ class PuzzlePresets {
     return preset;
   }
 
-  /// Level'i döndürür; jokerRecoveryMap yoksa solutionBranches'tan üretir.
   /// Sonuç önbelleğe alınır — her level için tek seferlik hesap.
   static PuzzlePreset? getOrNull({
     required int mapNumber,
@@ -230,7 +227,6 @@ class PuzzlePresets {
     final raw = _presets[mapNumber]?[levelId];
     if (raw == null) return null;
 
-    // jokerRecoveryMoves boşsa otomatik üret
     final preset =
         raw.jokerRecoveryMoves.isEmpty && raw.solutionBranches.isNotEmpty
             ? raw.withBuiltRecoveryMap()
@@ -252,31 +248,6 @@ class PuzzlePresets {
   ///
   /// Aynı imzaya birden fazla branch farklı hamle önerirse ilk bulan kazanır
   /// (solutionBranches listesindeki sıra önceliği belirler).
-  static Map<String, PuzzleMove> buildRecoveryMap(
-    List<List<int>> initialTubes,
-    List<List<PuzzleMove>> branches,
-  ) {
-    final map = <String, PuzzleMove>{};
-
-    for (final branch in branches) {
-      // Her branch için baştan klonla
-      final sim = _deepClone(initialTubes);
-
-      for (final move in branch) {
-        // Bu hamleden ÖNCE board'un imzasını al
-        final sig = signatureOf(sim);
-
-        // Henüz kayıtlı değilse ekle (ilk branch önceliklidir)
-        map.putIfAbsent(sig, () => move);
-
-        // Simülasyona hamleyi uygula — geçersizse branch'i durdur
-        if (!_canPour(sim, move.from, move.to)) break;
-        _doPour(sim, move.from, move.to);
-      }
-    }
-
-    return map;
-  }
 
   // ── İç yardımcılar (sadece buildRecoveryMap için) ─────────────
   static List<List<int>> _deepClone(List<List<int>> tubes) =>
@@ -304,12 +275,49 @@ class PuzzlePresets {
     }
   }
 
+  /// Her branch için baştan sona simülasyon yaparak imza→hamle haritası üretir.
+  /// Her adımdan ÖNCE board imzasını kaydeder → o adıma ait hamleye map'ler.
+  /// Aynı imzaya birden fazla branch farklı hamle önerirse ilk bulan kazanır.
+  static Map<String, PuzzleMove> buildRecoveryMap(
+    List<List<int>> initialTubes,
+    List<List<PuzzleMove>> solutionBranches,
+  ) {
+    final map = <String, PuzzleMove>{};
+
+    for (int branchIndex = 0;
+        branchIndex < solutionBranches.length;
+        branchIndex++) {
+      final branch = solutionBranches[branchIndex];
+      final board = _deepClone(initialTubes);
+
+      for (int stepIndex = 0; stepIndex < branch.length; stepIndex++) {
+        final move = branch[stepIndex];
+        final sig = signatureOf(board);
+
+        if (!map.containsKey(sig)) {
+          map[sig] = move;
+        }
+
+        if (!_canPour(board, move.from, move.to)) {
+          throw StateError(
+            'Geçersiz solution branch hamlesi: '
+            'branch=$branchIndex step=$stepIndex '
+            'move=${move.from}->${move.to} '
+            'board="$sig"',
+          );
+        }
+
+        _doPour(board, move.from, move.to);
+      }
+    }
+
+    return map;
+  }
+
   // ── Preset tablosu ────────────────────────────────────────────
   //
   // KULLANIM KILAVUZU:
   //   1. Her level için sadece `solutionBranches` yaz.
-  //   2. `jokerRecoveryMoves` alanını tamamen boş bırak (ya da hiç yazma).
-  //   3. Joker otomatik olarak buildRecoveryMap() ile doğru hamleyi bulur.
   //
   //   Birden fazla çözüm yolu varsa hepsini branches'a ekle —
   //   map her yolun her ara durumunu kapsar.
@@ -321,309 +329,89 @@ class PuzzlePresets {
         levelId: 1,
         difficulty: 1,
         tubes: [
-          [2, 0, 4, 0],
-          [7, 6, 6, 0],
-          [4, 4, 6, 1],
-          [7, 2, 1, 1],
-          [5, 0, 2, 2],
-          [3, 7, 3, 3],
-          [8, 8, 5, 4],
-          [5, 3, 7, 5],
-          [8, 1, 8, 6],
+          [3, 2, 3, 2],
+          [2, 0, 0, 1],
+          [2, 0, 3, 1],
+          [1, 1, 3, 0],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(7),
+        lockedAdTubeIndex: 6,
         solutionBranches: [
-          // Ana rota A
           [
-            PuzzleMove(2, 9),
-            PuzzleMove(3, 9),
-            PuzzleMove(0, 10),
-            PuzzleMove(1, 10),
-            PuzzleMove(8, 1),
-            PuzzleMove(6, 0),
-            PuzzleMove(7, 6),
-            PuzzleMove(4, 3),
-          ],
-          // Açılışta boş tüp seçimi ters sırayla
-          [
-            PuzzleMove(0, 10),
-            PuzzleMove(1, 10),
-            PuzzleMove(2, 9),
-            PuzzleMove(3, 9),
-            PuzzleMove(8, 1),
-            PuzzleMove(6, 0),
-            PuzzleMove(7, 6),
-            PuzzleMove(4, 3),
-          ],
-          // Son iki hamlenin sırası değişse de kabul
-          [
-            PuzzleMove(2, 9),
-            PuzzleMove(3, 9),
-            PuzzleMove(0, 10),
-            PuzzleMove(1, 10),
-            PuzzleMove(8, 1),
-            PuzzleMove(6, 0),
-            PuzzleMove(4, 3),
-            PuzzleMove(7, 6),
-          ],
-          // Hem açılış hem kapanış sıra farkı
-          [
-            PuzzleMove(0, 10),
-            PuzzleMove(1, 10),
-            PuzzleMove(2, 9),
-            PuzzleMove(3, 9),
-            PuzzleMove(8, 1),
-            PuzzleMove(6, 0),
-            PuzzleMove(4, 3),
-            PuzzleMove(7, 6),
+            PuzzleMove(0, 4),
+            PuzzleMove(3, 5),
+            PuzzleMove(0, 3),
+            PuzzleMove(0, 4),
+            PuzzleMove(3, 0),
+            PuzzleMove(1, 3),
+            PuzzleMove(1, 5),
+            PuzzleMove(1, 4),
+            PuzzleMove(2, 3),
+            PuzzleMove(2, 0),
+            PuzzleMove(2, 5),
+            PuzzleMove(2, 4),
           ],
         ],
-        // jokerRecoveryMoves kasıtlı boş — buildRecoveryMap otomatik üretir.
       ),
       2: PuzzlePreset(
         mapNumber: 1,
         levelId: 2,
         difficulty: 2,
         tubes: [
-          [2, 1, 0, 0],
-          [4, 5, 5, 0],
-          [6, 1, 3, 1],
-          [2, 3, 2, 2],
-          [6, 6, 1, 3],
-          [4, 4, 3, 4],
-          [6, 0, 5, 5],
+          [0, 1, 2, 3],
+          [4, 0, 3, 1],
+          [2, 4, 1, 0],
+          [3, 2, 4, 1],
+          [2, 3, 0, 4],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(10),
-        lockedAdTubeIndex: 9,
+        layout: StageLayout.standardForTubeCount(8),
+        lockedAdTubeIndex: 7,
         solutionBranches: [
-          // Ana rota A
           [
-            PuzzleMove(0, 7),
-            PuzzleMove(1, 7),
-            PuzzleMove(2, 0),
-            PuzzleMove(4, 2),
-            PuzzleMove(4, 0),
-            PuzzleMove(0, 8),
-            PuzzleMove(3, 0),
-            PuzzleMove(2, 3),
-            PuzzleMove(2, 8),
-            PuzzleMove(3, 9),
-            PuzzleMove(0, 3),
-            PuzzleMove(1, 0),
-            PuzzleMove(6, 0),
-            PuzzleMove(6, 7),
-            PuzzleMove(5, 1),
-            PuzzleMove(5, 9),
             PuzzleMove(1, 5),
-            PuzzleMove(4, 2),
-            PuzzleMove(2, 6),
-          ],
-          // Açılışın alternatifi
-          [
-            PuzzleMove(1, 8),
-            PuzzleMove(0, 8),
-            PuzzleMove(2, 0),
-            PuzzleMove(4, 2),
-            PuzzleMove(4, 0),
-            PuzzleMove(0, 7),
-            PuzzleMove(3, 0),
-            PuzzleMove(2, 3),
-            PuzzleMove(2, 7),
-            PuzzleMove(3, 9),
+            PuzzleMove(0, 1),
+            PuzzleMove(3, 5),
+            PuzzleMove(4, 3),
+            PuzzleMove(2, 4),
+            PuzzleMove(2, 5),
+            PuzzleMove(3, 2),
             PuzzleMove(0, 3),
-            PuzzleMove(1, 0),
-            PuzzleMove(6, 0),
-            PuzzleMove(6, 8),
-            PuzzleMove(5, 1),
-            PuzzleMove(5, 9),
-            PuzzleMove(1, 5),
-            PuzzleMove(4, 2),
-            PuzzleMove(2, 6),
-          ],
-          // Geç oyunda 5->1 ile 5->9 yer değişebilir
-          [
-            PuzzleMove(0, 7),
-            PuzzleMove(1, 7),
-            PuzzleMove(2, 0),
-            PuzzleMove(4, 2),
+            PuzzleMove(0, 5),
             PuzzleMove(4, 0),
-            PuzzleMove(0, 8),
-            PuzzleMove(3, 0),
-            PuzzleMove(2, 3),
-            PuzzleMove(2, 8),
-            PuzzleMove(3, 9),
-            PuzzleMove(0, 3),
+            PuzzleMove(1, 4),
             PuzzleMove(1, 0),
-            PuzzleMove(6, 0),
-            PuzzleMove(6, 7),
-            PuzzleMove(5, 9),
-            PuzzleMove(5, 1),
-            PuzzleMove(1, 5),
-            PuzzleMove(4, 2),
-            PuzzleMove(2, 6),
-          ],
-          // Açılış B + geç oyun varyasyonu
-          [
-            PuzzleMove(1, 8),
-            PuzzleMove(0, 8),
-            PuzzleMove(2, 0),
-            PuzzleMove(4, 2),
-            PuzzleMove(4, 0),
-            PuzzleMove(0, 7),
-            PuzzleMove(3, 0),
-            PuzzleMove(2, 3),
-            PuzzleMove(2, 7),
-            PuzzleMove(3, 9),
-            PuzzleMove(0, 3),
-            PuzzleMove(1, 0),
-            PuzzleMove(6, 0),
-            PuzzleMove(6, 8),
-            PuzzleMove(5, 9),
-            PuzzleMove(5, 1),
-            PuzzleMove(1, 5),
-            PuzzleMove(4, 2),
-            PuzzleMove(2, 6),
+            PuzzleMove(2, 1),
+            PuzzleMove(3, 2),
+            PuzzleMove(4, 3),
+            PuzzleMove(2, 4),
           ],
         ],
-        // jokerRecoveryMoves kasıtlı boş — buildRecoveryMap otomatik üretir.
       ),
       3: PuzzlePreset(
         mapNumber: 1,
         levelId: 3,
         difficulty: 3,
         tubes: [
-          [2, 4, 4, 0],
-          [6, 6, 0, 0],
-          [6, 1, 5, 1],
-          [6, 7, 1, 1],
-          [3, 2, 3, 2],
-          [3, 7, 5, 3],
-          [7, 0, 4, 4],
-          [2, 7, 5, 5],
+          [0, 1, 2, 3],
+          [4, 5, 0, 1],
+          [2, 3, 4, 5],
+          [1, 4, 3, 0],
+          [5, 2, 1, 4],
+          [3, 0, 5, 2],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(11),
-        lockedAdTubeIndex: 10,
-        solutionBranches: [
-          // Ana rota
-          [
-            PuzzleMove(1, 8),
-            PuzzleMove(0, 8),
-            PuzzleMove(0, 9),
-            PuzzleMove(6, 9),
-            PuzzleMove(6, 8),
-            PuzzleMove(4, 0),
-            PuzzleMove(5, 4),
-            PuzzleMove(3, 10),
-            PuzzleMove(2, 10),
-            PuzzleMove(2, 5),
-            PuzzleMove(2, 10),
-            PuzzleMove(3, 6),
-            PuzzleMove(1, 2),
-            PuzzleMove(2, 3),
-            PuzzleMove(4, 1),
-            PuzzleMove(4, 0),
-            PuzzleMove(5, 2),
-            PuzzleMove(7, 2),
-            PuzzleMove(5, 6),
-            PuzzleMove(7, 6),
-            PuzzleMove(0, 7),
-            PuzzleMove(1, 4),
-            PuzzleMove(4, 5),
-          ],
-          // Açılış varyasyonu
-          [
-            PuzzleMove(0, 9),
-            PuzzleMove(6, 9),
-            PuzzleMove(1, 8),
-            PuzzleMove(0, 8),
-            PuzzleMove(6, 8),
-            PuzzleMove(4, 0),
-            PuzzleMove(5, 4),
-            PuzzleMove(3, 10),
-            PuzzleMove(2, 10),
-            PuzzleMove(2, 5),
-            PuzzleMove(2, 10),
-            PuzzleMove(3, 6),
-            PuzzleMove(1, 2),
-            PuzzleMove(2, 3),
-            PuzzleMove(4, 1),
-            PuzzleMove(4, 0),
-            PuzzleMove(5, 2),
-            PuzzleMove(7, 2),
-            PuzzleMove(5, 6),
-            PuzzleMove(7, 6),
-            PuzzleMove(0, 7),
-            PuzzleMove(1, 4),
-            PuzzleMove(4, 5),
-          ],
-          // Geç oyunda toplama sırası varyasyonu
-          [
-            PuzzleMove(1, 8),
-            PuzzleMove(0, 8),
-            PuzzleMove(0, 9),
-            PuzzleMove(6, 9),
-            PuzzleMove(6, 8),
-            PuzzleMove(4, 0),
-            PuzzleMove(5, 4),
-            PuzzleMove(3, 10),
-            PuzzleMove(2, 10),
-            PuzzleMove(2, 5),
-            PuzzleMove(2, 10),
-            PuzzleMove(3, 6),
-            PuzzleMove(1, 2),
-            PuzzleMove(2, 3),
-            PuzzleMove(4, 1),
-            PuzzleMove(4, 0),
-            PuzzleMove(7, 2),
-            PuzzleMove(5, 2),
-            PuzzleMove(7, 6),
-            PuzzleMove(5, 6),
-            PuzzleMove(0, 7),
-            PuzzleMove(1, 4),
-            PuzzleMove(4, 5),
-          ],
-          // Açılış + geç oyun varyasyonu birlikte
-          [
-            PuzzleMove(0, 9),
-            PuzzleMove(6, 9),
-            PuzzleMove(1, 8),
-            PuzzleMove(0, 8),
-            PuzzleMove(6, 8),
-            PuzzleMove(4, 0),
-            PuzzleMove(5, 4),
-            PuzzleMove(3, 10),
-            PuzzleMove(2, 10),
-            PuzzleMove(2, 5),
-            PuzzleMove(2, 10),
-            PuzzleMove(3, 6),
-            PuzzleMove(1, 2),
-            PuzzleMove(2, 3),
-            PuzzleMove(4, 1),
-            PuzzleMove(4, 0),
-            PuzzleMove(7, 2),
-            PuzzleMove(5, 2),
-            PuzzleMove(7, 6),
-            PuzzleMove(5, 6),
-            PuzzleMove(0, 7),
-            PuzzleMove(1, 4),
-            PuzzleMove(4, 5),
-          ],
-        ],
-        // jokerRecoveryMoves kasıtlı boş — buildRecoveryMap otomatik üretir.
+        layout: StageLayout.standardForTubeCount(9),
+        lockedAdTubeIndex: 8,
+        solutionBranches: const [],
       ),
-
-      // ── Level 4 ve sonrası: solutionBranches yoksa joker generic moda geçer.
-      //    Hazır olduğunda sadece solutionBranches ekle, geri kalan otomatik.
       4: PuzzlePreset(
         mapNumber: 1,
         levelId: 4,
@@ -642,7 +430,6 @@ class PuzzlePresets {
         ],
         layout: StageLayout.standardForTubeCount(10),
         lockedAdTubeIndex: 9,
-        // solutionBranches eklendiğinde joker recovery otomatik çalışır.
       ),
     },
     2: {
