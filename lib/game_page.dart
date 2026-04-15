@@ -431,15 +431,11 @@ class _JokerDecision {
   final int from;
   final int to;
   final int rewindCount;
-  final int? guidedBranchIndex;
-  final int? guidedNextStepIndex;
 
   const _JokerDecision({
     required this.from,
     required this.to,
     this.rewindCount = 0,
-    this.guidedBranchIndex,
-    this.guidedNextStepIndex,
   });
 }
 
@@ -646,9 +642,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _loopCompletedVolcano = false;
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
   (int, int)? _jokerBannedMove;
-  int? _guidedLockedBranchIndex;
-  int _guidedNextStepIndex = 0;
-  bool _isApplyingGuidedJokerMove = false;
 
   // Rewarded reklam
   RewardedAd? _jokerAd;
@@ -2076,392 +2069,86 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return (from, to);
   }
 
-  (int, int)? _firstValidPresetBranchMove(
-    List<List<int>> board, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final exactRecoveryMove = _exactPresetRecoveryMove(
-      board,
-      includeUnlockedAdTube: includeUnlockedAdTube,
-    );
-    if (exactRecoveryMove != null) {
-      return exactRecoveryMove;
-    }
-
-    final preset = _preset;
-    if (preset == null || preset.solutionBranches.isEmpty) return null;
-
-    final validMoves = <(int, int)>[];
-    final seen = <String>{};
-
-    for (final branch in preset.solutionBranches) {
-      for (final move in branch) {
-        final from = move.from;
-        final to = move.to;
-        if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
-            !includeUnlockedAdTube) {
-          continue;
-        }
-        if (!_canPourIn(board, from, to)) continue;
-
-        final key = '$from->$to';
-        if (seen.add(key)) {
-          validMoves.add((from, to));
-        }
-      }
-    }
-
-    if (validMoves.isEmpty) return null;
-
-    List<(int, int)> _preferredMoves() {
-      final completing = <(int, int)>[];
-      final matching = <(int, int)>[];
-      final empty = <(int, int)>[];
-      final rest = <(int, int)>[];
-
-      for (final move in validMoves) {
-        final from = move.$1;
-        final to = move.$2;
-        final next = _cloneTubes(board);
-        _doPourIn(next, from, to);
-
-        final completesTarget = _isTubeDoneIn(next, to);
-        final targetWasEmpty = board[to].isEmpty;
-        final targetMatchesTop = board[to].isNotEmpty &&
-            board[from].isNotEmpty &&
-            board[to].last == board[from].last;
-
-        if (completesTarget) {
-          completing.add(move);
-        } else if (targetMatchesTop) {
-          matching.add(move);
-        } else if (targetWasEmpty) {
-          empty.add(move);
-        } else {
-          rest.add(move);
-        }
-      }
-
-      return <(int, int)>[
-        ...completing,
-        ...matching,
-        ...empty,
-        ...rest,
-      ];
-    }
-
-    final ordered = _preferredMoves();
-    for (final move in ordered) {
-      if (!_wouldCreateRecentLoop(
-        board,
-        move.$1,
-        move.$2,
-        includeUnlockedAdTube: includeUnlockedAdTube,
-      )) {
-        return move;
-      }
-    }
-
-    return ordered.first;
-  }
-
   bool get _isGuidedJokerLevel =>
       (_preset?.solutionBranches.isNotEmpty ?? false) &&
       widget.customPuzzleTubes == null;
 
-  bool get _isScriptedLevelOne =>
-      widget.mapNumber == 1 && widget.level == 1 && _isGuidedJokerLevel;
-
-  bool _sameBoardState(List<List<int>> a, List<List<int>> b) {
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      final ta = a[i];
-      final tb = b[i];
-      if (ta.length != tb.length) return false;
-      for (int j = 0; j < ta.length; j++) {
-        if (ta[j] != tb[j]) return false;
-      }
-    }
-    return true;
-  }
-
-  _GuidedBranchStepMatch? _guidedLockedStepForBoard(
-    List<List<int>> board, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final preset = _preset;
-    final lockedBranchIndex = _guidedLockedBranchIndex;
-    if (preset == null || lockedBranchIndex == null) return null;
-    if (lockedBranchIndex < 0 ||
-        lockedBranchIndex >= preset.solutionBranches.length) {
-      return null;
-    }
-
-    final branch = preset.solutionBranches[lockedBranchIndex];
-    if (_guidedNextStepIndex < 0 || _guidedNextStepIndex >= branch.length) {
-      return null;
-    }
-
-    final sim = _cloneTubes(preset.tubes);
-    for (int i = 0; i < _guidedNextStepIndex; i++) {
-      final move = branch[i];
-      if ((!_isLockedAdTubeIndex(move.from) &&
-              !_isLockedAdTubeIndex(move.to)) ||
-          includeUnlockedAdTube) {
-        if (_canPourIn(sim, move.from, move.to)) {
-          _doPourIn(sim, move.from, move.to);
-        } else {
-          return null;
-        }
-      } else {
-        return null;
-      }
-    }
-
-    if (!_sameBoardState(sim, board)) {
-      return null;
-    }
-
-    final nextMove = branch[_guidedNextStepIndex];
-    final banned = _jokerBannedMove;
-    final isBanned = banned != null &&
-        banned.$1 == nextMove.from &&
-        banned.$2 == nextMove.to;
-    if (((!_isLockedAdTubeIndex(nextMove.from) &&
-                !_isLockedAdTubeIndex(nextMove.to)) ||
-            includeUnlockedAdTube) &&
-        _canPourIn(sim, nextMove.from, nextMove.to) &&
-        !isBanned) {
-      return _GuidedBranchStepMatch(
-        branchIndex: lockedBranchIndex,
-        nextStepIndex: _guidedNextStepIndex,
-        from: nextMove.from,
-        to: nextMove.to,
-      );
-    }
-
-    return null;
-  }
-
-  void _clearGuidedBranchLock() {
-    _guidedLockedBranchIndex = null;
-    _guidedNextStepIndex = 0;
-  }
-
-  void _applyGuidedDecisionLock(_JokerDecision decision) {
-    if (decision.guidedBranchIndex == null ||
-        decision.guidedNextStepIndex == null) {
-      _clearGuidedBranchLock();
-      return;
-    }
-    _guidedLockedBranchIndex = decision.guidedBranchIndex;
-    _guidedNextStepIndex = decision.guidedNextStepIndex! + 1;
-  }
-
-  _GuidedBranchStepMatch? _matchGuidedBranchStep(
-    List<List<int>> board, {
-    required bool includeUnlockedAdTube,
-  }) {
-    final preset = _preset;
-    if (preset == null || preset.solutionBranches.isEmpty) return null;
-
-    bool isBannedMove(int from, int to) {
-      final banned = _jokerBannedMove;
-      if (banned == null) return false;
-      return banned.$1 == from && banned.$2 == to;
-    }
-
-    for (int branchIndex = 0;
-        branchIndex < preset.solutionBranches.length;
-        branchIndex++) {
-      final branch = preset.solutionBranches[branchIndex];
-      final sim = _cloneTubes(preset.tubes);
-
-      if (_sameBoardState(sim, board)) {
-        if (branch.isNotEmpty) {
-          final move = branch.first;
-          if ((!_isLockedAdTubeIndex(move.from) &&
-                  !_isLockedAdTubeIndex(move.to)) ||
-              includeUnlockedAdTube) {
-            if (_canPourIn(sim, move.from, move.to) &&
-                !isBannedMove(move.from, move.to)) {
-              return _GuidedBranchStepMatch(
-                branchIndex: branchIndex,
-                nextStepIndex: 0,
-                from: move.from,
-                to: move.to,
-              );
-            }
-          }
-        }
-      }
-
-      for (int stepIndex = 0; stepIndex < branch.length; stepIndex++) {
-        final move = branch[stepIndex];
-        if ((!_isLockedAdTubeIndex(move.from) &&
-                !_isLockedAdTubeIndex(move.to)) ||
-            includeUnlockedAdTube) {
-          if (_canPourIn(sim, move.from, move.to)) {
-            _doPourIn(sim, move.from, move.to);
-          } else {
-            break;
-          }
-        } else {
-          break;
-        }
-
-        if (_sameBoardState(sim, board)) {
-          final nextStepIndex = stepIndex + 1;
-          if (nextStepIndex >= branch.length) {
-            return null;
-          }
-          final nextMove = branch[nextStepIndex];
-          if (((!_isLockedAdTubeIndex(nextMove.from) &&
-                      !_isLockedAdTubeIndex(nextMove.to)) ||
-                  includeUnlockedAdTube) &&
-              _canPourIn(sim, nextMove.from, nextMove.to) &&
-              !isBannedMove(nextMove.from, nextMove.to)) {
-            return _GuidedBranchStepMatch(
-              branchIndex: branchIndex,
-              nextStepIndex: nextStepIndex,
-              from: nextMove.from,
-              to: nextMove.to,
-            );
-          }
-          return null;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  (int, int)? _guidedInitialOpeningMove() {
-    final preset = _preset;
-    if (preset == null || preset.solutionBranches.isEmpty) return null;
-
-    final initialBoard = _cloneTubes(preset.tubes);
-    for (final branch in preset.solutionBranches) {
-      if (branch.isEmpty) continue;
-      final move = branch.first;
-      if (_canPourIn(initialBoard, move.from, move.to)) {
-        final banned = _jokerBannedMove;
-        if (banned != null && banned.$1 == move.from && banned.$2 == move.to) {
-          continue;
-        }
-        return (move.from, move.to);
-      }
-    }
-
-    return null;
-  }
-
   _JokerDecision? _findGuidedJokerDecision() {
-    final lockedDirect = _guidedLockedStepForBoard(
+    final preset = _preset;
+    if (preset == null || preset.jokerRecoveryMoves.isEmpty) return null;
+
+    final banned = _jokerBannedMove;
+
+    bool isBanned(int from, int to) =>
+        banned != null && banned.$1 == from && banned.$2 == to;
+
+    final directMove = _lookupRecoveryMove(
       _tubes,
+      preset: preset,
       includeUnlockedAdTube: _adTubeUnlocked,
     );
-    if (lockedDirect != null) {
-      return _JokerDecision(
-        from: lockedDirect.from,
-        to: lockedDirect.to,
-        guidedBranchIndex: lockedDirect.branchIndex,
-        guidedNextStepIndex: lockedDirect.nextStepIndex,
-      );
+    if (directMove != null && !isBanned(directMove.$1, directMove.$2)) {
+      return _JokerDecision(from: directMove.$1, to: directMove.$2);
     }
 
-    final direct = _matchGuidedBranchStep(
-      _tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
-    );
-    if (direct != null) {
-      return _JokerDecision(
-          from: direct.from,
-          to: direct.to,
-          guidedBranchIndex: direct.branchIndex,
-          guidedNextStepIndex: direct.nextStepIndex);
-    }
-
-    for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
-      final snapshot =
-          _cloneTubes(_history[_history.length - rewindCount].tubes);
-      final lockedMatch = _guidedLockedStepForBoard(
-        snapshot,
+    for (int i = _history.length - 1; i >= 0; i--) {
+      final snap = _history[i].tubes;
+      final snapMove = _lookupRecoveryMove(
+        snap,
+        preset: preset,
         includeUnlockedAdTube: _adTubeUnlocked,
       );
-      if (lockedMatch != null) {
+      if (snapMove != null && !isBanned(snapMove.$1, snapMove.$2)) {
+        final rewindCount = _history.length - i;
         return _JokerDecision(
-          from: lockedMatch.from,
-          to: lockedMatch.to,
+          from: snapMove.$1,
+          to: snapMove.$2,
           rewindCount: rewindCount,
-          guidedBranchIndex: lockedMatch.branchIndex,
-          guidedNextStepIndex: lockedMatch.nextStepIndex,
-        );
-      }
-      final match = _matchGuidedBranchStep(
-        snapshot,
-        includeUnlockedAdTube: _adTubeUnlocked,
-      );
-      if (match != null) {
-        return _JokerDecision(
-          from: match.from,
-          to: match.to,
-          rewindCount: rewindCount,
-          guidedBranchIndex: match.branchIndex,
-          guidedNextStepIndex: match.nextStepIndex,
         );
       }
     }
 
-    final initialMove = _guidedInitialOpeningMove();
-    if (initialMove != null) {
+    final initialMove = _lookupRecoveryMove(
+      _cloneTubes(preset.tubes),
+      preset: preset,
+      includeUnlockedAdTube: false,
+    );
+    if (initialMove != null && !isBanned(initialMove.$1, initialMove.$2)) {
       return _JokerDecision(
         from: initialMove.$1,
         to: initialMove.$2,
         rewindCount: _history.length,
-        guidedBranchIndex: 0,
-        guidedNextStepIndex: 0,
       );
-    }
-
-    final exactRecovery = _exactPresetRecoveryMove(
-      _tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
-    );
-    if (exactRecovery != null) {
-      final banned = _jokerBannedMove;
-      if (banned == null ||
-          banned.$1 != exactRecovery.$1 ||
-          banned.$2 != exactRecovery.$2) {
-        return _JokerDecision(from: exactRecovery.$1, to: exactRecovery.$2);
-      }
-    }
-
-    for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
-      final snapshot =
-          _cloneTubes(_history[_history.length - rewindCount].tubes);
-      final exact = _exactPresetRecoveryMove(
-        snapshot,
-        includeUnlockedAdTube: _adTubeUnlocked,
-      );
-      if (exact != null) {
-        final banned = _jokerBannedMove;
-        if (banned == null || banned.$1 != exact.$1 || banned.$2 != exact.$2) {
-          return _JokerDecision(
-            from: exact.$1,
-            to: exact.$2,
-            rewindCount: rewindCount,
-          );
-        }
-      }
     }
 
     return null;
   }
 
+  (int, int)? _lookupRecoveryMove(
+    List<List<int>> board, {
+    required PuzzlePreset preset,
+    required bool includeUnlockedAdTube,
+  }) {
+    final sig = PuzzlePresets.signatureOf(board);
+    final move = preset.jokerRecoveryMoves[sig];
+    if (move == null) return null;
+
+    final from = move.from;
+    final to = move.to;
+    if ((_isLockedAdTubeIndex(from) || _isLockedAdTubeIndex(to)) &&
+        !includeUnlockedAdTube) {
+      return null;
+    }
+    if (!_canPourIn(board, from, to)) return null;
+
+    return (from, to);
+  }
+
   _JokerDecision? _findSmartJokerDecision() {
     if (_isGuidedJokerLevel) {
-      return _findGuidedJokerDecision();
+      final guided = _findGuidedJokerDecision();
+      if (guided != null) return guided;
+      return null;
     }
 
     final directQuick = _quickSolveFromState(
@@ -2495,64 +2182,45 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         if (keepDone && !preservesDone) continue;
         if (!keepDone && preservesDone) continue;
 
-        final quick = _quickSolveFromState(
-          snapshot,
-          includeUnlockedAdTube: _adTubeUnlocked,
-        );
+        final quick = _quickSolveFromState(snapshot,
+            includeUnlockedAdTube: _adTubeUnlocked);
         if (quick != null && quick.isNotEmpty) {
           return _JokerDecision(
-            from: quick.first.$1,
-            to: quick.first.$2,
-            rewindCount: rewindCount,
-          );
+              from: quick.first.$1,
+              to: quick.first.$2,
+              rewindCount: rewindCount);
         }
 
-        final medium = _mediumSolveFromState(
-          snapshot,
-          includeUnlockedAdTube: _adTubeUnlocked,
-        );
+        final medium = _mediumSolveFromState(snapshot,
+            includeUnlockedAdTube: _adTubeUnlocked);
         if (medium != null && medium.isNotEmpty) {
           return _JokerDecision(
-            from: medium.first.$1,
-            to: medium.first.$2,
-            rewindCount: rewindCount,
-          );
+              from: medium.first.$1,
+              to: medium.first.$2,
+              rewindCount: rewindCount);
         }
 
-        final snapshotBranch = _firstValidPresetBranchMove(
-          snapshot,
-          includeUnlockedAdTube: _adTubeUnlocked,
-        );
-        if (snapshotBranch != null) {
+        final branchMove = _exactPresetRecoveryMove(snapshot,
+            includeUnlockedAdTube: _adTubeUnlocked);
+        if (branchMove != null) {
           return _JokerDecision(
-            from: snapshotBranch.$1,
-            to: snapshotBranch.$2,
-            rewindCount: rewindCount,
-          );
+              from: branchMove.$1, to: branchMove.$2, rewindCount: rewindCount);
         }
 
-        final snapshotBestEffort = findBestEffortMove(
-          snapshot,
-          includeUnlockedAdTube: _adTubeUnlocked,
-        );
-        if (snapshotBestEffort != null) {
+        final bestEffort = findBestEffortMove(snapshot,
+            includeUnlockedAdTube: _adTubeUnlocked);
+        if (bestEffort != null) {
           return _JokerDecision(
-            from: snapshotBestEffort.$1,
-            to: snapshotBestEffort.$2,
-            rewindCount: rewindCount,
-          );
+              from: bestEffort.$1, to: bestEffort.$2, rewindCount: rewindCount);
         }
 
-        final snapshotAllMoves = _orderedSolverMoves(
-          snapshot,
-          includeUnlockedAdTube: _adTubeUnlocked,
-        );
-        if (snapshotAllMoves.isNotEmpty) {
+        final allMoves = _orderedSolverMoves(snapshot,
+            includeUnlockedAdTube: _adTubeUnlocked);
+        if (allMoves.isNotEmpty) {
           return _JokerDecision(
-            from: snapshotAllMoves.first.$1,
-            to: snapshotAllMoves.first.$2,
-            rewindCount: rewindCount,
-          );
+              from: allMoves.first.$1,
+              to: allMoves.first.$2,
+              rewindCount: rewindCount);
         }
       }
     }
@@ -2562,82 +2230,61 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         : (_preset != null
             ? _cloneTubes(_preset!.tubes)
             : legacyGenerateTubes(
-                level: widget.level,
-                difficulty: widget.difficulty,
-              ));
+                level: widget.level, difficulty: widget.difficulty));
 
-    final initialQuick = _quickSolveFromState(
-      initial,
-      includeUnlockedAdTube: false,
-    );
+    final initialQuick =
+        _quickSolveFromState(initial, includeUnlockedAdTube: false);
     if (initialQuick != null && initialQuick.isNotEmpty) {
       return _JokerDecision(
-        from: initialQuick.first.$1,
-        to: initialQuick.first.$2,
-        rewindCount: _history.length,
-      );
+          from: initialQuick.first.$1,
+          to: initialQuick.first.$2,
+          rewindCount: _history.length);
     }
 
-    final initialMedium = _mediumSolveFromState(
-      initial,
-      includeUnlockedAdTube: false,
-    );
+    final initialMedium =
+        _mediumSolveFromState(initial, includeUnlockedAdTube: false);
     if (initialMedium != null && initialMedium.isNotEmpty) {
       return _JokerDecision(
-        from: initialMedium.first.$1,
-        to: initialMedium.first.$2,
-        rewindCount: _history.length,
-      );
+          from: initialMedium.first.$1,
+          to: initialMedium.first.$2,
+          rewindCount: _history.length);
     }
 
-    final initialBranchMove = _firstValidPresetBranchMove(
-      initial,
-      includeUnlockedAdTube: false,
-    );
-    if (initialBranchMove != null) {
+    final initialBranch =
+        _exactPresetRecoveryMove(initial, includeUnlockedAdTube: false);
+    if (initialBranch != null) {
       return _JokerDecision(
-        from: initialBranchMove.$1,
-        to: initialBranchMove.$2,
-        rewindCount: _history.length,
-      );
+          from: initialBranch.$1,
+          to: initialBranch.$2,
+          rewindCount: _history.length);
     }
 
-    final initialBestEffort = findBestEffortMove(
-      initial,
-      includeUnlockedAdTube: false,
-    );
+    final initialBestEffort =
+        findBestEffortMove(initial, includeUnlockedAdTube: false);
     if (initialBestEffort != null) {
       return _JokerDecision(
-        from: initialBestEffort.$1,
-        to: initialBestEffort.$2,
-        rewindCount: _history.length,
-      );
+          from: initialBestEffort.$1,
+          to: initialBestEffort.$2,
+          rewindCount: _history.length);
     }
 
-    final initialAllMoves = _orderedSolverMoves(
-      initial,
-      includeUnlockedAdTube: false,
-    );
+    final initialAllMoves =
+        _orderedSolverMoves(initial, includeUnlockedAdTube: false);
     if (initialAllMoves.isNotEmpty) {
       return _JokerDecision(
-        from: initialAllMoves.first.$1,
-        to: initialAllMoves.first.$2,
-        rewindCount: _history.length,
-      );
+          from: initialAllMoves.first.$1,
+          to: initialAllMoves.first.$2,
+          rewindCount: _history.length);
     }
 
-    final bestEffort = findBestEffortMove(
-      _tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
-    );
+    final bestEffort =
+        findBestEffortMove(_tubes, includeUnlockedAdTube: _adTubeUnlocked);
     if (bestEffort != null) {
       return _JokerDecision(from: bestEffort.$1, to: bestEffort.$2);
     }
 
-    final allMoves = _orderedSolverMoves(
-      _tubes,
-      includeUnlockedAdTube: _adTubeUnlocked,
-    );
+    final allMoves =
+        _orderedSolverMoves(_tubes, includeUnlockedAdTube: _adTubeUnlocked);
     if (allMoves.isNotEmpty) {
       return _JokerDecision(from: allMoves.first.$1, to: allMoves.first.$2);
     }
@@ -2859,71 +2506,31 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       if (_isGuidedJokerLevel) {
         _jokerBannedMove = null;
+
         var decision = _findGuidedJokerDecision();
 
         if (decision == null) {
-          final opening = _guidedInitialOpeningMove();
-          if (opening != null) {
-            decision = _JokerDecision(
-              from: opening.$1,
-              to: opening.$2,
-              rewindCount: _history.length,
-            );
-          }
-        }
-
-        if (decision == null) {
-          _vibrateLight();
-          return;
-        }
-
-        if (decision.rewindCount > 0) {
+          await _rewindHistoryForJoker(_history.length);
+          _jokerBannedMove = null;
+          decision = _findGuidedJokerDecision();
+        } else if (decision.rewindCount > 0) {
           final banned = _history.isNotEmpty
               ? (_history.last.fromIdx, _history.last.toIdx)
               : null;
           await _rewindHistoryForJoker(decision.rewindCount);
           _jokerBannedMove = banned;
           decision = _findGuidedJokerDecision();
-
-          if (decision == null) {
-            final opening = _guidedInitialOpeningMove();
-            if (opening != null &&
-                (_jokerBannedMove == null ||
-                    _jokerBannedMove!.$1 != opening.$1 ||
-                    _jokerBannedMove!.$2 != opening.$2)) {
-              decision = _JokerDecision(from: opening.$1, to: opening.$2);
-            }
-          }
-        }
-
-        if (decision == null ||
-            !_canPourIn(_tubes, decision.from, decision.to)) {
-          final opening = _guidedInitialOpeningMove();
-          if (opening != null &&
-              _canPourIn(_tubes, opening.$1, opening.$2) &&
-              (_jokerBannedMove == null ||
-                  _jokerBannedMove!.$1 != opening.$1 ||
-                  _jokerBannedMove!.$2 != opening.$2)) {
-            decision = _JokerDecision(from: opening.$1, to: opening.$2);
-          }
         }
 
         if (decision == null ||
             !_canPourIn(_tubes, decision.from, decision.to)) {
           _jokerBannedMove = null;
-          _clearGuidedBranchLock();
           _vibrateLight();
           return;
         }
 
-        _applyGuidedDecisionLock(decision);
         _jokerBannedMove = null;
-        _isApplyingGuidedJokerMove = true;
-        try {
-          await _startPour(decision.from, decision.to);
-        } finally {
-          _isApplyingGuidedJokerMove = false;
-        }
+        await _startPour(decision.from, decision.to);
         return;
       }
 
@@ -3142,7 +2749,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     if (!busy.contains(from) && !busy.contains(to)) {
-      _clearGuidedBranchLock();
       await _startPour(from, to);
 
       if (_showTutorial &&
@@ -3337,10 +2943,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _startPour(int from, int to) async {
-    if (!_isApplyingGuidedJokerMove) {
-      _clearGuidedBranchLock();
-    }
-
     if (!_canPourIn(_tubes, from, to)) {
       _vibrateLight();
       return;
