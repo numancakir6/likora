@@ -1745,10 +1745,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final activeIndexes = _jokerActiveTubeIndexesFor(sourceTubes);
     if (activeIndexes.isEmpty) return null;
 
-    if (_isDynamicSolverSolved(sourceTubes, activeIndexes)) {
-      return null;
-    }
-
     final initialBoard = _cloneBoard(sourceTubes);
     final visited = <String>{
       _encodeDynamicSolverState(initialBoard, activeIndexes),
