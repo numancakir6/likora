@@ -431,11 +431,15 @@ class _JokerDecision {
   final int from;
   final int to;
   final int rewindCount;
+  final int? guidedBranchIndex;
+  final int? guidedNextStepIndex;
 
   const _JokerDecision({
     required this.from,
     required this.to,
     this.rewindCount = 0,
+    this.guidedBranchIndex,
+    this.guidedNextStepIndex,
   });
 }
 
@@ -642,6 +646,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _loopCompletedVolcano = false;
   final Map<String, List<(int, int)>> _solverSuccessCache = {};
   (int, int)? _jokerBannedMove;
+  int? _guidedLockedBranchIndex;
+  int _guidedNextStepIndex = 0;
+  bool _isApplyingGuidedJokerMove = false;
 
   // Rewarded reklam
   RewardedAd? _jokerAd;
@@ -2178,6 +2185,79 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return true;
   }
 
+  _GuidedBranchStepMatch? _guidedLockedStepForBoard(
+    List<List<int>> board, {
+    required bool includeUnlockedAdTube,
+  }) {
+    final preset = _preset;
+    final lockedBranchIndex = _guidedLockedBranchIndex;
+    if (preset == null || lockedBranchIndex == null) return null;
+    if (lockedBranchIndex < 0 ||
+        lockedBranchIndex >= preset.solutionBranches.length) {
+      return null;
+    }
+
+    final branch = preset.solutionBranches[lockedBranchIndex];
+    if (_guidedNextStepIndex < 0 || _guidedNextStepIndex >= branch.length) {
+      return null;
+    }
+
+    final sim = _cloneTubes(preset.tubes);
+    for (int i = 0; i < _guidedNextStepIndex; i++) {
+      final move = branch[i];
+      if ((!_isLockedAdTubeIndex(move.from) &&
+              !_isLockedAdTubeIndex(move.to)) ||
+          includeUnlockedAdTube) {
+        if (_canPourIn(sim, move.from, move.to)) {
+          _doPourIn(sim, move.from, move.to);
+        } else {
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
+
+    if (!_sameBoardState(sim, board)) {
+      return null;
+    }
+
+    final nextMove = branch[_guidedNextStepIndex];
+    final banned = _jokerBannedMove;
+    final isBanned = banned != null &&
+        banned.$1 == nextMove.from &&
+        banned.$2 == nextMove.to;
+    if (((!_isLockedAdTubeIndex(nextMove.from) &&
+                !_isLockedAdTubeIndex(nextMove.to)) ||
+            includeUnlockedAdTube) &&
+        _canPourIn(sim, nextMove.from, nextMove.to) &&
+        !isBanned) {
+      return _GuidedBranchStepMatch(
+        branchIndex: lockedBranchIndex,
+        nextStepIndex: _guidedNextStepIndex,
+        from: nextMove.from,
+        to: nextMove.to,
+      );
+    }
+
+    return null;
+  }
+
+  void _clearGuidedBranchLock() {
+    _guidedLockedBranchIndex = null;
+    _guidedNextStepIndex = 0;
+  }
+
+  void _applyGuidedDecisionLock(_JokerDecision decision) {
+    if (decision.guidedBranchIndex == null ||
+        decision.guidedNextStepIndex == null) {
+      _clearGuidedBranchLock();
+      return;
+    }
+    _guidedLockedBranchIndex = decision.guidedBranchIndex;
+    _guidedNextStepIndex = decision.guidedNextStepIndex! + 1;
+  }
+
   _GuidedBranchStepMatch? _matchGuidedBranchStep(
     List<List<int>> board, {
     required bool includeUnlockedAdTube,
@@ -2277,17 +2357,47 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   _JokerDecision? _findGuidedJokerDecision() {
+    final lockedDirect = _guidedLockedStepForBoard(
+      _tubes,
+      includeUnlockedAdTube: _adTubeUnlocked,
+    );
+    if (lockedDirect != null) {
+      return _JokerDecision(
+        from: lockedDirect.from,
+        to: lockedDirect.to,
+        guidedBranchIndex: lockedDirect.branchIndex,
+        guidedNextStepIndex: lockedDirect.nextStepIndex,
+      );
+    }
+
     final direct = _matchGuidedBranchStep(
       _tubes,
       includeUnlockedAdTube: _adTubeUnlocked,
     );
     if (direct != null) {
-      return _JokerDecision(from: direct.from, to: direct.to);
+      return _JokerDecision(
+          from: direct.from,
+          to: direct.to,
+          guidedBranchIndex: direct.branchIndex,
+          guidedNextStepIndex: direct.nextStepIndex);
     }
 
     for (int rewindCount = 1; rewindCount <= _history.length; rewindCount++) {
       final snapshot =
           _cloneTubes(_history[_history.length - rewindCount].tubes);
+      final lockedMatch = _guidedLockedStepForBoard(
+        snapshot,
+        includeUnlockedAdTube: _adTubeUnlocked,
+      );
+      if (lockedMatch != null) {
+        return _JokerDecision(
+          from: lockedMatch.from,
+          to: lockedMatch.to,
+          rewindCount: rewindCount,
+          guidedBranchIndex: lockedMatch.branchIndex,
+          guidedNextStepIndex: lockedMatch.nextStepIndex,
+        );
+      }
       final match = _matchGuidedBranchStep(
         snapshot,
         includeUnlockedAdTube: _adTubeUnlocked,
@@ -2297,6 +2407,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           from: match.from,
           to: match.to,
           rewindCount: rewindCount,
+          guidedBranchIndex: match.branchIndex,
+          guidedNextStepIndex: match.nextStepIndex,
         );
       }
     }
@@ -2307,6 +2419,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         from: initialMove.$1,
         to: initialMove.$2,
         rewindCount: _history.length,
+        guidedBranchIndex: 0,
+        guidedNextStepIndex: 0,
       );
     }
 
@@ -2797,12 +2911,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         if (decision == null ||
             !_canPourIn(_tubes, decision.from, decision.to)) {
           _jokerBannedMove = null;
+          _clearGuidedBranchLock();
           _vibrateLight();
           return;
         }
 
+        _applyGuidedDecisionLock(decision);
         _jokerBannedMove = null;
-        await _startPour(decision.from, decision.to);
+        _isApplyingGuidedJokerMove = true;
+        try {
+          await _startPour(decision.from, decision.to);
+        } finally {
+          _isApplyingGuidedJokerMove = false;
+        }
         return;
       }
 
@@ -3215,6 +3336,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _startPour(int from, int to) async {
+    if (!_isApplyingGuidedJokerMove) {
+      _clearGuidedBranchLock();
+    }
+
     if (!_canPourIn(_tubes, from, to)) {
       _vibrateLight();
       return;
@@ -3348,6 +3473,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         ? last.tubes[last.fromIdx].last
         : (_tubes[last.toIdx].isNotEmpty ? _tubes[last.toIdx].last : 0);
     final toColor = _tubes[last.toIdx].isNotEmpty ? _tubes[last.toIdx].last : 0;
+
+    _clearGuidedBranchLock();
 
     setState(() {
       _tubes = last.tubes;
