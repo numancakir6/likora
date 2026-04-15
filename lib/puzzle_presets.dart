@@ -150,13 +150,17 @@ class PuzzlePreset {
   final PuzzleTubeStyle tubeStyle;
   final Map<int, PuzzleTubeStyle> tubeStyles;
 
-  /// Tüm çözüm yolları (her biri baştan sona hamle listesi).
+  /// 2 açık tüp için çözüm yolları.
   final List<List<PuzzleMove>> solutionBranches;
 
-  /// Otomatik üretilen imza→hamle haritası.
-  /// Level yüklenirken [PuzzlePresets.buildRecoveryMap] ile doldurulur.
-  /// Direkt elle yazılmasına gerek yok.
+  /// 2 açık tüp için otomatik üretilen imza→hamle haritası.
   final Map<String, PuzzleMove> jokerRecoveryMoves;
+
+  /// 3. tüp açıldıktan sonra kullanılacak çözüm yolları.
+  final List<List<PuzzleMove>> adUnlockedSolutionBranches;
+
+  /// 3. tüp açıkken kullanılacak otomatik imza→hamle haritası.
+  final Map<String, PuzzleMove> adUnlockedJokerRecoveryMoves;
 
   final int? mountainCapacity;
   final SourceTubeRefillConfig? sourceRefill;
@@ -172,13 +176,19 @@ class PuzzlePreset {
     this.tubeStyles = const {},
     this.solutionBranches = const [],
     this.jokerRecoveryMoves = const {},
+    this.adUnlockedSolutionBranches = const [],
+    this.adUnlockedJokerRecoveryMoves = const {},
     this.mountainCapacity,
     this.sourceRefill,
   });
 
   /// yeni bir PuzzlePreset döndürür.
   PuzzlePreset withBuiltRecoveryMap() {
-    final built = PuzzlePresets.buildRecoveryMap(tubes, solutionBranches);
+    final builtNormal = PuzzlePresets.buildRecoveryMap(tubes, solutionBranches);
+    final builtAdUnlocked = PuzzlePresets.buildRecoveryMap(
+      tubes,
+      adUnlockedSolutionBranches,
+    );
     return PuzzlePreset(
       mapNumber: mapNumber,
       levelId: levelId,
@@ -189,7 +199,9 @@ class PuzzlePreset {
       tubeStyle: tubeStyle,
       tubeStyles: tubeStyles,
       solutionBranches: solutionBranches,
-      jokerRecoveryMoves: built,
+      jokerRecoveryMoves: builtNormal,
+      adUnlockedSolutionBranches: adUnlockedSolutionBranches,
+      adUnlockedJokerRecoveryMoves: builtAdUnlocked,
       mountainCapacity: mountainCapacity,
       sourceRefill: sourceRefill,
     );
@@ -227,10 +239,14 @@ class PuzzlePresets {
     final raw = _presets[mapNumber]?[levelId];
     if (raw == null) return null;
 
-    final preset =
-        raw.jokerRecoveryMoves.isEmpty && raw.solutionBranches.isNotEmpty
-            ? raw.withBuiltRecoveryMap()
-            : raw;
+    final needsNormalBuild =
+        raw.jokerRecoveryMoves.isEmpty && raw.solutionBranches.isNotEmpty;
+    final needsAdUnlockedBuild = raw.adUnlockedJokerRecoveryMoves.isEmpty &&
+        raw.adUnlockedSolutionBranches.isNotEmpty;
+
+    final preset = (needsNormalBuild || needsAdUnlockedBuild)
+        ? raw.withBuiltRecoveryMap()
+        : raw;
 
     _builtCache.putIfAbsent(mapNumber, () => {})[levelId] = preset;
     return preset;

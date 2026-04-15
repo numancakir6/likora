@@ -1669,15 +1669,148 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   String _currentBoardSignature() => PuzzlePresets.signatureOf(_tubes);
 
+  Map<String, PuzzleMove> _activeJokerRecoveryMap() {
+    if (_preset == null) return const {};
+
+    return _adTubeUnlocked
+        ? _preset!.adUnlockedJokerRecoveryMoves
+        : _preset!.jokerRecoveryMoves;
+  }
+
+  List<List<PuzzleMove>> _activeJokerBranches() {
+    if (_preset == null) return const [];
+
+    return _adTubeUnlocked
+        ? _preset!.adUnlockedSolutionBranches
+        : _preset!.solutionBranches;
+  }
+
   PuzzleMove? _currentPresetJokerMove() {
-    final recovery = _preset?.jokerRecoveryMoves;
-    if (recovery == null || recovery.isEmpty) return null;
+    final recovery = _activeJokerRecoveryMap();
+    if (recovery.isEmpty) return null;
     return recovery[_currentBoardSignature()];
   }
 
+  List<int> _jokerActiveTubeIndexesFor(List<List<int>> tubes) {
+    final indexes = <int>[];
+    for (int i = 0; i < tubes.length; i++) {
+      if (_showLockedAdTube && i == _lockedAdTubeIndex) continue;
+      indexes.add(i);
+    }
+    return indexes;
+  }
+
+  String _encodeDynamicSolverState(
+      List<List<int>> tubes, List<int> activeIndexes) {
+    return activeIndexes.map((i) => tubes[i].join(',')).join('|');
+  }
+
+  bool _isUniformTube(List<int> tube) {
+    if (tube.isEmpty) return true;
+    final first = tube.first;
+    return tube.every((c) => c == first);
+  }
+
+  bool get _canUseDynamicJokerSolver =>
+      !_hasMountainObjective &&
+      _runtimeRefillQueues.isEmpty &&
+      _activePlans.isEmpty;
+
+  bool _isDynamicSolverSolved(List<List<int>> tubes, List<int> activeIndexes) {
+    for (final idx in activeIndexes) {
+      final tube = tubes[idx];
+      if (tube.isEmpty) continue;
+      if (tube.length != _tubeCapacityIn(tubes, idx)) return false;
+      if (!_isUniformTube(tube)) return false;
+    }
+    return true;
+  }
+
+  bool _canMoveInDynamicSolver(List<List<int>> tubes, int from, int to) {
+    if (!_canPourIn(tubes, from, to)) return false;
+
+    final fromTube = tubes[from];
+    final toTube = tubes[to];
+
+    if (toTube.isEmpty &&
+        fromTube.length == _tubeCapacityIn(tubes, from) &&
+        _isUniformTube(fromTube)) {
+      return false;
+    }
+
+    if (toTube.isNotEmpty &&
+        _isUniformTube(toTube) &&
+        toTube.last == fromTube.last) {
+      final capacity = _tubeCapacityIn(tubes, to);
+      if (toTube.length < capacity && _isUniformTube(fromTube)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  List<List<int>> _applyVirtualPath(
+    List<List<int>> initial,
+    List<PuzzleMove> path,
+  ) {
+    final board = initial
+        .map((tube) => List<int>.from(tube, growable: true))
+        .toList(growable: true);
+
+    for (final move in path) {
+      if (!_canPourIn(board, move.from, move.to)) {
+        return board;
+      }
+      _doPourIn(board, move.from, move.to);
+    }
+
+    return board;
+  }
+
+  List<PuzzleMove>? _solveCurrentStateDynamically(
+    List<List<int>> sourceTubes, {
+    int maxIterations = 6000,
+  }) {
+    if (!_canUseDynamicJokerSolver) return null;
+
+    final activeIndexes = _jokerActiveTubeIndexesFor(sourceTubes);
+    if (activeIndexes.isEmpty) return null;
+
+    final visited = <String>{};
+    final queue = Queue<List<PuzzleMove>>()..add(<PuzzleMove>[]);
+    var iterations = 0;
+
+    while (queue.isNotEmpty && iterations < maxIterations) {
+      iterations++;
+      final currentPath = queue.removeFirst();
+      final board = _applyVirtualPath(sourceTubes, currentPath);
+      final stateKey = _encodeDynamicSolverState(board, activeIndexes);
+
+      if (!visited.add(stateKey)) continue;
+      if (_isDynamicSolverSolved(board, activeIndexes)) {
+        return currentPath;
+      }
+
+      for (final from in activeIndexes) {
+        if (board[from].isEmpty) continue;
+        for (final to in activeIndexes) {
+          if (from == to) continue;
+          if (!_canMoveInDynamicSolver(board, from, to)) continue;
+
+          final nextPath = List<PuzzleMove>.from(currentPath)
+            ..add(PuzzleMove(from, to));
+          queue.add(nextPath);
+        }
+      }
+    }
+
+    return null;
+  }
+
   int? _findJokerRewindCount() {
-    final recovery = _preset?.jokerRecoveryMoves;
-    if (recovery == null || recovery.isEmpty) return null;
+    final recovery = _activeJokerRecoveryMap();
+    if (recovery.isEmpty) return null;
 
     for (int i = _history.length - 1; i >= 0; i--) {
       final sig = PuzzlePresets.signatureOf(_history[i].tubes);
@@ -1687,6 +1820,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         return _history.length - i;
       }
     }
+    return null;
+  }
+
+  int? _findDynamicJokerRewindCount() {
+    if (!_canUseDynamicJokerSolver) return null;
+
+    for (int i = _history.length - 1; i >= 0; i--) {
+      final path = _solveCurrentStateDynamically(_history[i].tubes);
+      if (path != null && path.isNotEmpty) {
+        return _history.length - i;
+      }
+    }
+
     return null;
   }
 
@@ -1709,17 +1855,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return;
     }
 
-    if (_adTubeUnlocked) {
-      showBottomHint('Joker şimdilik 3. tüp açılmadan çalışır');
-      return;
-    }
-
-    final recovery = _preset?.jokerRecoveryMoves;
-    if (_preset == null || recovery == null || recovery.isEmpty) {
-      showBottomHint('Bu level için joker henüz hazır değil');
-      return;
-    }
-
     setState(() {
       _jokerBusy = true;
     });
@@ -1735,25 +1870,42 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       if (!jokerGranted) return;
 
-      var move = _currentPresetJokerMove();
+      PuzzleMove? move = _currentPresetJokerMove();
+
       if (move == null) {
         final rewindCount = _findJokerRewindCount();
-        if (rewindCount == null || rewindCount <= 0) {
-          _vibrateLight();
-          showBottomHint('Joker için uygun yol bulunamadı');
-          return;
+        if (rewindCount != null && rewindCount > 0) {
+          await _rewindHistoryForJoker(rewindCount);
+          move = _currentPresetJokerMove();
         }
+      }
 
-        await _rewindHistoryForJoker(rewindCount);
-        move = _currentPresetJokerMove();
+      if (move == null) {
+        final dynamicPath = _solveCurrentStateDynamically(_tubes);
+        if (dynamicPath != null && dynamicPath.isNotEmpty) {
+          move = dynamicPath.first;
+        }
+      }
+
+      if (move == null) {
+        final dynamicRewindCount = _findDynamicJokerRewindCount();
+        if (dynamicRewindCount != null && dynamicRewindCount > 0) {
+          await _rewindHistoryForJoker(dynamicRewindCount);
+          final dynamicPathAfterRewind = _solveCurrentStateDynamically(_tubes);
+          if (dynamicPathAfterRewind != null &&
+              dynamicPathAfterRewind.isNotEmpty) {
+            move = dynamicPathAfterRewind.first;
+          }
+        }
       }
 
       if (move == null || !_canPourIn(_tubes, move.from, move.to)) {
         _vibrateLight();
-        showBottomHint('Joker hamlesi uygulanamadı');
+        showBottomHint('Joker için uygun yol bulunamadı');
         return;
       }
 
+      showBottomHint('Joker: ${move.from + 1} → ${move.to + 1}');
       await _startPour(move.from, move.to);
     } finally {
       if (mounted) {
