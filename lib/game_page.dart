@@ -427,6 +427,25 @@ class _VisualLayer {
       );
 }
 
+class _SolverMove {
+  final int from;
+  final int to;
+
+  const _SolverMove(this.from, this.to);
+}
+
+class _SolverNode {
+  final List<List<int>> board;
+  final _SolverMove? firstMove;
+  final int depth;
+
+  const _SolverNode({
+    required this.board,
+    required this.firstMove,
+    required this.depth,
+  });
+}
+
 // ─────────────────────────────────────────────
 // ORTAK TEMAS HESABI
 // ─────────────────────────────────────────────
@@ -1667,28 +1686,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     await _persistRefillState();
   }
 
-  String _currentBoardSignature() => PuzzlePresets.signatureOf(_tubes);
-
-  Map<String, PuzzleMove> _activeJokerRecoveryMap() {
-    if (_preset == null) return const {};
-
-    return _adTubeUnlocked
-        ? _preset!.adUnlockedJokerRecoveryMoves
-        : _preset!.jokerRecoveryMoves;
-  }
-
-  List<List<PuzzleMove>> _activeJokerBranches() {
-    if (_preset == null) return const [];
-
-    return _adTubeUnlocked
-        ? _preset!.adUnlockedSolutionBranches
-        : _preset!.solutionBranches;
-  }
-
-  PuzzleMove? _currentPresetJokerMove() {
-    final recovery = _activeJokerRecoveryMap();
-    if (recovery.isEmpty) return null;
-    return recovery[_currentBoardSignature()];
+  List<List<int>> _cloneBoard(List<List<int>> source) {
+    return source
+        .map((tube) => List<int>.from(tube, growable: true))
+        .toList(growable: true);
   }
 
   List<int> _jokerActiveTubeIndexesFor(List<List<int>> tubes) {
@@ -1701,7 +1702,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   String _encodeDynamicSolverState(
-      List<List<int>> tubes, List<int> activeIndexes) {
+    List<List<int>> tubes,
+    List<int> activeIndexes,
+  ) {
     return activeIndexes.map((i) => tubes[i].join(',')).join('|');
   }
 
@@ -1750,57 +1753,62 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return true;
   }
 
-  List<List<int>> _applyVirtualPath(
-    List<List<int>> initial,
-    List<PuzzleMove> path,
-  ) {
-    final board = initial
-        .map((tube) => List<int>.from(tube, growable: true))
-        .toList(growable: true);
-
-    for (final move in path) {
-      if (!_canPourIn(board, move.from, move.to)) {
-        return board;
-      }
-      _doPourIn(board, move.from, move.to);
-    }
-
-    return board;
-  }
-
-  List<PuzzleMove>? _solveCurrentStateDynamically(
+  _SolverMove? _solveCurrentStateDynamically(
     List<List<int>> sourceTubes, {
-    int maxIterations = 6000,
+    int maxVisited = 12000,
+    int maxDepth = 64,
   }) {
     if (!_canUseDynamicJokerSolver) return null;
 
     final activeIndexes = _jokerActiveTubeIndexesFor(sourceTubes);
     if (activeIndexes.isEmpty) return null;
 
-    final visited = <String>{};
-    final queue = Queue<List<PuzzleMove>>()..add(<PuzzleMove>[]);
-    var iterations = 0;
+    if (_isDynamicSolverSolved(sourceTubes, activeIndexes)) {
+      return null;
+    }
 
-    while (queue.isNotEmpty && iterations < maxIterations) {
-      iterations++;
-      final currentPath = queue.removeFirst();
-      final board = _applyVirtualPath(sourceTubes, currentPath);
-      final stateKey = _encodeDynamicSolverState(board, activeIndexes);
+    final initialBoard = _cloneBoard(sourceTubes);
+    final visited = <String>{
+      _encodeDynamicSolverState(initialBoard, activeIndexes),
+    };
+    final queue = Queue<_SolverNode>()
+      ..add(
+        _SolverNode(
+          board: initialBoard,
+          firstMove: null,
+          depth: 0,
+        ),
+      );
 
-      if (!visited.add(stateKey)) continue;
-      if (_isDynamicSolverSolved(board, activeIndexes)) {
-        return currentPath;
-      }
+    while (queue.isNotEmpty && visited.length < maxVisited) {
+      final node = queue.removeFirst();
+      if (node.depth >= maxDepth) continue;
 
       for (final from in activeIndexes) {
-        if (board[from].isEmpty) continue;
+        if (node.board[from].isEmpty) continue;
+
         for (final to in activeIndexes) {
           if (from == to) continue;
-          if (!_canMoveInDynamicSolver(board, from, to)) continue;
+          if (!_canMoveInDynamicSolver(node.board, from, to)) continue;
 
-          final nextPath = List<PuzzleMove>.from(currentPath)
-            ..add(PuzzleMove(from, to));
-          queue.add(nextPath);
+          final nextBoard = _cloneBoard(node.board);
+          _doPourIn(nextBoard, from, to);
+
+          final stateKey = _encodeDynamicSolverState(nextBoard, activeIndexes);
+          if (!visited.add(stateKey)) continue;
+
+          final move = node.firstMove ?? _SolverMove(from, to);
+          if (_isDynamicSolverSolved(nextBoard, activeIndexes)) {
+            return move;
+          }
+
+          queue.add(
+            _SolverNode(
+              board: nextBoard,
+              firstMove: move,
+              depth: node.depth + 1,
+            ),
+          );
         }
       }
     }
@@ -1808,27 +1816,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return null;
   }
 
-  int? _findJokerRewindCount() {
-    final recovery = _activeJokerRecoveryMap();
-    if (recovery.isEmpty) return null;
-
-    for (int i = _history.length - 1; i >= 0; i--) {
-      final sig = PuzzlePresets.signatureOf(_history[i].tubes);
-      final move = recovery[sig];
-      if (move == null) continue;
-      if (_canPourIn(_history[i].tubes, move.from, move.to)) {
-        return _history.length - i;
-      }
-    }
-    return null;
-  }
-
   int? _findDynamicJokerRewindCount() {
     if (!_canUseDynamicJokerSolver) return null;
 
     for (int i = _history.length - 1; i >= 0; i--) {
-      final path = _solveCurrentStateDynamically(_history[i].tubes);
-      if (path != null && path.isNotEmpty) {
+      final move = _solveCurrentStateDynamically(_history[i].tubes);
+      if (move != null) {
         return _history.length - i;
       }
     }
@@ -1870,32 +1863,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       if (!jokerGranted) return;
 
-      PuzzleMove? move = _currentPresetJokerMove();
-
-      if (move == null) {
-        final rewindCount = _findJokerRewindCount();
-        if (rewindCount != null && rewindCount > 0) {
-          await _rewindHistoryForJoker(rewindCount);
-          move = _currentPresetJokerMove();
-        }
-      }
-
-      if (move == null) {
-        final dynamicPath = _solveCurrentStateDynamically(_tubes);
-        if (dynamicPath != null && dynamicPath.isNotEmpty) {
-          move = dynamicPath.first;
-        }
-      }
+      _SolverMove? move = _solveCurrentStateDynamically(_tubes);
 
       if (move == null) {
         final dynamicRewindCount = _findDynamicJokerRewindCount();
         if (dynamicRewindCount != null && dynamicRewindCount > 0) {
           await _rewindHistoryForJoker(dynamicRewindCount);
-          final dynamicPathAfterRewind = _solveCurrentStateDynamically(_tubes);
-          if (dynamicPathAfterRewind != null &&
-              dynamicPathAfterRewind.isNotEmpty) {
-            move = dynamicPathAfterRewind.first;
-          }
+          move = _solveCurrentStateDynamically(_tubes);
         }
       }
 
