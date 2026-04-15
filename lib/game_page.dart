@@ -1740,10 +1740,21 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     int maxVisited = 12000,
     int maxDepth = 64,
   }) {
-    if (!_canUseDynamicJokerSolver) return null;
+    if (!_canUseDynamicJokerSolver) {
+      debugPrint('[JOKER] solver kapalı: canUse=false');
+      return null;
+    }
 
     final activeIndexes = _jokerActiveTubeIndexesFor(sourceTubes);
-    if (activeIndexes.isEmpty) return null;
+    if (activeIndexes.isEmpty) {
+      debugPrint('[JOKER] solver kapalı: activeIndexes boş');
+      return null;
+    }
+
+    if (_isDynamicSolverSolved(sourceTubes, activeIndexes)) {
+      debugPrint('[JOKER] state zaten solved görünüyor');
+      return null;
+    }
 
     final initialBoard = _cloneBoard(sourceTubes);
     final visited = <String>{
@@ -1758,8 +1769,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       ),
     );
 
+    var expanded = 0;
+
     while (queue.isNotEmpty && visited.length < maxVisited) {
       final node = queue.removeFirst();
+      expanded++;
+
       if (node.depth >= maxDepth) continue;
 
       for (final from in activeIndexes) {
@@ -1777,6 +1792,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
           final move = node.firstMove ?? _SolverMove(from, to);
           if (_isDynamicSolverSolved(nextBoard, activeIndexes)) {
+            debugPrint(
+              '[JOKER] çözüm bulundu | expanded=$expanded visited=${visited.length} depth=${node.depth + 1} first=${move.from}->${move.to}',
+            );
             return move;
           }
 
@@ -1791,6 +1809,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       }
     }
 
+    debugPrint(
+      '[JOKER] çözüm yok | expanded=$expanded visited=${visited.length} queueEmpty=${queue.isEmpty} maxVisited=$maxVisited maxDepth=$maxDepth',
+    );
     return null;
   }
 
