@@ -1864,11 +1864,30 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       _SolverMove? move = _solveCurrentStateDynamically(_tubes);
 
+      showBottomHint(
+        move == null
+            ? 'İleri çözüm bulunamadı | history=${_history.length}'
+            : 'İleri çözüm bulundu: ${move.from + 1}→${move.to + 1}',
+      );
+
       if (move == null) {
         final dynamicRewindCount = _findDynamicJokerRewindCount();
+
+        showBottomHint(
+          dynamicRewindCount == null
+              ? 'Geçmişte çözüm yok'
+              : 'Geçmişte çözüm var | geri=${dynamicRewindCount}',
+        );
+
         if (dynamicRewindCount != null && dynamicRewindCount > 0) {
           await _rewindHistoryForJoker(dynamicRewindCount);
           move = _solveCurrentStateDynamically(_tubes);
+
+          showBottomHint(
+            move == null
+                ? 'Geri sardı ama yine çözüm yok'
+                : 'Geri sardı, çözüm bulundu: ${move.from + 1}→${move.to + 1}',
+          );
         }
       }
 
