@@ -427,23 +427,40 @@ class _VisualLayer {
       );
 }
 
-class _SolverMove {
-  final int from;
-  final int to;
+class _JokerSearchNode {
+  final List<List<int>> tubes;
+  final int mountainFillUnits;
+  final List<String> moves;
 
-  const _SolverMove(this.from, this.to);
-}
-
-class _SolverNode {
-  final List<List<int>> board;
-  final _SolverMove? firstMove;
-  final int depth;
-
-  const _SolverNode({
-    required this.board,
-    required this.firstMove,
-    required this.depth,
+  const _JokerSearchNode({
+    required this.tubes,
+    required this.mountainFillUnits,
+    required this.moves,
   });
+
+  String stateId(List<int> activeIndexes) {
+    final tubesPart = activeIndexes.map((i) => tubes[i].join(',')).join('|');
+    return '$tubesPart#$mountainFillUnits';
+  }
+
+  bool isSolved({
+    required List<int> activeIndexes,
+    required int mountainCapacity,
+    required int Function(List<List<int>> tubes, int index) tubeCapacityIn,
+  }) {
+    if (mountainCapacity > 0 && mountainFillUnits < mountainCapacity) {
+      return false;
+    }
+
+    for (final idx in activeIndexes) {
+      final tube = tubes[idx];
+      if (tube.isEmpty) continue;
+      if (tube.length != tubeCapacityIn(tubes, idx)) return false;
+      final first = tube.first;
+      if (tube.any((c) => c != first)) return false;
+    }
+    return true;
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -1701,186 +1718,127 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return indexes;
   }
 
-  String _encodeDynamicSolverState(
-    List<List<int>> tubes,
-    List<int> activeIndexes,
-  ) {
-    return activeIndexes.map((i) => tubes[i].join(',')).join('|');
-  }
-
-  bool _isUniformTube(List<int> tube) {
-    if (tube.isEmpty) return true;
-    final first = tube.first;
-    return tube.every((c) => c == first);
-  }
-
-  bool get _canUseDynamicJokerSolver =>
-      !_hasMountainObjective &&
-      _runtimeRefillQueues.isEmpty &&
-      _activePlans.isEmpty;
-
-  bool _isDynamicSolverSolved(List<List<int>> tubes, List<int> activeIndexes) {
-    for (final idx in activeIndexes) {
-      final tube = tubes[idx];
-      if (tube.isEmpty) continue;
-      if (tube.length != _tubeCapacityIn(tubes, idx)) return false;
-      if (!_isUniformTube(tube)) return false;
-    }
-    return true;
-  }
-
-  bool _canMoveInDynamicSolver(List<List<int>> tubes, int from, int to) {
+  bool _canPourInSimulation(List<List<int>> tubes, int from, int to) {
     return _canPourIn(tubes, from, to);
   }
 
-  List<_SolverMove> _orderedDynamicSolverMoves(
+  bool _canPourToMountainInSimulation(List<List<int>> tubes, int from) {
+    if (!_hasMountainObjective) return false;
+    if (_showLockedAdTube && from == _lockedAdTubeIndex) return false;
+    if (from < 0 || from >= tubes.length || tubes[from].isEmpty) return false;
+    if (!_isLavaColorIndex(tubes[from].last)) return false;
+    return true;
+  }
+
+  int _mountainPourCountInSimulation(
     List<List<int>> tubes,
-    List<int> activeIndexes,
+    int from,
+    int currentMountainFillUnits,
   ) {
-    final moves = <(_SolverMove move, int score)>[];
+    if (!_canPourToMountainInSimulation(tubes, from)) return 0;
 
-    for (final from in activeIndexes) {
-      if (tubes[from].isEmpty) continue;
-      final movingColor = tubes[from].last;
-      final fromUniform = _isUniformTube(tubes[from]);
+    final available = _mountainCapacity - currentMountainFillUnits;
+    if (available <= 0) return 0;
 
-      for (final to in activeIndexes) {
-        if (from == to) continue;
-        if (!_canMoveInDynamicSolver(tubes, from, to)) continue;
-
-        final target = tubes[to];
-        var score = 0;
-
-        if (target.isNotEmpty && target.last == movingColor) score += 100;
-        if (target.isEmpty) score += 25;
-        if (fromUniform) score += 10;
-
-        final pourAmount = _pourCountIn(tubes, from, to);
-        score += pourAmount * 8;
-
-        final nextLen = target.length + pourAmount;
-        if (nextLen == _tubeCapacityIn(tubes, to)) score += 30;
-
-        moves.add((_SolverMove(from, to), score));
+    final colorIdx = tubes[from].last;
+    int count = 0;
+    for (int i = tubes[from].length - 1; i >= 0; i--) {
+      if (tubes[from][i] == colorIdx) {
+        count++;
+      } else {
+        break;
       }
     }
 
-    moves.sort((a, b) => b.$2.compareTo(a.$2));
-    return moves.map((e) => e.$1).toList(growable: false);
+    return min(count, available);
   }
 
-  bool _leadsToSolutionFast(
-    List<List<int>> tubes,
-    List<int> activeIndexes,
-    int depth,
-    Set<String> seen,
-    int maxNodes,
-    List<int> nodesLeft,
-  ) {
-    if (_isDynamicSolverSolved(tubes, activeIndexes)) return true;
-    if (depth <= 0) return false;
-    if (nodesLeft[0] <= 0) return false;
-
-    final stateKey = _encodeDynamicSolverState(tubes, activeIndexes);
-    if (!seen.add(stateKey)) return false;
-
-    final moves = _orderedDynamicSolverMoves(tubes, activeIndexes);
-
-    for (final move in moves) {
-      if (nodesLeft[0] <= 0) break;
-      nodesLeft[0]--;
-
-      final next = _cloneBoard(tubes);
-      _doPourIn(next, move.from, move.to);
-
-      if (_leadsToSolutionFast(
-        next,
-        activeIndexes,
-        depth - 1,
-        seen,
-        maxNodes,
-        nodesLeft,
-      )) {
-        return true;
-      }
-    }
-
-    seen.remove(stateKey);
-    return false;
-  }
-
-  _SolverMove? _solveCurrentStateDynamically(
-    List<List<int>> sourceTubes, {
-    int maxVisited = 80000,
-    int maxDepth = 20,
+  List<String>? findSolution({
+    List<List<int>>? sourceTubes,
+    int? mountainFillUnits,
+    int maxIterations = 5000,
   }) {
-    if (!_canUseDynamicJokerSolver) {
-      debugPrint('[JOKER] solver kapalı: canUse=false');
-      return null;
-    }
+    final initialTubes = _cloneBoard(sourceTubes ?? _tubes);
+    final initialMountainFillUnits = mountainFillUnits ?? _mountainFillUnits;
+    final activeIndexes = _jokerActiveTubeIndexesFor(initialTubes);
 
-    final activeIndexes = _jokerActiveTubeIndexesFor(sourceTubes);
-    if (activeIndexes.isEmpty) {
-      debugPrint('[JOKER] solver kapalı: activeIndexes boş');
-      return null;
-    }
-
-    if (_isDynamicSolverSolved(sourceTubes, activeIndexes)) {
-      debugPrint('[JOKER] state zaten solved görünüyor');
-      return null;
-    }
-
-    final orderedMoves = _orderedDynamicSolverMoves(sourceTubes, activeIndexes);
-    var tested = 0;
-
-    for (final move in orderedMoves) {
-      tested++;
-      final next = _cloneBoard(sourceTubes);
-      _doPourIn(next, move.from, move.to);
-
-      final nodesLeft = <int>[maxVisited];
-      final solved = _leadsToSolutionFast(
-        next,
-        activeIndexes,
-        maxDepth,
-        <String>{},
-        maxVisited,
-        nodesLeft,
-      );
-
-      if (solved) {
-        debugPrint(
-          '[JOKER] hızlı çözüm bulundu | tested=$tested first=${move.from}->${move.to} remainingNodes=${nodesLeft[0]} depth=$maxDepth',
-        );
-        return move;
-      }
-    }
-
-    debugPrint(
-      '[JOKER] hızlı çözüm yok | tested=$tested candidates=${orderedMoves.length} depth=$maxDepth maxVisited=$maxVisited',
+    final startNode = _JokerSearchNode(
+      tubes: initialTubes,
+      mountainFillUnits: initialMountainFillUnits,
+      moves: const [],
     );
-    return null;
-  }
 
-  int? _findDynamicJokerRewindCount() {
-    if (!_canUseDynamicJokerSolver) return null;
+    if (startNode.isSolved(
+      activeIndexes: activeIndexes,
+      mountainCapacity: _hasMountainObjective ? _mountainCapacity : 0,
+      tubeCapacityIn: _tubeCapacityIn,
+    )) {
+      return const [];
+    }
 
-    for (int i = _history.length - 1; i >= 0; i--) {
-      final move = _solveCurrentStateDynamically(_history[i].tubes);
-      if (move != null) {
-        return _history.length - i;
+    final queue = Queue<_JokerSearchNode>()..add(startNode);
+    final visited = <String>{startNode.stateId(activeIndexes)};
+    var iterations = 0;
+
+    while (queue.isNotEmpty && iterations < maxIterations) {
+      iterations++;
+      final current = queue.removeFirst();
+
+      if (current.isSolved(
+        activeIndexes: activeIndexes,
+        mountainCapacity: _hasMountainObjective ? _mountainCapacity : 0,
+        tubeCapacityIn: _tubeCapacityIn,
+      )) {
+        return current.moves;
+      }
+
+      for (final from in activeIndexes) {
+        for (final to in activeIndexes) {
+          if (from == to) continue;
+          if (!_canPourInSimulation(current.tubes, from, to)) continue;
+
+          final nextTubes = _cloneBoard(current.tubes);
+          _doPourIn(nextTubes, from, to);
+
+          final nextNode = _JokerSearchNode(
+            tubes: nextTubes,
+            mountainFillUnits: current.mountainFillUnits,
+            moves: [...current.moves, '$from->$to'],
+          );
+
+          final stateId = nextNode.stateId(activeIndexes);
+          if (visited.add(stateId)) {
+            queue.add(nextNode);
+          }
+        }
+
+        final mountainCount = _mountainPourCountInSimulation(
+          current.tubes,
+          from,
+          current.mountainFillUnits,
+        );
+
+        if (mountainCount > 0) {
+          final nextTubes = _cloneBoard(current.tubes);
+          for (int i = 0; i < mountainCount; i++) {
+            nextTubes[from].removeLast();
+          }
+
+          final nextNode = _JokerSearchNode(
+            tubes: nextTubes,
+            mountainFillUnits: current.mountainFillUnits + mountainCount,
+            moves: [...current.moves, '$from->mountain'],
+          );
+
+          final stateId = nextNode.stateId(activeIndexes);
+          if (visited.add(stateId)) {
+            queue.add(nextNode);
+          }
+        }
       }
     }
 
     return null;
-  }
-
-  Future<void> _rewindHistoryForJoker(int rewindCount) async {
-    for (int i = 0; i < rewindCount; i++) {
-      if (_history.isEmpty || !mounted) break;
-      _undo();
-      await Future.delayed(const Duration(milliseconds: 760));
-    }
   }
 
   Future<void> _useJokerWithEconomy() async {
@@ -1909,33 +1867,48 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       if (!jokerGranted) return;
 
-      _SolverMove? move = _solveCurrentStateDynamically(_tubes);
+      while (mounted) {
+        final solution = findSolution();
 
-      if (move == null) {
-        final dynamicRewindCount = _findDynamicJokerRewindCount();
+        if (solution != null && solution.isNotEmpty) {
+          final firstMove = solution.first;
 
-        if (dynamicRewindCount != null && dynamicRewindCount > 0) {
-          await _rewindHistoryForJoker(dynamicRewindCount);
-          move = _solveCurrentStateDynamically(_tubes);
+          if (firstMove.endsWith('->mountain')) {
+            final from = int.parse(firstMove.split('->').first);
+            if (_selected != from && mounted) {
+              setState(() {
+                _selected = from;
+              });
+            }
+            await _startPourToMountain(from);
+          } else {
+            final parts = firstMove.split('->');
+            if (parts.length != 2) {
+              await _vibrateLight();
+              showBottomHint('Joker hamlesi çözülemedi');
+              return;
+            }
+
+            final from = int.parse(parts[0]);
+            final to = int.parse(parts[1]);
+            showBottomHint('Joker: ${from + 1} → ${to + 1}');
+            await _startPour(from, to);
+          }
+          return;
         }
-      }
 
-      // Son çare: history'de de çözüm bulunamadıysa başa sar
-      if (move == null) {
-        final rewindAll = _history.length;
-        if (rewindAll > 0) {
-          await _rewindHistoryForJoker(rewindAll);
+        if (_history.isNotEmpty) {
+          showBottomHint('Bu konumdan çözüm yok, bir hamle geri alınıyor...');
+          await _undo();
+          if (!mounted) return;
+          await Future.delayed(const Duration(milliseconds: 200));
+          continue;
         }
-        move = _solveCurrentStateDynamically(_tubes);
-      }
 
-      if (move == null || !_canPourIn(_tubes, move.from, move.to)) {
-        _vibrateLight();
+        await _vibrateLight();
+        showBottomHint('Çözüm bulunamadı, ekstra tüp almayı dene!');
         return;
       }
-
-      showBottomHint('Joker: ${move.from + 1} → ${move.to + 1}');
-      await _startPour(move.from, move.to);
     } finally {
       if (mounted) {
         setState(() {
@@ -2529,10 +2502,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     });
   }
 
-  void _undo() {
+  Future<void> _undo() async {
     // Animasyon devam ediyorsa veya geçmiş yoksa işlem yapma
     if (_activePlans.isNotEmpty || _history.isEmpty) {
-      _vibrateLight();
+      await _vibrateLight();
       return;
     }
 
@@ -2563,18 +2536,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _persistLevelState();
     unawaited(_persistUndoHistoryState());
 
-    _playClick();
-    _vibrateTap();
+    await _playClick();
+    await _vibrateTap();
     SfxService.startWater();
 
     // Slosh animasyonu bitince temizle
-    Future.delayed(const Duration(milliseconds: 700), () {
-      SfxService.stopWater();
-      if (!mounted) return;
-      setState(() {
-        _undoSloshingTubes.remove(last.fromIdx);
-        _undoSloshingTubes.remove(last.toIdx);
-      });
+    await Future.delayed(const Duration(milliseconds: 700));
+    SfxService.stopWater();
+    if (!mounted) return;
+    setState(() {
+      _undoSloshingTubes.remove(last.fromIdx);
+      _undoSloshingTubes.remove(last.toIdx);
     });
   }
 
