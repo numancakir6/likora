@@ -1760,11 +1760,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   List<String>? findSolution({
     List<List<int>>? sourceTubes,
     int? mountainFillUnits,
-    int maxIterations = 5000,
+    int maxIterations = 40000,
   }) {
     final initialTubes = _cloneBoard(sourceTubes ?? _tubes);
     final initialMountainFillUnits = mountainFillUnits ?? _mountainFillUnits;
     final activeIndexes = _jokerActiveTubeIndexesFor(initialTubes);
+    final targetMountainCapacity =
+        _hasMountainObjective ? _mountainCapacity : 0;
 
     final startNode = _JokerSearchNode(
       tubes: initialTubes,
@@ -1774,10 +1776,40 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     if (startNode.isSolved(
       activeIndexes: activeIndexes,
-      mountainCapacity: _hasMountainObjective ? _mountainCapacity : 0,
+      mountainCapacity: targetMountainCapacity,
       tubeCapacityIn: _tubeCapacityIn,
     )) {
       return const [];
+    }
+
+    int scoreMove({
+      required List<List<int>> beforeTubes,
+      required List<List<int>> afterTubes,
+      required int from,
+      int? to,
+      required int beforeMountainFill,
+      required int afterMountainFill,
+    }) {
+      var score = 0;
+
+      if (to != null) {
+        if (_isTubeDoneIn(afterTubes, to)) score += 1000;
+        if (beforeTubes[to].isNotEmpty &&
+            beforeTubes[to].last == beforeTubes[from].last) {
+          score += 300;
+        }
+        if (beforeTubes[to].isEmpty) score += 60;
+        final movedCount = beforeTubes[from].length - afterTubes[from].length;
+        score += movedCount * 20;
+      }
+
+      if (afterTubes[from].isEmpty) score += 700;
+      if (_isTubeDoneIn(afterTubes, from)) score += 120;
+      if (afterMountainFill > beforeMountainFill) {
+        score += 900 + ((afterMountainFill - beforeMountainFill) * 30);
+      }
+
+      return score;
     }
 
     final queue = Queue<_JokerSearchNode>()..add(startNode);
@@ -1790,11 +1822,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       if (current.isSolved(
         activeIndexes: activeIndexes,
-        mountainCapacity: _hasMountainObjective ? _mountainCapacity : 0,
+        mountainCapacity: targetMountainCapacity,
         tubeCapacityIn: _tubeCapacityIn,
       )) {
         return current.moves;
       }
+
+      final candidateNodes = <({int score, _JokerSearchNode node})>[];
 
       for (final from in activeIndexes) {
         for (final to in activeIndexes) {
@@ -1811,9 +1845,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           );
 
           final stateId = nextNode.stateId(activeIndexes);
-          if (visited.add(stateId)) {
-            queue.add(nextNode);
-          }
+          if (!visited.add(stateId)) continue;
+
+          candidateNodes.add((
+            score: scoreMove(
+              beforeTubes: current.tubes,
+              afterTubes: nextTubes,
+              from: from,
+              to: to,
+              beforeMountainFill: current.mountainFillUnits,
+              afterMountainFill: current.mountainFillUnits,
+            ),
+            node: nextNode,
+          ));
         }
 
         final mountainCount = _mountainPourCountInSimulation(
@@ -1828,17 +1872,33 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             nextTubes[from].removeLast();
           }
 
+          final nextMountainFillUnits =
+              current.mountainFillUnits + mountainCount;
           final nextNode = _JokerSearchNode(
             tubes: nextTubes,
-            mountainFillUnits: current.mountainFillUnits + mountainCount,
+            mountainFillUnits: nextMountainFillUnits,
             moves: [...current.moves, '$from->mountain'],
           );
 
           final stateId = nextNode.stateId(activeIndexes);
-          if (visited.add(stateId)) {
-            queue.add(nextNode);
-          }
+          if (!visited.add(stateId)) continue;
+
+          candidateNodes.add((
+            score: scoreMove(
+              beforeTubes: current.tubes,
+              afterTubes: nextTubes,
+              from: from,
+              beforeMountainFill: current.mountainFillUnits,
+              afterMountainFill: nextMountainFillUnits,
+            ),
+            node: nextNode,
+          ));
         }
+      }
+
+      candidateNodes.sort((a, b) => b.score.compareTo(a.score));
+      for (final candidate in candidateNodes) {
+        queue.add(candidate.node);
       }
     }
 
