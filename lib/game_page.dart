@@ -1730,15 +1730,89 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   bool _canMoveInDynamicSolver(List<List<int>> tubes, int from, int to) {
-    // Solver, gerçek oyun kuralından daha dar davranmamalı.
-    // Aksi halde yapılabilir ama çözüm için gerekli hamleleri yanlışlıkla eler.
     return _canPourIn(tubes, from, to);
+  }
+
+  List<_SolverMove> _orderedDynamicSolverMoves(
+    List<List<int>> tubes,
+    List<int> activeIndexes,
+  ) {
+    final moves = <(_SolverMove move, int score)>[];
+
+    for (final from in activeIndexes) {
+      if (tubes[from].isEmpty) continue;
+      final movingColor = tubes[from].last;
+      final fromUniform = _isUniformTube(tubes[from]);
+
+      for (final to in activeIndexes) {
+        if (from == to) continue;
+        if (!_canMoveInDynamicSolver(tubes, from, to)) continue;
+
+        final target = tubes[to];
+        var score = 0;
+
+        if (target.isNotEmpty && target.last == movingColor) score += 100;
+        if (target.isEmpty) score += 25;
+        if (fromUniform) score += 10;
+
+        final pourAmount = _pourCountIn(tubes, from, to);
+        score += pourAmount * 8;
+
+        final nextLen = target.length + pourAmount;
+        if (nextLen == _tubeCapacityIn(tubes, to)) score += 30;
+
+        moves.add((_SolverMove(from, to), score));
+      }
+    }
+
+    moves.sort((a, b) => b.$2.compareTo(a.$2));
+    return moves.map((e) => e.$1).toList(growable: false);
+  }
+
+  bool _leadsToSolutionFast(
+    List<List<int>> tubes,
+    List<int> activeIndexes,
+    int depth,
+    Set<String> seen,
+    int maxNodes,
+    List<int> nodesLeft,
+  ) {
+    if (_isDynamicSolverSolved(tubes, activeIndexes)) return true;
+    if (depth <= 0) return false;
+    if (nodesLeft[0] <= 0) return false;
+
+    final stateKey = _encodeDynamicSolverState(tubes, activeIndexes);
+    if (!seen.add(stateKey)) return false;
+
+    final moves = _orderedDynamicSolverMoves(tubes, activeIndexes);
+
+    for (final move in moves) {
+      if (nodesLeft[0] <= 0) break;
+      nodesLeft[0]--;
+
+      final next = _cloneBoard(tubes);
+      _doPourIn(next, move.from, move.to);
+
+      if (_leadsToSolutionFast(
+        next,
+        activeIndexes,
+        depth - 1,
+        seen,
+        maxNodes,
+        nodesLeft,
+      )) {
+        return true;
+      }
+    }
+
+    seen.remove(stateKey);
+    return false;
   }
 
   _SolverMove? _solveCurrentStateDynamically(
     List<List<int>> sourceTubes, {
     int maxVisited = 12000,
-    int maxDepth = 64,
+    int maxDepth = 5,
   }) {
     if (!_canUseDynamicJokerSolver) {
       debugPrint('[JOKER] solver kapalı: canUse=false');
@@ -1756,61 +1830,34 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return null;
     }
 
-    final initialBoard = _cloneBoard(sourceTubes);
-    final visited = <String>{
-      _encodeDynamicSolverState(initialBoard, activeIndexes),
-    };
-    final queue = Queue<_SolverNode>();
-    queue.add(
-      _SolverNode(
-        board: initialBoard,
-        firstMove: null,
-        depth: 0,
-      ),
-    );
+    final orderedMoves = _orderedDynamicSolverMoves(sourceTubes, activeIndexes);
+    var tested = 0;
 
-    var expanded = 0;
+    for (final move in orderedMoves) {
+      tested++;
+      final next = _cloneBoard(sourceTubes);
+      _doPourIn(next, move.from, move.to);
 
-    while (queue.isNotEmpty && visited.length < maxVisited) {
-      final node = queue.removeFirst();
-      expanded++;
+      final nodesLeft = <int>[maxVisited];
+      final solved = _leadsToSolutionFast(
+        next,
+        activeIndexes,
+        maxDepth,
+        <String>{},
+        maxVisited,
+        nodesLeft,
+      );
 
-      if (node.depth >= maxDepth) continue;
-
-      for (final from in activeIndexes) {
-        if (node.board[from].isEmpty) continue;
-
-        for (final to in activeIndexes) {
-          if (from == to) continue;
-          if (!_canMoveInDynamicSolver(node.board, from, to)) continue;
-
-          final nextBoard = _cloneBoard(node.board);
-          _doPourIn(nextBoard, from, to);
-
-          final stateKey = _encodeDynamicSolverState(nextBoard, activeIndexes);
-          if (!visited.add(stateKey)) continue;
-
-          final move = node.firstMove ?? _SolverMove(from, to);
-          if (_isDynamicSolverSolved(nextBoard, activeIndexes)) {
-            debugPrint(
-              '[JOKER] çözüm bulundu | expanded=$expanded visited=${visited.length} depth=${node.depth + 1} first=${move.from}->${move.to}',
-            );
-            return move;
-          }
-
-          queue.add(
-            _SolverNode(
-              board: nextBoard,
-              firstMove: move,
-              depth: node.depth + 1,
-            ),
-          );
-        }
+      if (solved) {
+        debugPrint(
+          '[JOKER] hızlı çözüm bulundu | tested=$tested first=${move.from}->${move.to} remainingNodes=${nodesLeft[0]} depth=$maxDepth',
+        );
+        return move;
       }
     }
 
     debugPrint(
-      '[JOKER] çözüm yok | expanded=$expanded visited=${visited.length} queueEmpty=${queue.isEmpty} maxVisited=$maxVisited maxDepth=$maxDepth',
+      '[JOKER] hızlı çözüm yok | tested=$tested candidates=${orderedMoves.length} depth=$maxDepth maxVisited=$maxVisited',
     );
     return null;
   }
