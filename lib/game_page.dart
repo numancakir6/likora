@@ -439,7 +439,11 @@ class _JokerSearchNode {
   });
 
   String stateId(List<int> activeIndexes) {
-    final tubesPart = activeIndexes.map((i) => tubes[i].join(',')).join('|');
+    final normalizedTubes = activeIndexes
+        .map((i) => tubes[i].join(','))
+        .toList(growable: false)
+      ..sort();
+    final tubesPart = normalizedTubes.join('|');
     return '$tubesPart#$mountainFillUnits';
   }
 
@@ -1838,6 +1842,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       }
     }
 
+    if (iterations >= maxIterations) {
+      debugPrint(
+        '[JOKER] limit reached | iterations=$iterations visited=${visited.length} queue=${queue.length}',
+      );
+    }
+
     return null;
   }
 
@@ -1884,7 +1894,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           } else {
             final parts = firstMove.split('->');
             if (parts.length != 2) {
-              await _vibrateLight();
+              _vibrateLight();
               showBottomHint('Joker hamlesi çözülemedi');
               return;
             }
@@ -1900,12 +1910,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         if (_history.isNotEmpty) {
           showBottomHint('Bu konumdan çözüm yok, bir hamle geri alınıyor...');
           await _undo();
-          if (!mounted) return;
           await Future.delayed(const Duration(milliseconds: 200));
           continue;
         }
 
-        await _vibrateLight();
+        _vibrateLight();
         showBottomHint('Çözüm bulunamadı, ekstra tüp almayı dene!');
         return;
       }
@@ -2505,7 +2514,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   Future<void> _undo() async {
     // Animasyon devam ediyorsa veya geçmiş yoksa işlem yapma
     if (_activePlans.isNotEmpty || _history.isEmpty) {
-      await _vibrateLight();
+      _vibrateLight();
       return;
     }
 
@@ -2536,12 +2545,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _persistLevelState();
     unawaited(_persistUndoHistoryState());
 
-    await _playClick();
-    await _vibrateTap();
+    _playClick();
+    _vibrateTap();
     SfxService.startWater();
 
-    // Slosh animasyonu bitince temizle
     await Future.delayed(const Duration(milliseconds: 700));
+
     SfxService.stopWater();
     if (!mounted) return;
     setState(() {
