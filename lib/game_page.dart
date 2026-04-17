@@ -657,6 +657,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _isJokerRewardAdReady = false;
   bool _jokerBusy = false;
   static const int _jokerCost = 25;
+  static const List<int> _jokerSearchLimits = [40000, 120000, 300000];
 
   bool get _adsEnabledOnThisPlatform {
     if (kIsWeb) return false;
@@ -1911,6 +1912,27 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return null;
   }
 
+  Future<List<String>?> _findJokerSolutionWithStages() async {
+    for (int i = 0; i < _jokerSearchLimits.length; i++) {
+      final limit = _jokerSearchLimits[i];
+      final solution = await Future<List<String>?>(() {
+        return findSolution(maxIterations: limit);
+      });
+
+      if (solution != null) {
+        return solution;
+      }
+
+      if (i < _jokerSearchLimits.length - 1 && mounted) {
+        final nextLimit = _jokerSearchLimits[i + 1];
+        showBottomHint('Joker daha derin arıyor... ($limit → $nextLimit)');
+        await Future.delayed(const Duration(milliseconds: 120));
+      }
+    }
+
+    return null;
+  }
+
   Future<void> _useJokerWithEconomy() async {
     if (_jokerBusy || _activePlans.isNotEmpty || _gameWon) return;
 
@@ -1938,7 +1960,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       if (!jokerGranted) return;
 
       while (mounted) {
-        final solution = findSolution();
+        final solution = await _findJokerSolutionWithStages();
 
         if (solution != null && solution.isNotEmpty) {
           final firstMove = solution.first;
@@ -1975,7 +1997,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         }
 
         _vibrateLight();
-        showBottomHint('Çözüm bulunamadı, ekstra tüp almayı dene!');
+        showBottomHint('Çözüm bulunamadı, reklam tüpünü açmayı dene!');
         return;
       }
     } finally {
