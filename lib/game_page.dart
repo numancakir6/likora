@@ -1769,19 +1769,20 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return moves.map((e) => e.$1).toList(growable: false);
   }
 
-  bool _dfsCanSolveDynamic(
+  bool _leadsToSolutionFast(
     List<List<int>> tubes,
     List<int> activeIndexes,
-    int depthRemaining,
-    Set<String> pathSeen,
+    int depth,
+    Set<String> seen,
+    int maxNodes,
     List<int> nodesLeft,
   ) {
     if (_isDynamicSolverSolved(tubes, activeIndexes)) return true;
-    if (depthRemaining <= 0) return false;
+    if (depth <= 0) return false;
     if (nodesLeft[0] <= 0) return false;
 
     final stateKey = _encodeDynamicSolverState(tubes, activeIndexes);
-    if (!pathSeen.add(stateKey)) return false;
+    if (!seen.add(stateKey)) return false;
 
     final moves = _orderedDynamicSolverMoves(tubes, activeIndexes);
 
@@ -1792,26 +1793,26 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       final next = _cloneBoard(tubes);
       _doPourIn(next, move.from, move.to);
 
-      if (_dfsCanSolveDynamic(
+      if (_leadsToSolutionFast(
         next,
         activeIndexes,
-        depthRemaining - 1,
-        pathSeen,
+        depth - 1,
+        seen,
+        maxNodes,
         nodesLeft,
       )) {
-        pathSeen.remove(stateKey);
         return true;
       }
     }
 
-    pathSeen.remove(stateKey);
+    seen.remove(stateKey);
     return false;
   }
 
   _SolverMove? _solveCurrentStateDynamically(
     List<List<int>> sourceTubes, {
-    int maxVisited = 18000,
-    int maxDepth = 18,
+    int maxVisited = 80000,
+    int maxDepth = 20,
   }) {
     if (!_canUseDynamicJokerSolver) {
       debugPrint('[JOKER] solver kapalı: canUse=false');
@@ -1830,50 +1831,33 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     final orderedMoves = _orderedDynamicSolverMoves(sourceTubes, activeIndexes);
-    if (orderedMoves.isEmpty) {
-      debugPrint('[JOKER] aday hamle yok');
-      return null;
-    }
+    var tested = 0;
 
-    for (int depth = 1; depth <= maxDepth; depth++) {
-      var tested = 0;
+    for (final move in orderedMoves) {
+      tested++;
+      final next = _cloneBoard(sourceTubes);
+      _doPourIn(next, move.from, move.to);
+
       final nodesLeft = <int>[maxVisited];
-
-      for (final move in orderedMoves) {
-        if (nodesLeft[0] <= 0) break;
-        tested++;
-        nodesLeft[0]--;
-
-        final next = _cloneBoard(sourceTubes);
-        _doPourIn(next, move.from, move.to);
-
-        final solved = _dfsCanSolveDynamic(
-          next,
-          activeIndexes,
-          depth - 1,
-          <String>{},
-          nodesLeft,
-        );
-
-        if (solved) {
-          debugPrint(
-            '[JOKER] IDDFS çözüm bulundu | depth=$depth tested=$tested first=${move.from}->${move.to} remainingNodes=${nodesLeft[0]}',
-          );
-          return move;
-        }
-      }
-
-      debugPrint(
-        '[JOKER] IDDFS depth başarısız | depth=$depth tested=$tested candidates=${orderedMoves.length} remainingNodes=${nodesLeft[0]}',
+      final solved = _leadsToSolutionFast(
+        next,
+        activeIndexes,
+        maxDepth,
+        <String>{},
+        maxVisited,
+        nodesLeft,
       );
 
-      if (nodesLeft[0] <= 0) {
-        break;
+      if (solved) {
+        debugPrint(
+          '[JOKER] hızlı çözüm bulundu | tested=$tested first=${move.from}->${move.to} remainingNodes=${nodesLeft[0]} depth=$maxDepth',
+        );
+        return move;
       }
     }
 
     debugPrint(
-      '[JOKER] IDDFS çözüm yok | candidates=${orderedMoves.length} maxDepth=$maxDepth maxVisited=$maxVisited',
+      '[JOKER] hızlı çözüm yok | tested=$tested candidates=${orderedMoves.length} depth=$maxDepth maxVisited=$maxVisited',
     );
     return null;
   }
@@ -1927,36 +1911,26 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
       _SolverMove? move = _solveCurrentStateDynamically(_tubes);
 
-      showBottomHint(
-        move == null
-            ? 'İleri çözüm bulunamadı | history=${_history.length}'
-            : 'İleri çözüm bulundu: ${move.from + 1}→${move.to + 1}',
-      );
-
       if (move == null) {
         final dynamicRewindCount = _findDynamicJokerRewindCount();
-
-        showBottomHint(
-          dynamicRewindCount == null
-              ? 'Geçmişte çözüm yok'
-              : 'Geçmişte çözüm var | geri=${dynamicRewindCount}',
-        );
 
         if (dynamicRewindCount != null && dynamicRewindCount > 0) {
           await _rewindHistoryForJoker(dynamicRewindCount);
           move = _solveCurrentStateDynamically(_tubes);
-
-          showBottomHint(
-            move == null
-                ? 'Geri sardı ama yine çözüm yok'
-                : 'Geri sardı, çözüm bulundu: ${move.from + 1}→${move.to + 1}',
-          );
         }
+      }
+
+      // Son çare: history'de de çözüm bulunamadıysa başa sar
+      if (move == null) {
+        final rewindAll = _history.length;
+        if (rewindAll > 0) {
+          await _rewindHistoryForJoker(rewindAll);
+        }
+        move = _solveCurrentStateDynamically(_tubes);
       }
 
       if (move == null || !_canPourIn(_tubes, move.from, move.to)) {
         _vibrateLight();
-        showBottomHint('Joker için uygun yol bulunamadı');
         return;
       }
 
