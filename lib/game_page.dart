@@ -1769,20 +1769,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return moves.map((e) => e.$1).toList(growable: false);
   }
 
-  bool _leadsToSolutionFast(
+  bool _dfsCanSolveDynamic(
     List<List<int>> tubes,
     List<int> activeIndexes,
-    int depth,
-    Set<String> seen,
-    int maxNodes,
+    int depthRemaining,
+    Set<String> pathSeen,
     List<int> nodesLeft,
   ) {
     if (_isDynamicSolverSolved(tubes, activeIndexes)) return true;
-    if (depth <= 0) return false;
+    if (depthRemaining <= 0) return false;
     if (nodesLeft[0] <= 0) return false;
 
     final stateKey = _encodeDynamicSolverState(tubes, activeIndexes);
-    if (!seen.add(stateKey)) return false;
+    if (!pathSeen.add(stateKey)) return false;
 
     final moves = _orderedDynamicSolverMoves(tubes, activeIndexes);
 
@@ -1793,26 +1792,26 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       final next = _cloneBoard(tubes);
       _doPourIn(next, move.from, move.to);
 
-      if (_leadsToSolutionFast(
+      if (_dfsCanSolveDynamic(
         next,
         activeIndexes,
-        depth - 1,
-        seen,
-        maxNodes,
+        depthRemaining - 1,
+        pathSeen,
         nodesLeft,
       )) {
+        pathSeen.remove(stateKey);
         return true;
       }
     }
 
-    seen.remove(stateKey);
+    pathSeen.remove(stateKey);
     return false;
   }
 
   _SolverMove? _solveCurrentStateDynamically(
     List<List<int>> sourceTubes, {
-    int maxVisited = 12000,
-    int maxDepth = 5,
+    int maxVisited = 18000,
+    int maxDepth = 18,
   }) {
     if (!_canUseDynamicJokerSolver) {
       debugPrint('[JOKER] solver kapalı: canUse=false');
@@ -1831,33 +1830,50 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     final orderedMoves = _orderedDynamicSolverMoves(sourceTubes, activeIndexes);
-    var tested = 0;
+    if (orderedMoves.isEmpty) {
+      debugPrint('[JOKER] aday hamle yok');
+      return null;
+    }
 
-    for (final move in orderedMoves) {
-      tested++;
-      final next = _cloneBoard(sourceTubes);
-      _doPourIn(next, move.from, move.to);
-
+    for (int depth = 1; depth <= maxDepth; depth++) {
+      var tested = 0;
       final nodesLeft = <int>[maxVisited];
-      final solved = _leadsToSolutionFast(
-        next,
-        activeIndexes,
-        maxDepth,
-        <String>{},
-        maxVisited,
-        nodesLeft,
+
+      for (final move in orderedMoves) {
+        if (nodesLeft[0] <= 0) break;
+        tested++;
+        nodesLeft[0]--;
+
+        final next = _cloneBoard(sourceTubes);
+        _doPourIn(next, move.from, move.to);
+
+        final solved = _dfsCanSolveDynamic(
+          next,
+          activeIndexes,
+          depth - 1,
+          <String>{},
+          nodesLeft,
+        );
+
+        if (solved) {
+          debugPrint(
+            '[JOKER] IDDFS çözüm bulundu | depth=$depth tested=$tested first=${move.from}->${move.to} remainingNodes=${nodesLeft[0]}',
+          );
+          return move;
+        }
+      }
+
+      debugPrint(
+        '[JOKER] IDDFS depth başarısız | depth=$depth tested=$tested candidates=${orderedMoves.length} remainingNodes=${nodesLeft[0]}',
       );
 
-      if (solved) {
-        debugPrint(
-          '[JOKER] hızlı çözüm bulundu | tested=$tested first=${move.from}->${move.to} remainingNodes=${nodesLeft[0]} depth=$maxDepth',
-        );
-        return move;
+      if (nodesLeft[0] <= 0) {
+        break;
       }
     }
 
     debugPrint(
-      '[JOKER] hızlı çözüm yok | tested=$tested candidates=${orderedMoves.length} depth=$maxDepth maxVisited=$maxVisited',
+      '[JOKER] IDDFS çözüm yok | candidates=${orderedMoves.length} maxDepth=$maxDepth maxVisited=$maxVisited',
     );
     return null;
   }
