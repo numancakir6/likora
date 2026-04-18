@@ -657,7 +657,47 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _isJokerRewardAdReady = false;
   bool _jokerBusy = false;
   static const int _jokerCost = 25;
-  static const List<int> _jokerSearchLimits = [40000, 120000, 300000];
+  List<int> _jokerSearchLimitsForCurrentState() {
+    final activeTubeCount = _jokerActiveTubeIndexesFor(_tubes).length;
+    final freshStart = _history.isEmpty;
+
+    if (widget.mapNumber == 1) {
+      if (widget.level <= 3) {
+        return freshStart ? [4000, 10000] : [6000, 16000, 40000];
+      }
+      if (widget.level <= 6) {
+        return freshStart ? [7000, 18000] : [10000, 30000, 70000];
+      }
+      return freshStart ? [10000, 28000, 70000] : [14000, 45000, 100000];
+    }
+
+    if (widget.mapNumber == 2) {
+      if (widget.level <= 5) {
+        return freshStart ? [10000, 30000, 70000] : [16000, 45000, 100000];
+      }
+      if (widget.level <= 7) {
+        return freshStart ? [18000, 60000, 140000] : [25000, 80000, 180000];
+      }
+      return freshStart ? [30000, 100000, 220000] : [40000, 120000, 300000];
+    }
+
+    if (widget.mapNumber == 3) {
+      if (widget.level <= 5) {
+        return freshStart ? [22000, 70000, 160000] : [30000, 100000, 220000];
+      }
+      return freshStart ? [35000, 120000, 300000] : [50000, 160000, 360000];
+    }
+
+    if (activeTubeCount <= 8) {
+      return freshStart ? [7000, 18000] : [10000, 30000, 70000];
+    }
+
+    if (activeTubeCount <= 11) {
+      return freshStart ? [12000, 40000, 90000] : [18000, 60000, 140000];
+    }
+
+    return freshStart ? [25000, 80000, 180000] : [35000, 120000, 300000];
+  }
 
   bool get _adsEnabledOnThisPlatform {
     if (kIsWeb) return false;
@@ -1913,8 +1953,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<List<String>?> _findJokerSolutionWithStages() async {
-    for (int i = 0; i < _jokerSearchLimits.length; i++) {
-      final limit = _jokerSearchLimits[i];
+    final limits = _jokerSearchLimitsForCurrentState();
+
+    for (int i = 0; i < limits.length; i++) {
+      final limit = limits[i];
       final solution = await Future<List<String>?>(() {
         return findSolution(maxIterations: limit);
       });
@@ -1923,10 +1965,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         return solution;
       }
 
-      if (i < _jokerSearchLimits.length - 1 && mounted) {
-        final nextLimit = _jokerSearchLimits[i + 1];
+      if (i < limits.length - 1 && mounted) {
+        final nextLimit = limits[i + 1];
         showBottomHint('Joker daha derin arıyor... ($limit → $nextLimit)');
-        await Future.delayed(const Duration(milliseconds: 120));
+        await Future.delayed(const Duration(milliseconds: 90));
       }
     }
 
