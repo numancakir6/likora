@@ -2455,6 +2455,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     unawaited(_persistUndoHistoryState());
 
     final waterStartMs = (kPourDuration.inMilliseconds * 0.58).round();
+    // Her plan kendi su sesini kendi süresince yönetir
     final waterStopMs = (kPourDuration.inMilliseconds * 0.90).round();
 
     Future.delayed(Duration(milliseconds: waterStartMs), () {
@@ -2463,7 +2464,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     });
 
     Future.delayed(Duration(milliseconds: waterStopMs), () {
-      if (!mounted) return;
+      if (!mounted || !_activePlans.contains(plan)) return;
+      // Sadece bu plan hâlâ tek aktif plan ise sesi durdur
       if (_activePlans.length <= 1) {
         SfxService.stopWater();
       }
@@ -2487,11 +2489,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       });
       _persistLevelState();
 
+      // Tüm aktif planlar bittikten sonra sesi kapat
       if (_activePlans.isEmpty) {
         SfxService.stopWater();
       }
 
-      if (didWin) {
+      if (didWin && _activePlans.isEmpty) {
         Future.delayed(const Duration(milliseconds: 300), () {
           if (!mounted) return;
           final allDone = <int, int>{};
@@ -2502,16 +2505,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           }
           _triggerDoneCelebration(allDone, isWin: true);
         });
-      }
-
-      _drainQueue();
-
-      if (didWin && _activePlans.isEmpty) {
         // Eruption animasyonunun (~3.5sn) bitmesini bekle
         Future.delayed(const Duration(milliseconds: 4500), () {
           if (mounted) _showWinDialog();
         });
       }
+
+      _drainQueue();
     });
   }
 
@@ -2557,6 +2557,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     unawaited(_persistUndoHistoryState());
 
     final waterStartMs = (kPourDuration.inMilliseconds * 0.58).round();
+    // Her plan kendi su sesini kendi süresince yönetir
     final waterStopMs = (kPourDuration.inMilliseconds * 0.90).round();
 
     Future.delayed(Duration(milliseconds: waterStartMs), () {
@@ -2565,7 +2566,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     });
 
     Future.delayed(Duration(milliseconds: waterStopMs), () {
-      if (!mounted) return;
+      if (!mounted || !_activePlans.contains(plan)) return;
+      // Sadece bu plan hâlâ tek aktif plan ise sesi durdur;
+      // aksi hâlde başka bir akış devam ediyor, ses sürsün.
       if (_activePlans.length <= 1) {
         SfxService.stopWater();
       }
@@ -2573,12 +2576,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     // Animasyon biter bitmez planı kaldır
     Future.delayed(kPourDuration, () {
-      _activePlans.remove(plan);
+      if (!mounted) return;
 
-// 🔥 BURAYA AL
       _tryRefillSourceTube(from);
       _tryRefillSourceTube(to);
-      if (!mounted) return;
 
       _updateBlindVisibilityAfterPour(from, to, count);
 
@@ -2599,38 +2600,39 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       });
       _persistLevelState();
 
+      // Tüm aktif planlar bittikten sonra sesi kapat
       if (_activePlans.isEmpty) {
         SfxService.stopWater();
       }
 
       if (didWin) {
-        // Oyun bitti — son döküm görsel olarak tam bitmesini bekle, sonra tüm şişelerden aynı anda burst
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (!mounted) return;
-          final allDone = <int, int>{};
-          for (int i = 0; i < _tubes.length; i++) {
-            if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
-              allDone[i] = _tubes[i].first;
+        // Tüm paralel akışlar bitene kadar kutlamayı ve win dialog'u bekle
+        if (_activePlans.isEmpty) {
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (!mounted) return;
+            final allDone = <int, int>{};
+            for (int i = 0; i < _tubes.length; i++) {
+              if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
+                allDone[i] = _tubes[i].first;
+              }
             }
-          }
-          _triggerDoneCelebration(allDone, isWin: true);
-        });
+            _triggerDoneCelebration(allDone, isWin: true);
+          });
+          // Map 3'te eruption animasyonunu bekle, diğerlerinde kısa gecikme
+          final winDelay = widget.mapNumber == 3
+              ? const Duration(milliseconds: 4500)
+              : const Duration(milliseconds: 2100);
+          Future.delayed(winDelay, () {
+            if (mounted) _showWinDialog();
+          });
+        }
+        // Eğer başka aktif plan varsa, o planın kendi future'ı bitince
+        // _activePlans.isEmpty kontrolüne girecek ve oradan tetikleyecek.
       } else {
         // Normal tamamlama — sadece yeni dolan şişeler
         _triggerDoneCelebration(newlyDone);
-      }
-
-      // Kuyruktaki komutları işle
-      _drainQueue();
-
-      if (didWin && _activePlans.isEmpty) {
-        // Map 3'te eruption animasyonunu bekle, diğerlerinde kısa gecikme
-        final winDelay = widget.mapNumber == 3
-            ? const Duration(milliseconds: 4500)
-            : const Duration(milliseconds: 2100);
-        Future.delayed(winDelay, () {
-          if (mounted) _showWinDialog();
-        });
+        // Kuyruktaki komutları işle
+        _drainQueue();
       }
     });
   }
@@ -4368,9 +4370,14 @@ class _TubeStageState extends State<_TubeStage> {
             getMountainMouth: _mountainMouthPos,
             getMountainSurface: _mountainSurfacePos,
             blindMode: widget.blindMode,
-            visibleLayerCount: plan.fromSnapshot.isEmpty
-                ? 0
-                : min(1, plan.fromSnapshot.length),
+            // Sorun 3b düzeltmesi: Açık tüpün gerçek görünür katman sayısını
+            // FlyingTube'a geç. Böylece akış animasyonu sırasında tüp
+            // snapshot'a göre doğru sayıda açık katmanla gösterilir.
+            visibleLayerCount: widget.blindMode
+                ? (plan.fromIdx < widget.visibleLayerCounts.length
+                    ? widget.visibleLayerCounts[plan.fromIdx]
+                    : (plan.fromSnapshot.isEmpty ? 0 : 1))
+                : plan.fromSnapshot.length,
             revealGlowTick: 0,
             tubeStyle:
                 widget.tubeStyles[plan.fromIdx] ?? PuzzleTubeStyle.classic,
@@ -6940,14 +6947,31 @@ class _LiquidPainter extends CustomPainter {
   }
 
   // blindMode=false → normal (ardışık aynı renk birleşir)
-  // blindMode=true  → her eleman ayrı katman (alt katmanlar gizlensin diye)
+  // blindMode=true  → gizli katmanlar ayrı tutulur; açılmış ardışık aynı renk birleşir
   List<_VisualLayer> _buildLayers() {
     final layers = <_VisualLayer>[];
 
     if (blindMode) {
-      // Blind modda her elemanı ayrı tut — birleştirme
-      for (final c in tube) {
-        layers.add(_VisualLayer(colorIdx: c, volume: 1));
+      // visibleLayerCount: en üstteki kaç katmanın görünür olduğunu söyler.
+      // Alttaki (totalCount - visibleLayerCount) adet katman gizlidir.
+      final totalCount = tube.length;
+      final hiddenCount = max(0, totalCount - visibleLayerCount);
+
+      for (int i = 0; i < tube.length; i++) {
+        final c = tube[i];
+        final isVisible = i >= hiddenCount;
+
+        // Görünür bir katman, bir önceki katman da görünür ve aynı renk ise birleştir.
+        // Gizli katmanlar hiçbir zaman birleştirilmez (her biri ayrı '?' gösterir).
+        if (isVisible &&
+            layers.isNotEmpty &&
+            layers.last.colorIdx == c &&
+            (layers.length - 1) >= hiddenCount) {
+          layers[layers.length - 1] =
+              layers.last.copyWith(volume: layers.last.volume + 1);
+        } else {
+          layers.add(_VisualLayer(colorIdx: c, volume: 1));
+        }
       }
     } else {
       for (final c in tube) {
@@ -7016,13 +7040,18 @@ class _LiquidPainter extends CustomPainter {
       final vTop = accum + layer.volume;
       final safeIdx = layer.colorIdx.clamp(0, kColors.length - 1).toInt();
       final isTop = i == layers.length - 1;
+      // blindBaseLayerCount: orijinal tube eleman sayısı (görünürlük hesabı için)
       final blindBaseLayerCount = blindMode ? tube.length : layers.length;
       final safeVisibleCount =
           visibleLayerCount.clamp(0, blindBaseLayerCount).toInt();
-      final hiddenBelow =
+      // Gizli orijinal katman sayısı
+      final hiddenOriginalCount =
           blindMode ? max(0, blindBaseLayerCount - safeVisibleCount) : 0;
-      final currentHiddenBelow = min(hiddenBelow, max(0, layers.length - 1));
-      final isHidden = blindMode && i < currentHiddenBelow;
+      // _buildLayers() sonrasında: layers dizisinde gizli katmanlar hep başta,
+      // görünür katmanlar sonda (birleştirilmiş olabilir). Gizli orijinal katmanlar
+      // yoğunlaştırılmadan (1 birim = 1 eleman) oluştuğu için layers'daki
+      // ilk `hiddenOriginalCount` kadar layer gizlidir.
+      final isHidden = blindMode && i < hiddenOriginalCount;
 
       final fill =
           isHidden ? const Color(0xFF2A2535) : _solidColorForIndex(safeIdx);
@@ -7232,13 +7261,10 @@ class _LiquidPainter extends CustomPainter {
         );
       }
 
-      final revealLayerIndex = blindMode && safeVisibleCount > 0
-          ? max(
-              0,
-              layers.length -
-                  (safeVisibleCount -
-                      max(0, blindBaseLayerCount - layers.length)))
-          : -1;
+      // Reveal glow: en son görünür katmanın (yani hiddenOriginalCount'tan sonraki
+      // ilk layer) index'i. Birleştirme sonrası bu her zaman hiddenOriginalCount'a eşittir.
+      final revealLayerIndex =
+          blindMode && safeVisibleCount > 0 ? hiddenOriginalCount : -1;
       final isRevealLayer = blindMode && !isHidden && i == revealLayerIndex;
 
       if (isRevealLayer && revealGlowTick > 0) {
@@ -7261,7 +7287,9 @@ class _LiquidPainter extends CustomPainter {
       // blindMode: gri katmanlar arası ince ayırıcı çizgi + ortasına '?'
       if (isHidden) {
         // Katmanlar arası ince çizgi (üst kenar)
-        if (i < layers.length - 2) {
+        // Gizli katmanlar arası ince ayırıcı çizgi:
+        // Bu katmandan sonra bir sonraki katman da hâlâ gizliyse çiz
+        if (i < hiddenOriginalCount - 1) {
           // üstteki katmanın alt yüzeyi = bu katmanın üst yüzeyi
           final divSurface = _surface(vTop, tilt, slosh * 0.2);
           canvas.drawPath(
