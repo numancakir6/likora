@@ -1521,7 +1521,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
     _visibleLayerCounts[from] = newFromVisible.clamp(0, newFromLen).toInt();
 
-    _visibleLayerCounts[to] = min(newToLen, oldToVisible + pouredCount);
+    // Hedef tüpe dökülen sıvı gizli (gri) olarak eklenir; mevcut görünür
+    // katman sayısı değişmez. Böylece animasyon sırasında ve sonrasında
+    // hedef tüpteki önceden gizli katmanlar açılmaz.
+    _visibleLayerCounts[to] = oldToVisible.clamp(0, newToLen);
 
     if (shouldRevealNextTop) {
       _triggerBlindRevealFlash(from);
@@ -4216,12 +4219,7 @@ class _TubeStageState extends State<_TubeStage> {
             bubbleBurst: receiveBubbleBurst,
             receiveFlow: receiveFlow,
             blindMode: widget.blindMode,
-            visibleLayerCount: widget.blindMode
-                ? min(
-                    tubeCapacity,
-                    widget.visibleLayerCounts[idx] + plan.count,
-                  )
-                : widget.visibleLayerCounts[idx],
+            visibleLayerCount: widget.visibleLayerCounts[idx],
             revealGlowTick: widget.blindRevealFlashTicks[idx] ?? 0,
             tubeStyle: tubeStyle,
             capacity: tubeCapacity,
@@ -7324,7 +7322,24 @@ class _LiquidPainter extends CustomPainter {
       // ilk layer) index'i. Birleştirme sonrası bu her zaman hiddenOriginalCount'a eşittir.
       final revealLayerIndex =
           blindMode && safeVisibleCount > 0 ? hiddenOriginalCount : -1;
-      final isRevealLayer = false;
+      final isRevealLayer = blindMode && !isHidden && i == revealLayerIndex;
+
+      if (isRevealLayer && revealGlowTick > 0) {
+        final revealPulse = 1.0;
+        canvas.drawPath(
+          bandPath,
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.18 * revealPulse)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0),
+        );
+        canvas.drawPath(
+          bandPath,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0
+            ..color = Colors.white.withValues(alpha: 0.24 * revealPulse),
+        );
+      }
 
       // blindMode: gri katmanlar arası ince ayırıcı çizgi + ortasına '?'
       if (isHidden) {
@@ -7376,18 +7391,23 @@ class _LiquidPainter extends CustomPainter {
     }
 
     // Üst yüzey parlaması
-    if (totalVol > 0.0001 && !blindMode) {
+    if (totalVol > 0.0001) {
+      final topColorIdx = layers.isNotEmpty ? layers.last.colorIdx : -1;
+      final topIsLava = _isLavaColorIndex(topColorIdx);
       canvas.drawPath(
         _surfaceLine(totalVol, tilt, slosh),
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.18)
-          ..strokeWidth = 1.0
+          ..color = (topIsLava ? kLavaCore : Colors.white)
+              .withValues(alpha: topIsLava ? 0.34 : 0.18)
+          ..strokeWidth = topIsLava ? 1.4 : 1.0
           ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round,
+          ..strokeCap = StrokeCap.round
+          ..maskFilter =
+              topIsLava ? const MaskFilter.blur(BlurStyle.normal, 1.2) : null,
       );
 
       // Sıçrama efekti
-      if (!blindMode && splash > 0.02) {
+      if (splash > 0.02) {
         final s = _surface(totalVol, tilt, 0);
         final tipX = tilt < 0 ? _ir : _il;
         final tipY = lerpDouble(tilt < 0 ? s.rY : s.lY, _it + 1.2, flowBias)!;
@@ -7403,7 +7423,7 @@ class _LiquidPainter extends CustomPainter {
     }
 
     // 🫧 Kabarcık efekti (görünür güçlendirilmiş sürüm)
-    if (!blindMode && totalVol > 0.0001 && bubbleBurst > 0.01) {
+    if (totalVol > 0.0001 && bubbleBurst > 0.01) {
       final s = _surface(totalVol, tilt, slosh * 0.25);
       final topColorIdx = layers.isNotEmpty ? layers.last.colorIdx : -1;
       final burstIsLava = _isLavaColorIndex(topColorIdx) ||
