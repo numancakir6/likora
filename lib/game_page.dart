@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:collection/collection.dart';
 
 // ─────────────────────────────────────────────
 // OYUN SABİTLERİ
@@ -408,11 +409,15 @@ class _JokerSearchNode {
   final List<List<int>> tubes;
   final int mountainFillUnits;
   final List<String> moves;
+  final Map<int, List<List<int>>> refillQueues;
+  final int priority;
 
   const _JokerSearchNode({
     required this.tubes,
     required this.mountainFillUnits,
     required this.moves,
+    this.refillQueues = const {},
+    this.priority = 0,
   });
 
   String stateId(List<int> activeIndexes) {
@@ -421,7 +426,17 @@ class _JokerSearchNode {
         .toList(growable: false)
       ..sort();
     final tubesPart = normalizedTubes.join('|');
-    return '$tubesPart#$mountainFillUnits';
+
+    final normalizedRefills = refillQueues.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final refillPart = normalizedRefills
+        .map(
+          (entry) =>
+              '${entry.key}:${entry.value.map((pack) => pack.join(',')).join(';')}',
+        )
+        .join('|');
+
+    return '$tubesPart#$mountainFillUnits#$refillPart';
   }
 
   bool isSolved({
@@ -659,10 +674,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     if (widget.mapNumber == 3) {
-      if (widget.level <= 5) {
-        return freshStart ? [22000, 70000, 160000] : [30000, 100000, 220000];
+      if (widget.level <= 3) {
+        return freshStart ? [15000, 50000, 120000] : [20000, 70000, 160000];
       }
-      return freshStart ? [35000, 120000, 300000] : [50000, 160000, 360000];
+      if (widget.level <= 6) {
+        return freshStart ? [22000, 80000, 180000] : [30000, 100000, 240000];
+      }
+      return freshStart ? [40000, 140000, 350000] : [55000, 180000, 400000];
     }
 
     if (activeTubeCount <= 8) {
@@ -806,6 +824,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (refill == null) return {};
 
     return refill.refillQueues.map(
+      (tubeIndex, queue) => MapEntry(
+        tubeIndex,
+        queue
+            .map((pack) => List<int>.from(pack, growable: true))
+            .toList(growable: true),
+      ),
+    );
+  }
+
+  Map<int, List<List<int>>> _cloneRefillQueuesMap(
+    Map<int, List<List<int>>> source,
+  ) {
+    return source.map(
       (tubeIndex, queue) => MapEntry(
         tubeIndex,
         queue
@@ -1785,11 +1816,47 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final activeIndexes = _jokerActiveTubeIndexesFor(initialTubes);
     final targetMountainCapacity =
         _hasMountainObjective ? _mountainCapacity : 0;
+    final initialRefillQueues = _cloneRefillQueuesMap(_runtimeRefillQueues);
+    final stopWhenMountainFull =
+        _preset?.sourceRefill?.stopWhenMountainFull ?? false;
+
+    int heuristic(_JokerSearchNode node) {
+      var h = 0;
+
+      for (final idx in activeIndexes) {
+        final tube = node.tubes[idx];
+        if (tube.isEmpty) continue;
+
+        final cap = _tubeCapacityIn(node.tubes, idx);
+        final isDone = tube.length == cap && tube.every((c) => c == tube.first);
+        if (!isDone) {
+          h += 10;
+          final uniqueColors = tube.toSet().length;
+          h += (uniqueColors - 1) * 4;
+        }
+      }
+
+      if (targetMountainCapacity > 0) {
+        final remaining =
+            max(0, targetMountainCapacity - node.mountainFillUnits);
+        h += remaining * 2;
+      }
+
+      return h;
+    }
+
+    int computePriority(_JokerSearchNode node) {
+      final g = node.moves.length;
+      final h = heuristic(node);
+      return g + h;
+    }
 
     final startNode = _JokerSearchNode(
       tubes: initialTubes,
       mountainFillUnits: initialMountainFillUnits,
       moves: const [],
+      refillQueues: initialRefillQueues,
+      priority: 0,
     );
 
     if (startNode.isSolved(
@@ -1800,43 +1867,16 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return const [];
     }
 
-    int scoreMove({
-      required List<List<int>> beforeTubes,
-      required List<List<int>> afterTubes,
-      required int from,
-      int? to,
-      required int beforeMountainFill,
-      required int afterMountainFill,
-    }) {
-      var score = 0;
+    final pq = PriorityQueue<_JokerSearchNode>(
+      (a, b) => a.priority.compareTo(b.priority),
+    )..add(startNode);
 
-      if (to != null) {
-        if (_isTubeDoneIn(afterTubes, to)) score += 1000;
-        if (beforeTubes[to].isNotEmpty &&
-            beforeTubes[to].last == beforeTubes[from].last) {
-          score += 300;
-        }
-        if (beforeTubes[to].isEmpty) score += 60;
-        final movedCount = beforeTubes[from].length - afterTubes[from].length;
-        score += movedCount * 20;
-      }
-
-      if (afterTubes[from].isEmpty) score += 700;
-      if (_isTubeDoneIn(afterTubes, from)) score += 120;
-      if (afterMountainFill > beforeMountainFill) {
-        score += 900 + ((afterMountainFill - beforeMountainFill) * 30);
-      }
-
-      return score;
-    }
-
-    final queue = Queue<_JokerSearchNode>()..add(startNode);
     final visited = <String>{startNode.stateId(activeIndexes)};
     var iterations = 0;
 
-    while (queue.isNotEmpty && iterations < maxIterations) {
+    while (pq.isNotEmpty && iterations < maxIterations) {
       iterations++;
-      final current = queue.removeFirst();
+      final current = pq.removeFirst();
 
       if (current.isSolved(
         activeIndexes: activeIndexes,
@@ -1846,37 +1886,67 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         return current.moves;
       }
 
-      final candidateNodes = <({int score, _JokerSearchNode node})>[];
+      final lastMove = current.moves.isNotEmpty ? current.moves.last : null;
 
       for (final from in activeIndexes) {
+        if (_isTubeDoneIn(current.tubes, from)) continue;
+        if (current.tubes[from].isEmpty) continue;
+
         for (final to in activeIndexes) {
           if (from == to) continue;
+          if (lastMove == '$to->$from') continue;
           if (!_canPourInSimulation(current.tubes, from, to)) continue;
+
+          if (current.tubes[to].isEmpty) {
+            final earlierEquivalentEmpty = activeIndexes.any(
+              (idx) =>
+                  idx != to &&
+                  idx != from &&
+                  current.tubes[idx].isEmpty &&
+                  idx < to,
+            );
+            if (earlierEquivalentEmpty) continue;
+          }
 
           final nextTubes = _cloneBoard(current.tubes);
           _doPourIn(nextTubes, from, to);
 
-          final nextNode = _JokerSearchNode(
+          final nextRefillQueues = _cloneRefillQueuesMap(current.refillQueues);
+          if (nextTubes[from].isEmpty) {
+            final queue = nextRefillQueues[from];
+            final refillStopped = targetMountainCapacity > 0 &&
+                stopWhenMountainFull &&
+                current.mountainFillUnits >= targetMountainCapacity;
+            if (!refillStopped && queue != null && queue.isNotEmpty) {
+              nextTubes[from] =
+                  List<int>.from(queue.removeAt(0), growable: true);
+            }
+          }
+
+          final nextNodeBase = _JokerSearchNode(
             tubes: nextTubes,
             mountainFillUnits: current.mountainFillUnits,
             moves: [...current.moves, '$from->$to'],
+            refillQueues: nextRefillQueues,
           );
 
-          final stateId = nextNode.stateId(activeIndexes);
+          final stateId = nextNodeBase.stateId(activeIndexes);
           if (!visited.add(stateId)) continue;
 
-          candidateNodes.add((
-            score: scoreMove(
-              beforeTubes: current.tubes,
-              afterTubes: nextTubes,
-              from: from,
-              to: to,
-              beforeMountainFill: current.mountainFillUnits,
-              afterMountainFill: current.mountainFillUnits,
+          pq.add(
+            _JokerSearchNode(
+              tubes: nextNodeBase.tubes,
+              mountainFillUnits: nextNodeBase.mountainFillUnits,
+              moves: nextNodeBase.moves,
+              refillQueues: nextNodeBase.refillQueues,
+              priority: computePriority(nextNodeBase),
             ),
-            node: nextNode,
-          ));
+          );
         }
+
+        if (!_hasMountainObjective) continue;
+        if (current.mountainFillUnits >= targetMountainCapacity) continue;
+        if (lastMove == '$from->mountain') continue;
 
         final mountainCount = _mountainPourCountInSimulation(
           current.tubes,
@@ -1884,45 +1954,51 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           current.mountainFillUnits,
         );
 
-        if (mountainCount > 0) {
-          final nextTubes = _cloneBoard(current.tubes);
-          for (int i = 0; i < mountainCount; i++) {
-            nextTubes[from].removeLast();
-          }
+        if (mountainCount <= 0) continue;
 
-          final nextMountainFillUnits =
-              current.mountainFillUnits + mountainCount;
-          final nextNode = _JokerSearchNode(
-            tubes: nextTubes,
-            mountainFillUnits: nextMountainFillUnits,
-            moves: [...current.moves, '$from->mountain'],
-          );
-
-          final stateId = nextNode.stateId(activeIndexes);
-          if (!visited.add(stateId)) continue;
-
-          candidateNodes.add((
-            score: scoreMove(
-              beforeTubes: current.tubes,
-              afterTubes: nextTubes,
-              from: from,
-              beforeMountainFill: current.mountainFillUnits,
-              afterMountainFill: nextMountainFillUnits,
-            ),
-            node: nextNode,
-          ));
+        final nextTubes = _cloneBoard(current.tubes);
+        for (int i = 0; i < mountainCount; i++) {
+          nextTubes[from].removeLast();
         }
-      }
 
-      candidateNodes.sort((a, b) => b.score.compareTo(a.score));
-      for (final candidate in candidateNodes) {
-        queue.add(candidate.node);
+        final nextRefillQueues = _cloneRefillQueuesMap(current.refillQueues);
+        final nextMountainFillUnits = current.mountainFillUnits + mountainCount;
+
+        if (nextTubes[from].isEmpty) {
+          final queue = nextRefillQueues[from];
+          final refillStopped = targetMountainCapacity > 0 &&
+              stopWhenMountainFull &&
+              nextMountainFillUnits >= targetMountainCapacity;
+          if (!refillStopped && queue != null && queue.isNotEmpty) {
+            nextTubes[from] = List<int>.from(queue.removeAt(0), growable: true);
+          }
+        }
+
+        final nextNodeBase = _JokerSearchNode(
+          tubes: nextTubes,
+          mountainFillUnits: nextMountainFillUnits,
+          moves: [...current.moves, '$from->mountain'],
+          refillQueues: nextRefillQueues,
+        );
+
+        final stateId = nextNodeBase.stateId(activeIndexes);
+        if (!visited.add(stateId)) continue;
+
+        pq.add(
+          _JokerSearchNode(
+            tubes: nextNodeBase.tubes,
+            mountainFillUnits: nextNodeBase.mountainFillUnits,
+            moves: nextNodeBase.moves,
+            refillQueues: nextNodeBase.refillQueues,
+            priority: computePriority(nextNodeBase),
+          ),
+        );
       }
     }
 
     if (iterations >= maxIterations) {
       debugPrint(
-        '[JOKER] limit reached | iterations=$iterations visited=${visited.length} queue=${queue.length}',
+        '[JOKER] limit reached | iterations=$iterations visited=${visited.length} pq=${pq.length}',
       );
     }
 
