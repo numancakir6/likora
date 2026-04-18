@@ -1521,10 +1521,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
     _visibleLayerCounts[from] = newFromVisible.clamp(0, newFromLen).toInt();
 
-    // Hedef tüpe dökülen sıvı gizli (gri) olarak eklenir; mevcut görünür
-    // katman sayısı değişmez. Böylece animasyon sırasında ve sonrasında
-    // hedef tüpteki önceden gizli katmanlar açılmaz.
-    _visibleLayerCounts[to] = oldToVisible.clamp(0, newToLen);
+    // Hedef tüpe dökülen sıvı görünür olarak eklenir.
+    // oldToVisible: döküm öncesi görünür sayısı (clamp ile döküm öncesi uzunluğa sınırlı)
+    // + pouredCount: yeni dökülen katmanlar da görünür.
+    // Bu sayede altındaki orijinal gizli katmanlar açılmaz;
+    // sadece dökülen kadar görünürlük artar.
+    _visibleLayerCounts[to] = (oldToVisible + pouredCount).clamp(0, newToLen);
 
     if (shouldRevealNextTop) {
       _triggerBlindRevealFlash(from);
@@ -7052,17 +7054,10 @@ class _LiquidPainter extends CustomPainter {
       final cur = layers.fold<double>(0, (s, e) => s + e.volume);
       final add = min(incomingVolume, capacity - cur);
       if (add > 0.0001) {
-        if (blindMode) {
-          // Blind modda gelen sıvı gizli (gri) görünmeli.
-          // colorIdx = -1 sentinel: paint() içinde her zaman gizli/gri çizilir.
-          double left = add;
-          while (left > 0.0001) {
-            final piece = min(1.0, left);
-            layers.add(_VisualLayer(colorIdx: -1, volume: piece));
-            left -= piece;
-          }
-        } else if (layers.isNotEmpty &&
-            layers.last.colorIdx == incomingColorIdx) {
+        // Blind modda da incoming sıvı gerçek rengiyle çizilir.
+        // paint() içinde incoming layer her zaman listenin sonuna ekleniyor;
+        // i >= hiddenOriginalCount olduğu için isHidden=false → renkli görünür.
+        if (layers.isNotEmpty && layers.last.colorIdx == incomingColorIdx) {
           final l = layers.removeLast();
           layers.add(l.copyWith(volume: l.volume + add));
         } else {
