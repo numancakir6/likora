@@ -4208,7 +4208,7 @@ class _TubeStageState extends State<_TubeStage> {
           return _TubeWidget(
             tube: plan.toSnapshot,
             isSelected: false,
-            incomingColorIdx: widget.blindMode ? -1 : plan.colorIdx,
+            incomingColorIdx: plan.colorIdx,
             incomingVolume: incoming,
             slosh: receiveSlosh,
             splash: receiveSplash,
@@ -5988,14 +5988,8 @@ class _FlyingTubeState extends State<_FlyingTube>
                 ? lerpDouble(0.55, 0.0, _phase(v, _pPourEnd, _pUprightEnd))!
                 : 0.0);
 
-        final removedWholeLayers = widget.blindMode
-            ? min(
-                widget.plan.count,
-                max(0, (sourceDrainVolume + 0.0001).floor()),
-              )
-            : 0;
         final visibleDuringPour = widget.blindMode
-            ? (widget.visibleLayerCount + removedWholeLayers)
+            ? widget.visibleLayerCount
                 .clamp(0, widget.plan.fromSnapshot.length)
                 .toInt()
             : widget.visibleLayerCount;
