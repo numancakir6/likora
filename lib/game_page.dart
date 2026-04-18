@@ -211,47 +211,24 @@ _ResolvedStageLayout resolveStageLayout({
 const Duration kPourDuration = Duration(milliseconds: 1350);
 
 const List<Map<String, dynamic>> kColors = [
-  // 🎯 ANA RENKLER (SAF - TEK) — index 0..4
+  // 🎯 ANA RENKLER
   {'name': 'Kırmızı', 'fill': Color(0xFFFF0000)},
   {'name': 'Turuncu', 'fill': Color(0xFFFF7A00)},
   {'name': 'Sarı', 'fill': Color(0xFFFFFF00)},
   {'name': 'Yeşil', 'fill': Color(0xFF00C853)},
   {'name': 'Mavi', 'fill': Color(0xFF0000FF)},
 
-  // ⚡ UÇUK / NEON / FARKLI RENKLER — index 5..10
-  {'name': 'Fuşya', 'fill': Color(0xFFFF00FF)},
-  {'name': 'Neon Yeşil', 'fill': Color.fromARGB(255, 76, 252, 45)},
-  {'name': 'Camgöbeği', 'fill': Color(0xFF00FFFF)},
-  {'name': 'Elektrik Mavi', 'fill': Color(0xFF2979FF)},
-  {'name': 'Pembe', 'fill': Color(0xFFFF1493)},
-  {'name': 'Açık Mor (Neon)', 'fill': Color(0xFFB266FF)},
-
-  // ⚫⚪ KONTRAST RENKLER — index 11..12
+  // 🌈 ANA RENKLERDEN UZAK, BİRBİRİNDEN NET AYRILAN EK RENKLER
+  {'name': 'Mor', 'fill': Color(0xFF6A0DAD)},
+  {'name': 'Camgöbeği', 'fill': Color(0xFF00E5FF)},
+  {'name': 'Lime', 'fill': Color(0xFFB2FF00)},
+  {'name': 'Kahverengi', 'fill': Color(0xFF6D4C41)},
+  {'name': 'Lacivert', 'fill': Color(0xFF001F54)},
+  {'name': 'Bordo', 'fill': Color(0xFF8B0000)},
+  {'name': 'Pembe', 'fill': Color(0xFFFF4FA3)},
+  {'name': 'Zeytin', 'fill': Color(0xFF808000)},
+  {'name': 'Gri', 'fill': Color(0xFF9E9E9E)},
   {'name': 'Beyaz', 'fill': Color(0xFFFFFFFF)},
-  {'name': 'Siyah', 'fill': Color(0xFF000000)},
-
-  // 🆕 YENİ RENKLER — index 13..17
-  // Mevcut paletten en uzak: koyu zeytin, altın/amber, derin teal, kızıl kahve, çilek/mercan
-  {
-    'name': 'Zeytin',
-    'fill': Color(0xFF8BC34A)
-  }, // sarı-yeşil arası, mevcut hiçbiriyle çakışmıyor
-  {
-    'name': 'Amber',
-    'fill': Color(0xFFFFAB00)
-  }, // koyu sarı-turuncu arası; mevcut turuncu ve sarıdan belirgin farklı ton
-  {
-    'name': 'Teal',
-    'fill': Color(0xFF00897B)
-  }, // koyu yeşil-mavi; camgöbeği ve yeşilden çok uzak
-  {
-    'name': 'Kiremit',
-    'fill': Color(0xFFBF360C)
-  }, // koyu kırmızı-turuncu; kırmızıdan ve turuncudan belirgin farklı
-  {
-    'name': 'Leylak',
-    'fill': Color(0xFF7B1FA2)
-  }, // koyu mor; açık mor (neon) ve maviden çok uzak
 ];
 
 const Color kLavaDark = Color(0xFF4A0B00);
@@ -4149,11 +4126,14 @@ class _TubeStageState extends State<_TubeStage> {
               sin((receivePhase * pi * 0.9).clamp(0.0, pi)).abs() * 0.95;
           final receiveFlow =
               Curves.easeOut.transform(receivePhase.clamp(0.0, 1.0));
+          // Blind modda rengi gizlemek için -1 sentinel kullanıyoruz.
+          // _buildLayers() -1'i gri (gizli) olarak çizer.
+          // incomingVolume her iki modda da geçiliyor — smooth sıvı yükselişi için.
           return _TubeWidget(
             tube: plan.toSnapshot,
             isSelected: false,
-            incomingColorIdx: widget.blindMode ? null : plan.colorIdx,
-            incomingVolume: widget.blindMode ? 0.0 : incoming,
+            incomingColorIdx: widget.blindMode ? -1 : plan.colorIdx,
+            incomingVolume: incoming,
             slosh: receiveSlosh,
             splash: receiveSplash,
             pourProgress: incomingPhase,
@@ -7000,11 +6980,12 @@ class _LiquidPainter extends CustomPainter {
       final add = min(incomingVolume, capacity - cur);
       if (add > 0.0001) {
         if (blindMode) {
+          // Blind modda gelen sıvı gizli (gri) görünmeli.
+          // colorIdx = -1 sentinel: paint() içinde her zaman gizli/gri çizilir.
           double left = add;
           while (left > 0.0001) {
             final piece = min(1.0, left);
-            layers
-                .add(_VisualLayer(colorIdx: incomingColorIdx!, volume: piece));
+            layers.add(_VisualLayer(colorIdx: -1, volume: piece));
             left -= piece;
           }
         } else if (layers.isNotEmpty &&
@@ -7051,7 +7032,10 @@ class _LiquidPainter extends CustomPainter {
       // görünür katmanlar sonda (birleştirilmiş olabilir). Gizli orijinal katmanlar
       // yoğunlaştırılmadan (1 birim = 1 eleman) oluştuğu için layers'daki
       // ilk `hiddenOriginalCount` kadar layer gizlidir.
-      final isHidden = blindMode && i < hiddenOriginalCount;
+      // Ayrıca colorIdx = -1 sentinel, animasyon sırasında eklenen
+      // gelen (incoming) sıvı katmanlarını temsil eder — bunlar da gizli/gri çizilir.
+      final isHidden =
+          blindMode && (i < hiddenOriginalCount || layer.colorIdx < 0);
 
       final fill =
           isHidden ? const Color(0xFF2A2535) : _solidColorForIndex(safeIdx);

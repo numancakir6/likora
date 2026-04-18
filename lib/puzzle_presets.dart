@@ -691,61 +691,116 @@ class PuzzlePresets {
         lockedAdTubeIndex: 16,
       ),
     },
+// ─────────────────────────────────────────────────────────────────
+// MAP 3  —  12 Level
+// ─────────────────────────────────────────────────────────────────
+//
+// KURALLAR:
+//   • Her renkten tam 4 adet sıvı (lav=16 hariç)
+//   • Toplam lav = mountainCapacity (başlangıç tüpleri + refill kuyrukları dahil)
+//   • Her tüp tam dolu gelir; sadece 2 boş + 1 reklam tüpü
+//   • Refill tüpleri de tam dolu başlar ve 1 kuyruk (4 elemanlık) ile yenilenir
+//   • Oyun 2 açık tüple çözülebilir; 3. tüp sadece reklamla açılır
+//   • stopWhenMountainFull: true — dağ dolunca refill durur
+//
+// ZORLUK ARTIŞ MATRİSİ:
+//   L1-3  : 5-6 renk  | mc 12-16 | 2-3 refill | difficulty 3
+//   L4-6  : 7-8 renk  | mc 16-20 | 3-4 refill | difficulty 4
+//   L7-12 : 9-12 renk | mc 20-32 | 3-5 refill | difficulty 5
+//
+// ─────────────────────────────────────────────────────────────────
+
     3: {
+      // ── L1 ── 5 renk | mountain=12 | 2 refill | diff=3
+      // Toplam: 5×4=20 renk + 12 lav = 32 sıvı
+      // 6 başlangıç tüpü + 2 refill tüpü = 8 dolu + 3 boş = 11 tüp
       1: PuzzlePreset(
         mapNumber: 3,
         levelId: 1,
         difficulty: 3,
-        mountainCapacity: 16,
+        mountainCapacity: 12,
         tubes: [
-          [16, 0, 4, 1],
-          [2, 16, 5, 3],
-          [16, 4, 16, 3],
-          [0, 16, 5, 16],
-          [6, 1, 16, 4],
-          [16, 2, 6, 16],
-          [5, 16, 3, 6],
-          [16, 4, 0, 5],
-          [6, 16, 1, 2],
+          [16, 16, 3, 1], // refill 0
+          [16, 0, 1, 0], // refill 1
+          [16, 16, 3, 16],
+          [16, 0, 16, 1],
+          [2, 4, 0, 16],
+          [2, 3, 2, 1],
           [],
           [],
           [],
         ],
-        layout: const StageLayout.rows(
-          rows: [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9, 10, 11],
-          ],
-        ),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(9),
+        lockedAdTubeIndex: 8,
         sourceRefill: SourceTubeRefillConfig(
           tubeIndexes: [0, 1],
           refillQueues: {
             0: [
-              [16, 0, 16, 1],
+              [4, 16, 16, 2],
             ],
             1: [
-              [16, 2, 16, 3],
+              [3, 4, 16, 4],
             ],
           },
           stopWhenMountainFull: true,
         ),
       ),
+
+      // ── L2 ── 5 renk | mountain=16 | 3 refill | diff=3
+      // Toplam: 5×4=20 renk + 16 lav = 36 sıvı
+      // 6 başlangıç + 3 refill = 9 dolu + 3 boş = 12 tüp
       2: PuzzlePreset(
         mapNumber: 3,
         levelId: 2,
         difficulty: 3,
-        mountainCapacity: 14,
+        mountainCapacity: 16,
         tubes: [
-          [16, 0, 3, 1],
-          [2, 16, 4, 5],
-          [1, 2, 16, 0],
-          [3, 16, 5, 2],
-          [4, 1, 16, 3],
-          [5, 4, 0, 16],
-          [0, 3, 2, 4],
-          [16, 5, 1, 16],
+          [16, 3, 4, 4], // refill 0
+          [16, 0, 16, 16], // refill 1 — lav yoğun, kafa karıştırıcı
+          [3, 0, 16, 2], // refill 2
+          [0, 3, 1, 16],
+          [16, 16, 1, 2],
+          [16, 0, 4, 16],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(9),
+        lockedAdTubeIndex: 8,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2],
+          refillQueues: {
+            0: [
+              [16, 1, 16, 2],
+            ],
+            1: [
+              [1, 16, 2, 3],
+            ],
+            2: [
+              [4, 16, 16, 16],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L3 ── 6 renk | mountain=16 | 2 refill | diff=3
+      // Toplam: 6×4=24 renk + 16 lav = 40 sıvı
+      // 8 başlangıç + 2 refill = 10 dolu + 3 boş = 13 tüp
+      3: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 3,
+        difficulty: 3,
+        mountainCapacity: 16,
+        tubes: [
+          [4, 16, 4, 2], // refill 0
+          [1, 3, 16, 16], // refill 1
+          [16, 16, 0, 5],
+          [1, 16, 3, 2],
+          [4, 16, 16, 1],
+          [2, 16, 16, 16],
+          [5, 5, 16, 0],
+          [1, 4, 16, 0],
           [],
           [],
           [],
@@ -756,12 +811,423 @@ class PuzzlePresets {
           tubeIndexes: [0, 1],
           refillQueues: {
             0: [
-              [16, 2],
-              [1],
+              [0, 16, 16, 3],
             ],
             1: [
-              [16, 3],
-              [4],
+              [2, 16, 3, 5],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L4 ── 7 renk | mountain=16 | 3 refill | diff=4
+      // Toplam: 7×4=28 renk + 16 lav = 44 sıvı
+      // 8 başlangıç + 3 refill = 11 dolu + 3 boş = 14 tüp
+      4: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 4,
+        difficulty: 4,
+        mountainCapacity: 16,
+        tubes: [
+          [16, 6, 16, 0], // refill 0
+          [1, 16, 4, 3], // refill 1
+          [3, 16, 2, 5], // refill 2
+          [0, 16, 16, 1],
+          [2, 1, 3, 16],
+          [5, 4, 16, 16],
+          [5, 3, 0, 6],
+          [5, 1, 16, 16],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(11),
+        lockedAdTubeIndex: 10,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2],
+          refillQueues: {
+            0: [
+              [2, 6, 2, 4],
+            ],
+            1: [
+              [0, 16, 16, 16],
+            ],
+            2: [
+              [16, 4, 16, 6],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L5 ── 7 renk | mountain=20 | 3 refill | diff=4
+      // Toplam: 7×4=28 renk + 20 lav = 48 sıvı
+      // 9 başlangıç + 3 refill = 12 dolu + 3 boş = 15 tüp
+      5: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 5,
+        difficulty: 4,
+        mountainCapacity: 20,
+        tubes: [
+          [16, 6, 6, 2], // refill 0
+          [5, 16, 16, 16], // refill 1 — neredeyse tamamen lav
+          [16, 16, 2, 4], // refill 2
+          [0, 16, 3, 2],
+          [6, 16, 2, 16],
+          [4, 1, 16, 6],
+          [0, 0, 3, 5],
+          [5, 3, 16, 16],
+          [16, 16, 0, 1],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(12),
+        lockedAdTubeIndex: 11,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2],
+          refillQueues: {
+            0: [
+              [16, 16, 16, 16],
+            ],
+            1: [
+              [16, 4, 16, 1],
+            ],
+            2: [
+              [4, 5, 1, 3],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L6 ── 8 renk | mountain=20 | 4 refill | diff=4
+      // Toplam: 8×4=32 renk + 20 lav = 52 sıvı
+      // 9 başlangıç + 4 refill = 13 dolu + 3 boş = 16 tüp
+      6: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 6,
+        difficulty: 4,
+        mountainCapacity: 20,
+        tubes: [
+          [0, 16, 16, 5], // refill 0
+          [0, 6, 16, 16], // refill 1
+          [1, 5, 16, 1], // refill 2
+          [0, 16, 1, 16], // refill 3
+          [16, 16, 2, 0],
+          [5, 4, 4, 3],
+          [6, 3, 16, 1],
+          [7, 16, 16, 16],
+          [4, 16, 16, 16],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(12),
+        lockedAdTubeIndex: 11,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2, 3],
+          refillQueues: {
+            0: [
+              [2, 16, 5, 7],
+            ],
+            1: [
+              [6, 7, 2, 2],
+            ],
+            2: [
+              [7, 16, 16, 6],
+            ],
+            3: [
+              [3, 16, 4, 3],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L7 ── 9 renk | mountain=20 | 3 refill | diff=5
+      // Toplam: 9×4=36 renk + 20 lav = 56 sıvı
+      // 11 başlangıç + 3 refill = 14 dolu + 3 boş = 17 tüp
+      7: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 7,
+        difficulty: 5,
+        mountainCapacity: 20,
+        tubes: [
+          [4, 16, 5, 16], // refill 0
+          [16, 0, 16, 5], // refill 1
+          [16, 4, 5, 1], // refill 2
+          [3, 16, 7, 2],
+          [0, 3, 16, 7],
+          [16, 0, 16, 16],
+          [7, 16, 4, 16],
+          [6, 2, 8, 16],
+          [7, 8, 16, 6],
+          [16, 2, 16, 3],
+          [2, 16, 8, 5],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(14),
+        lockedAdTubeIndex: 13,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2],
+          refillQueues: {
+            0: [
+              [6, 1, 8, 16],
+            ],
+            1: [
+              [1, 6, 1, 4],
+            ],
+            2: [
+              [16, 0, 3, 16],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L8 ── 9 renk | mountain=24 | 4 refill | diff=5
+      // Toplam: 9×4=36 renk + 24 lav = 60 sıvı
+      // 11 başlangıç + 4 refill = 15 dolu + 3 boş = 18 tüp
+      8: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 8,
+        difficulty: 5,
+        mountainCapacity: 24,
+        tubes: [
+          [5, 0, 4, 5], // refill 0
+          [2, 16, 2, 8], // refill 1
+          [4, 16, 16, 1], // refill 2
+          [6, 3, 16, 16], // refill 3
+          [4, 16, 6, 3],
+          [0, 16, 16, 16],
+          [16, 16, 1, 16],
+          [7, 5, 16, 7],
+          [3, 16, 16, 16],
+          [7, 8, 7, 2],
+          [16, 16, 1, 16],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(14),
+        lockedAdTubeIndex: 13,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2, 3],
+          refillQueues: {
+            0: [
+              [2, 4, 0, 16],
+            ],
+            1: [
+              [16, 0, 16, 8],
+            ],
+            2: [
+              [6, 16, 3, 5],
+            ],
+            3: [
+              [1, 16, 6, 8],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L9 ── 10 renk | mountain=24 | 4 refill | diff=5
+      // Toplam: 10×4=40 renk + 24 lav = 64 sıvı
+      // 12 başlangıç + 4 refill = 16 dolu + 3 boş = 19 tüp
+      9: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 9,
+        difficulty: 5,
+        mountainCapacity: 24,
+        tubes: [
+          [16, 8, 16, 0], // refill 0
+          [9, 7, 16, 16], // refill 1
+          [3, 16, 16, 8], // refill 2
+          [6, 16, 0, 4], // refill 3
+          [1, 8, 6, 9],
+          [1, 6, 16, 16],
+          [0, 16, 16, 5],
+          [1, 16, 4, 2],
+          [6, 16, 9, 3],
+          [3, 3, 16, 16],
+          [5, 5, 2, 8],
+          [4, 9, 16, 16],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(15),
+        lockedAdTubeIndex: 14,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2, 3],
+          refillQueues: {
+            0: [
+              [7, 2, 1, 16],
+            ],
+            1: [
+              [16, 16, 16, 16],
+            ],
+            2: [
+              [5, 7, 16, 2],
+            ],
+            3: [
+              [7, 16, 0, 4],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L10 ── 10 renk | mountain=28 | 5 refill | diff=5
+      // Toplam: 10×4=40 renk + 28 lav = 68 sıvı
+      // 12 başlangıç + 5 refill = 17 dolu + 3 boş = 20 tüp
+      10: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 10,
+        difficulty: 5,
+        mountainCapacity: 28,
+        tubes: [
+          [8, 9, 0, 16], // refill 0
+          [16, 16, 8, 16], // refill 1 — 3 lav
+          [6, 16, 16, 16], // refill 2 — 3 lav
+          [2, 4, 3, 16], // refill 3
+          [5, 16, 6, 3], // refill 4
+          [16, 16, 4, 16],
+          [6, 8, 1, 1],
+          [4, 16, 16, 2],
+          [16, 6, 5, 0],
+          [7, 7, 5, 2],
+          [7, 9, 16, 16],
+          [2, 3, 9, 16],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(15),
+        lockedAdTubeIndex: 14,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2, 3, 4],
+          refillQueues: {
+            0: [
+              [16, 16, 16, 16],
+            ],
+            1: [
+              [16, 16, 16, 7],
+            ],
+            2: [
+              [16, 16, 8, 4],
+            ],
+            3: [
+              [1, 3, 5, 0],
+            ],
+            4: [
+              [16, 0, 9, 1],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L11 ── 11 renk | mountain=28 | 4 refill | diff=5
+      // Toplam: 11×4=44 renk + 28 lav = 72 sıvı
+      // 14 başlangıç + 4 refill = 18 dolu + 3 boş = 21 tüp
+      11: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 11,
+        difficulty: 5,
+        mountainCapacity: 28,
+        tubes: [
+          [16, 0, 16, 2], // refill 0
+          [16, 8, 8, 1], // refill 1
+          [3, 6, 7, 9], // refill 2
+          [16, 9, 10, 16], // refill 3
+          [16, 7, 5, 16],
+          [0, 16, 4, 5],
+          [6, 4, 16, 16],
+          [16, 16, 16, 10],
+          [1, 9, 16, 9],
+          [4, 6, 16, 16],
+          [16, 4, 10, 5],
+          [8, 16, 0, 2],
+          [10, 8, 2, 16],
+          [1, 3, 6, 16],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(17),
+        lockedAdTubeIndex: 16,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2, 3],
+          refillQueues: {
+            0: [
+              [16, 16, 16, 16],
+            ],
+            1: [
+              [7, 16, 3, 16],
+            ],
+            2: [
+              [1, 16, 7, 16],
+            ],
+            3: [
+              [5, 3, 2, 0],
+            ],
+          },
+          stopWhenMountainFull: true,
+        ),
+      ),
+
+      // ── L12 ── 12 renk | mountain=32 | 5 refill | diff=5
+      // Toplam: 12×4=48 renk + 32 lav = 80 sıvı
+      // 15 başlangıç + 5 refill = 20 dolu + 3 boş = 23 tüp
+      12: PuzzlePreset(
+        mapNumber: 3,
+        levelId: 12,
+        difficulty: 5,
+        mountainCapacity: 32,
+        tubes: [
+          [16, 16, 4, 10], // refill 0 — 2 lav önde
+          [16, 16, 6, 6], // refill 1 — 2 lav önde
+          [16, 9, 11, 8], // refill 2
+          [16, 4, 6, 0], // refill 3
+          [16, 3, 8, 3], // refill 4
+          [9, 16, 16, 8],
+          [16, 2, 16, 16],
+          [16, 3, 10, 16],
+          [5, 5, 9, 16],
+          [1, 1, 0, 16],
+          [16, 16, 9, 16],
+          [5, 16, 11, 10],
+          [10, 16, 2, 16],
+          [0, 0, 16, 1],
+          [6, 2, 11, 16],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(18),
+        lockedAdTubeIndex: 17,
+        sourceRefill: SourceTubeRefillConfig(
+          tubeIndexes: [0, 1, 2, 3, 4],
+          refillQueues: {
+            0: [
+              [7, 4, 4, 16],
+            ],
+            1: [
+              [16, 2, 16, 11],
+            ],
+            2: [
+              [16, 7, 3, 7],
+            ],
+            3: [
+              [1, 7, 8, 16],
+            ],
+            4: [
+              [16, 16, 5, 16],
             ],
           },
           stopWhenMountainFull: true,
