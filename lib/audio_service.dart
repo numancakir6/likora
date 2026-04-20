@@ -7,8 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SfxService {
   static const String _soundKey = 'settings_sound_on';
 
-  static final AudioPlayer _waterPlayer = AudioPlayer(playerId: 'likora_water');
-  static bool _waterActive = false;
+  static int _waterSeq = 0;
+  static final Map<int, AudioPlayer> _waterPlayers = {};
 
   static Future<bool> _isSoundOn() async {
     final prefs = await SharedPreferences.getInstance();
@@ -44,9 +44,11 @@ class SfxService {
     }
   }
 
-  static Future<void> playClick({bool ignoreSetting = false}) =>
-      _playOneShot('assets/sfx/click.mp3',
-          volume: 0.72, ignoreSetting: ignoreSetting);
+  static Future<void> playClick({bool ignoreSetting = false}) => _playOneShot(
+        'assets/sfx/click.mp3',
+        volume: 0.72,
+        ignoreSetting: ignoreSetting,
+      );
 
   static Future<void> playSmallSuccess() =>
       _playOneShot('assets/sfx/small.mp3', volume: 0.90);
@@ -54,34 +56,62 @@ class SfxService {
   static Future<void> playLevelComplete() =>
       _playOneShot('assets/sfx/complete.mp3', volume: 0.95);
 
-  static Future<void> startWater() async {
-    if (_waterActive) return;
-    if (!await _isSoundOn()) return;
+  /// Her akış için ayrı water player açar.
+  /// Dönen token o akışın kimliğidir.
+  static Future<int?> startWater() async {
+    if (!await _isSoundOn()) return null;
 
-    _waterActive = true;
+    final token = ++_waterSeq;
+    final player = AudioPlayer(playerId: 'likora_water_$token');
+    _waterPlayers[token] = player;
+
     try {
-      await _waterPlayer.stop();
-      await _waterPlayer.setReleaseMode(ReleaseMode.loop);
-      await _waterPlayer.setVolume(0.78);
-      await _waterPlayer.play(AssetSource(_assetKey('assets/sfx/water.mp3')));
+      await player.setReleaseMode(ReleaseMode.loop);
+      await player.setVolume(0.78);
+      await player.play(AssetSource(_assetKey('assets/sfx/water.mp3')));
+      return token;
     } catch (_) {
-      _waterActive = false;
+      _waterPlayers.remove(token);
+      try {
+        await player.dispose();
+      } catch (_) {}
+      return null;
     }
   }
 
-  static Future<void> stopWater() async {
-    if (!_waterActive) return;
-    _waterActive = false;
+  /// Sadece ilgili akışın sesini kapatır.
+  static Future<void> stopWater([int? token]) async {
+    if (token == null) return;
+
+    final player = _waterPlayers.remove(token);
+    if (player == null) return;
+
     try {
-      await _waterPlayer.stop();
+      await player.stop();
+    } catch (_) {}
+
+    try {
+      await player.dispose();
     } catch (_) {}
   }
 
+  /// Sayfadan çıkarken bütün kalan water seslerini temizler.
+  static Future<void> stopAllWater() async {
+    final players = _waterPlayers.values.toList(growable: false);
+    _waterPlayers.clear();
+
+    for (final player in players) {
+      try {
+        await player.stop();
+      } catch (_) {}
+      try {
+        await player.dispose();
+      } catch (_) {}
+    }
+  }
+
   static Future<void> dispose() async {
-    _waterActive = false;
-    try {
-      await _waterPlayer.dispose();
-    } catch (_) {}
+    await stopAllWater();
   }
 }
 

@@ -242,6 +242,31 @@ bool _isLavaColorIndex(int colorIdx) => colorIdx == kLavaColorIndex;
 Color _solidColorForIndex(int colorIdx) =>
     kColors[colorIdx.clamp(0, kColors.length - 1).toInt()]['fill'] as Color;
 
+const int kNavyColorIndex = 9;
+
+bool _isSensitiveDarkColorIndex(int colorIdx) {
+  return colorIdx == kNavyColorIndex;
+}
+
+double _liquidHighlightAlphaFor(int colorIdx, {required bool isHidden}) {
+  if (isHidden) return 0.0;
+  if (_isSensitiveDarkColorIndex(colorIdx)) return 0.03;
+  return 0.05;
+}
+
+double _liquidShadowAlphaFor(int colorIdx, {required bool isHidden}) {
+  if (isHidden) return 0.0;
+  if (_isSensitiveDarkColorIndex(colorIdx)) return 0.05;
+  return 0.05;
+}
+
+Color _visibleLiquidFillForIndex(int colorIdx) {
+  if (colorIdx == kNavyColorIndex) {
+    return const Color(0xFF001F54);
+  }
+  return _solidColorForIndex(colorIdx);
+}
+
 // _MapTheme ve _themeForMap kaldırıldı — MapTheme artık map_theme.dart'tan geliyor.
 
 // ─────────────────────────────────────────────
@@ -1165,7 +1190,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    SfxService.stopWater();
+    unawaited(SfxService.stopAllWater());
     _extraTubeAd?.dispose();
     _jokerRewardAd?.dispose();
     _bgCtrl.dispose();
@@ -2513,20 +2538,18 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     unawaited(_persistUndoHistoryState());
 
     final waterStartMs = (kPourDuration.inMilliseconds * 0.58).round();
-    // Her plan kendi su sesini kendi süresince yönetir
     final waterStopMs = (kPourDuration.inMilliseconds * 0.90).round();
+    int? waterToken;
 
-    Future.delayed(Duration(milliseconds: waterStartMs), () {
+    Future.delayed(Duration(milliseconds: waterStartMs), () async {
       if (!mounted || !_activePlans.contains(plan)) return;
-      SfxService.startWater();
+      waterToken = await SfxService.startWater();
     });
 
-    Future.delayed(Duration(milliseconds: waterStopMs), () {
+    Future.delayed(Duration(milliseconds: waterStopMs), () async {
       if (!mounted || !_activePlans.contains(plan)) return;
-      // Sadece bu plan hâlâ tek aktif plan ise sesi durdur
-      if (_activePlans.length <= 1) {
-        SfxService.stopWater();
-      }
+      await SfxService.stopWater(waterToken);
+      waterToken = null;
     });
 
     Future.delayed(kPourDuration, () {
@@ -2546,11 +2569,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         }
       });
       _persistLevelState();
-
-      // Tüm aktif planlar bittikten sonra sesi kapat
-      if (_activePlans.isEmpty) {
-        SfxService.stopWater();
-      }
 
       if (didWin && _activePlans.isEmpty) {
         Future.delayed(const Duration(milliseconds: 300), () {
@@ -2615,21 +2633,18 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     unawaited(_persistUndoHistoryState());
 
     final waterStartMs = (kPourDuration.inMilliseconds * 0.58).round();
-    // Her plan kendi su sesini kendi süresince yönetir
     final waterStopMs = (kPourDuration.inMilliseconds * 0.90).round();
+    int? waterToken;
 
-    Future.delayed(Duration(milliseconds: waterStartMs), () {
+    Future.delayed(Duration(milliseconds: waterStartMs), () async {
       if (!mounted || !_activePlans.contains(plan)) return;
-      SfxService.startWater();
+      waterToken = await SfxService.startWater();
     });
 
-    Future.delayed(Duration(milliseconds: waterStopMs), () {
+    Future.delayed(Duration(milliseconds: waterStopMs), () async {
       if (!mounted || !_activePlans.contains(plan)) return;
-      // Sadece bu plan hâlâ tek aktif plan ise sesi durdur;
-      // aksi hâlde başka bir akış devam ediyor, ses sürsün.
-      if (_activePlans.length <= 1) {
-        SfxService.stopWater();
-      }
+      await SfxService.stopWater(waterToken);
+      waterToken = null;
     });
 
     // Animasyon biter bitmez planı kaldır
@@ -2657,11 +2672,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         }
       });
       _persistLevelState();
-
-      // Tüm aktif planlar bittikten sonra sesi kapat
-      if (_activePlans.isEmpty) {
-        SfxService.stopWater();
-      }
 
       if (didWin) {
         // Tüm paralel akışlar bitene kadar kutlamayı ve win dialog'u bekle
@@ -2731,11 +2741,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     _playClick();
     _vibrateTap();
-    SfxService.startWater();
+    final waterToken = await SfxService.startWater();
 
     await Future.delayed(const Duration(milliseconds: 700));
 
-    SfxService.stopWater();
+    await SfxService.stopWater(waterToken);
     if (!mounted) return;
     setState(() {
       _undoSloshingTubes.remove(last.fromIdx);
@@ -7105,9 +7115,13 @@ class _LiquidPainter extends CustomPainter {
       final isHidden =
           blindMode && (i < hiddenOriginalCount || layer.colorIdx < 0);
 
-      final fill =
-          isHidden ? const Color(0xFF2A2535) : _solidColorForIndex(safeIdx);
+      final fill = isHidden
+          ? const Color(0xFF2A2535)
+          : _visibleLiquidFillForIndex(safeIdx);
       final isLavaLayer = !isHidden && _isLavaColorIndex(safeIdx);
+      final highlightAlpha =
+          _liquidHighlightAlphaFor(safeIdx, isHidden: isHidden);
+      final shadowAlpha = _liquidShadowAlphaFor(safeIdx, isHidden: isHidden);
 
       final bandPath = _band(vBot, vTop, tilt, isTop ? slosh : slosh * 0.45);
       if (isLavaLayer) {
@@ -7302,9 +7316,9 @@ class _LiquidPainter extends CustomPainter {
           Paint()
             ..shader = LinearGradient(
               colors: [
-                Colors.white.withValues(alpha: 0.05),
+                Colors.white.withValues(alpha: highlightAlpha),
                 Colors.transparent,
-                Colors.black.withValues(alpha: 0.05),
+                Colors.black.withValues(alpha: shadowAlpha),
               ],
               stops: const [0.0, 0.35, 1.0],
               begin: Alignment.topCenter,
