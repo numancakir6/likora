@@ -2290,7 +2290,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return completer.future;
   }
 
-  (int, int)? _findTutorialMove() {
+  (int, int)? findTutorialMove() {
     final preferredSources = <int>[];
     for (int i = 4; i < _tubes.length; i++) {
       if (!_isLockedAdTubeIndex(i)) preferredSources.add(i);
@@ -2351,27 +2351,17 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return null;
   }
 
-  Future<void> _maybeShowTutorial() async {
-    return;
-    final prefs = await SharedPreferences.getInstance();
-    final alreadySeen = prefs.getBool(_tutorialSeenKey) ?? false;
-    final shouldShow =
-        !alreadySeen && widget.mapNumber == 1 && widget.level == 1;
-
-    if (!mounted || !shouldShow) return;
-
-    final move = _findTutorialMove();
-    if (move == null) return;
-
-    await Future.delayed(const Duration(milliseconds: 350));
+  Future<void> maybeShowTutorial() async {
     if (!mounted) return;
-
-    setState(() {
-      _showTutorial = false;
-      _tutorialStepIndex = 0;
-      _tutorialFromIdx = move.$1;
-      _tutorialToIdx = move.$2;
-    });
+    if (_showTutorial) {
+      setState(() {
+        _showTutorial = false;
+        _tutorialStepIndex = 0;
+        _tutorialFromIdx = null;
+        _tutorialToIdx = null;
+      });
+    }
+    return;
   }
 
   Future<void> _completeTutorial({bool skipped = false}) async {
@@ -3220,11 +3210,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                             gameWon: _gameWon,
                                             undoSloshingTubes:
                                                 _undoSloshingTubes,
-                                            tutorialActive: _showTutorial,
-                                            tutorialStepIndex:
-                                                _tutorialStepIndex,
-                                            tutorialFromIdx: _tutorialFromIdx,
-                                            tutorialToIdx: _tutorialToIdx,
+                                            tutorialActive: false,
+                                            tutorialStepIndex: 0,
+                                            tutorialFromIdx: null,
+                                            tutorialToIdx: null,
                                             blindMode: _blindModeEnabled,
                                             visibleLayerCounts:
                                                 _visibleLayerCounts,
@@ -3372,7 +3361,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         ));
   }
 
-  Widget _buildTutorialOverlay() {
+  Widget buildTutorialOverlay() {
     final stepIndex =
         _tutorialStepIndex.clamp(0, _tutorialSteps.length - 1).toInt();
     final step = _tutorialSteps[stepIndex];
@@ -3380,7 +3369,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 220),
-      opacity: _showTutorial ? 1 : 0,
+      opacity: 0,
       child: Stack(
         children: [
           IgnorePointer(
