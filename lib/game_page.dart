@@ -101,7 +101,7 @@ double get kLiquidBotY => kBodyBotY + kTR - 14;
 // Alt U'nun en altı: SVG'de y=18197.8 → kTH
 double get kWidgetH => kTH;
 double get kWidgetW => kTW;
-const double kTubeGap = 3.0;
+const double kTubeGap = 2.0;
 const double kRowGap = 18.0;
 
 double get kStageW => (kWidgetW * 5) + (kTubeGap * 4) + 12.0;
@@ -241,31 +241,25 @@ bool _isLavaColorIndex(int colorIdx) => colorIdx == kLavaColorIndex;
 Color _solidColorForIndex(int colorIdx) =>
     kColors[colorIdx.clamp(0, kColors.length - 1).toInt()]['fill'] as Color;
 
-double _colorLuminanceForIndex(int colorIdx) {
-  return _solidColorForIndex(colorIdx).computeLuminance();
-}
-
 double _liquidHighlightAlphaFor(int colorIdx, {required bool isHidden}) {
   if (isHidden) return 0.0;
-
-  final luminance = _colorLuminanceForIndex(colorIdx);
-  if (luminance < 0.10) return 0.025;
-  if (luminance < 0.20) return 0.035;
+  final base = _solidColorForIndex(colorIdx);
+  final luminance = base.computeLuminance();
+  if (luminance < 0.08) return 0.02;
+  if (luminance < 0.16) return 0.03;
   return 0.05;
 }
 
 double _liquidShadowAlphaFor(int colorIdx, {required bool isHidden}) {
   if (isHidden) return 0.0;
-
-  final luminance = _colorLuminanceForIndex(colorIdx);
-  if (luminance < 0.10) return 0.035;
-  if (luminance < 0.20) return 0.045;
+  final base = _solidColorForIndex(colorIdx);
+  final luminance = base.computeLuminance();
+  if (luminance < 0.08) return 0.04;
+  if (luminance < 0.16) return 0.045;
   return 0.05;
 }
 
-Color _visibleLiquidFillForIndex(int colorIdx) {
-  return _solidColorForIndex(colorIdx);
-}
+Color _visibleLiquidFillForIndex(int colorIdx) => _solidColorForIndex(colorIdx);
 
 // _MapTheme ve _themeForMap kaldırıldı — MapTheme artık map_theme.dart'tan geliyor.
 
@@ -2294,7 +2288,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return completer.future;
   }
 
-  (int, int)? _findTutorialMove() {
+  (int, int)? findTutorialMove() {
     final preferredSources = <int>[];
     for (int i = 4; i < _tubes.length; i++) {
       if (!_isLockedAdTubeIndex(i)) preferredSources.add(i);
@@ -2356,25 +2350,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _maybeShowTutorial() async {
-    final prefs = await SharedPreferences.getInstance();
-    final alreadySeen = prefs.getBool(_tutorialSeenKey) ?? false;
-    final shouldShow =
-        !alreadySeen && widget.mapNumber == 1 && widget.level == 1;
-
-    if (!mounted || !shouldShow) return;
-
-    final move = _findTutorialMove();
-    if (move == null) return;
-
-    await Future.delayed(const Duration(milliseconds: 350));
-    if (!mounted) return;
-
-    setState(() {
-      _showTutorial = true;
-      _tutorialStepIndex = 0;
-      _tutorialFromIdx = move.$1;
-      _tutorialToIdx = move.$2;
-    });
+    return;
   }
 
   Future<void> _completeTutorial({bool skipped = false}) async {
@@ -3185,162 +3161,138 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   ),
                 ),
               SafeArea(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    const double sideControlRailWidth = 76;
-                    const double sideOuterPadding = 12;
-                    const double topStageGap = 12;
-
-                    return Column(
-                      children: [
-                        _buildTopBar(),
-                        const SizedBox(height: topStageGap),
-                        Expanded(
-                          child: Row(
-                            children: [
-                              const SizedBox(width: sideControlRailWidth),
-                              Expanded(
-                                child: Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: sideOuterPadding,
-                                    ),
-                                    child: SizedBox(
-                                      width: double.infinity,
-                                      child: Column(
-                                        children: [
-                                          Expanded(
-                                            child: Align(
-                                              alignment: Alignment.topCenter,
-                                              child: FittedBox(
-                                                fit: BoxFit.scaleDown,
-                                                alignment: Alignment.topCenter,
-                                                child: SizedBox(
-                                                  width: _stageLayout.width,
-                                                  height: _stageLayout.height,
-                                                  child: _TubeStage(
-                                                    mapNumber: widget.mapNumber,
-                                                    stageLayout: _stageLayout,
-                                                    tubes: _tubes,
-                                                    selected: _selected,
-                                                    activePlans: _activePlans,
-                                                    onTap: _handleTap,
-                                                    lockedAdTubeIndex:
-                                                        _lockedAdTubeIndex,
-                                                    showLockedAdTube:
-                                                        _showLockedAdTube,
-                                                    celebratingDoneTubes:
-                                                        _celebratingDoneTubes,
-                                                    gameWon: _gameWon,
-                                                    undoSloshingTubes:
-                                                        _undoSloshingTubes,
-                                                    tutorialActive:
-                                                        _showTutorial,
-                                                    tutorialStepIndex:
-                                                        _tutorialStepIndex,
-                                                    tutorialFromIdx:
-                                                        _tutorialFromIdx,
-                                                    tutorialToIdx:
-                                                        _tutorialToIdx,
-                                                    blindMode:
-                                                        _blindModeEnabled,
-                                                    visibleLayerCounts:
-                                                        _visibleLayerCounts,
-                                                    blindRevealFlashTicks:
-                                                        _blindRevealFlashTicks,
-                                                    tubeStyles: {
-                                                      for (int i = 0;
-                                                          i < _tubes.length;
-                                                          i++)
-                                                        i: _tubeStyleForIndex(
-                                                            i),
-                                                    },
-                                                    tubeCapacities: {
-                                                      for (int i = 0;
-                                                          i < _tubes.length;
-                                                          i++)
-                                                        i: _tubeCapacityIn(
-                                                          _tubes,
-                                                          i,
-                                                        ),
-                                                    },
-                                                    onMountainTap:
-                                                        _handleMountainTap,
-                                                    mountainFillPercent:
-                                                        _mountainFillPercent,
-                                                    mountainLayers:
-                                                        List<_VisualLayer>.from(
-                                                      _mountainLayers.map(
-                                                        (l) => l.copyWith(),
-                                                      ),
-                                                    ),
-                                                    mountainCapacity:
-                                                        _mountainCapacity,
-                                                    sourceRefillTubeIndexes: {
-                                                      ..._activeRefillTubeIndexes,
-                                                    },
-                                                    mountainReservoirKey:
-                                                        _mountainReservoirKey,
-                                                  ),
-                                                ),
+                child: Column(
+                  children: [
+                    _buildTopBar(),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.topCenter,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(top: 0),
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.topCenter,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8),
+                                          child: SizedBox(
+                                            width: _stageLayout.width,
+                                            height: _stageLayout.height,
+                                            child: _TubeStage(
+                                              mapNumber: widget.mapNumber,
+                                              stageLayout: _stageLayout,
+                                              tubes: _tubes,
+                                              selected: _selected,
+                                              activePlans: _activePlans,
+                                              onTap: _handleTap,
+                                              lockedAdTubeIndex:
+                                                  _lockedAdTubeIndex,
+                                              showLockedAdTube:
+                                                  _showLockedAdTube,
+                                              celebratingDoneTubes:
+                                                  _celebratingDoneTubes,
+                                              gameWon: _gameWon,
+                                              undoSloshingTubes:
+                                                  _undoSloshingTubes,
+                                              tutorialActive: _showTutorial,
+                                              tutorialStepIndex:
+                                                  _tutorialStepIndex,
+                                              tutorialFromIdx: _tutorialFromIdx,
+                                              tutorialToIdx: _tutorialToIdx,
+                                              blindMode: _blindModeEnabled,
+                                              visibleLayerCounts:
+                                                  _visibleLayerCounts,
+                                              blindRevealFlashTicks:
+                                                  _blindRevealFlashTicks,
+                                              tubeStyles: {
+                                                for (int i = 0;
+                                                    i < _tubes.length;
+                                                    i++)
+                                                  i: _tubeStyleForIndex(i),
+                                              },
+                                              tubeCapacities: {
+                                                for (int i = 0;
+                                                    i < _tubes.length;
+                                                    i++)
+                                                  i: _tubeCapacityIn(_tubes, i),
+                                              },
+                                              onMountainTap: _handleMountainTap,
+                                              mountainFillPercent:
+                                                  _mountainFillPercent,
+                                              mountainLayers:
+                                                  List<_VisualLayer>.from(
+                                                _mountainLayers
+                                                    .map((l) => l.copyWith()),
                                               ),
+                                              mountainCapacity:
+                                                  _mountainCapacity,
+                                              sourceRefillTubeIndexes: {
+                                                ..._activeRefillTubeIndexes,
+                                              },
+                                              mountainReservoirKey:
+                                                  _mountainReservoirKey,
                                             ),
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              AnimatedOpacity(
-                                duration: const Duration(milliseconds: 180),
-                                opacity: _showTutorial ? 0.22 : 1.0,
-                                child: IgnorePointer(
-                                  ignoring: _showTutorial,
-                                  child: SizedBox(
-                                    width: sideControlRailWidth,
-                                    child: Align(
-                                      alignment: Alignment.center,
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(
-                                          right: sideOuterPadding,
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            _JokerButton(
-                                              enabled: !_jokerBusy &&
-                                                  _activePlans.isEmpty &&
-                                                  !_gameWon,
-                                              busy: _jokerBusy,
-                                              accentColor: _theme.accentColor,
-                                              canBuy: _canBuyJoker,
-                                              cost: _jokerCost,
-                                              onTap: _useJokerWithEconomy,
-                                            ),
-                                            const SizedBox(height: 12),
-                                            _UndoButton(
-                                              canUndo: _history.isNotEmpty &&
-                                                  _activePlans.isEmpty &&
-                                                  !_gameWon,
-                                              accentColor: _theme.accentColor,
-                                              onTap: _undo,
-                                            ),
-                                          ],
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ),
-                            ],
+                                )
+                              ],
+                            ),
                           ),
                         ),
-                        // Map 3 için dağ resminin üstüne boşluk bırak
-                        SizedBox(height: widget.mapNumber == 3 ? 160 : 8),
-                      ],
-                    );
-                  },
+                      ),
+                    ),
+                    // Map 3 için dağ resminin üstüne boşluk bırak
+                    SizedBox(height: widget.mapNumber == 3 ? 160 : 8),
+                  ],
+                ),
+              ),
+              Positioned(
+                right: 12,
+                top: 192,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  opacity: _showTutorial ? 0.22 : 1.0,
+                  child: IgnorePointer(
+                    ignoring: _showTutorial,
+                    child: SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _JokerButton(
+                            enabled: !_jokerBusy &&
+                                _activePlans.isEmpty &&
+                                !_gameWon,
+                            busy: _jokerBusy,
+                            accentColor: _theme.accentColor,
+                            canBuy: _canBuyJoker,
+                            cost: _jokerCost,
+                            onTap: _useJokerWithEconomy,
+                          ),
+                          const SizedBox(height: 12),
+                          _UndoButton(
+                            canUndo: _history.isNotEmpty &&
+                                _activePlans.isEmpty &&
+                                !_gameWon,
+                            accentColor: _theme.accentColor,
+                            onTap: _undo,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
               // Sıvı animasyonu — PNG'nin arkasında, bottom:0 ile tam alta hizalı
@@ -3783,15 +3735,17 @@ class _JokerButton extends StatelessWidget {
       duration: const Duration(milliseconds: 250),
       child: Material(
         color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
-          borderRadius: BorderRadius.circular(27),
+          customBorder: const CircleBorder(),
           onTap: enabled ? onTap : null,
           child: Ink(
-            width: 54,
-            height: 54,
+            width: 62,
+            height: 62,
             decoration: BoxDecoration(
+              shape: BoxShape.circle,
               color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(27),
               border: Border.all(
                 color: enabled
                     ? accentColor.withValues(alpha: 0.45)
@@ -3801,9 +3755,9 @@ class _JokerButton extends StatelessWidget {
               boxShadow: enabled
                   ? [
                       BoxShadow(
-                        color: accentColor.withValues(alpha: 0.18),
-                        blurRadius: 12,
-                        spreadRadius: 1,
+                        color: accentColor.withValues(alpha: 0.16),
+                        blurRadius: 10,
+                        spreadRadius: 0.4,
                       ),
                     ]
                   : null,
@@ -3813,12 +3767,12 @@ class _JokerButton extends StatelessWidget {
               children: [
                 Icon(
                   Icons.auto_fix_high_rounded,
-                  size: 18,
+                  size: 20,
                   color: enabled
                       ? accentColor
                       : Colors.white.withValues(alpha: 0.45),
                 ),
-                const SizedBox(height: 1),
+                const SizedBox(height: 2),
                 Text(
                   text,
                   style: TextStyle(
@@ -3856,15 +3810,17 @@ class _UndoButton extends StatelessWidget {
       duration: const Duration(milliseconds: 250),
       child: Material(
         color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
-          borderRadius: BorderRadius.circular(27),
+          customBorder: const CircleBorder(),
           onTap: canUndo ? onTap : null,
           child: Ink(
-            width: 54,
-            height: 54,
+            width: 62,
+            height: 62,
             decoration: BoxDecoration(
+              shape: BoxShape.circle,
               color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(27),
               border: Border.all(
                 color: canUndo
                     ? accentColor.withValues(alpha: 0.45)
@@ -3874,9 +3830,9 @@ class _UndoButton extends StatelessWidget {
               boxShadow: canUndo
                   ? [
                       BoxShadow(
-                        color: accentColor.withValues(alpha: 0.18),
-                        blurRadius: 12,
-                        spreadRadius: 1,
+                        color: accentColor.withValues(alpha: 0.16),
+                        blurRadius: 10,
+                        spreadRadius: 0.4,
                       ),
                     ]
                   : null,
@@ -3887,7 +3843,7 @@ class _UndoButton extends StatelessWidget {
                 color: canUndo
                     ? accentColor
                     : Colors.white.withValues(alpha: 0.45),
-                size: 20,
+                size: 22,
               ),
             ),
           ),
@@ -3895,140 +3851,6 @@ class _UndoButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _TestLevelButton extends StatelessWidget {
-  final bool enabled;
-  final Color accentColor;
-  final VoidCallback onTap;
-
-  const _TestLevelButton({
-    required this.enabled,
-    required this.accentColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      opacity: enabled ? 1.0 : 0.32,
-      duration: const Duration(milliseconds: 250),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: enabled ? onTap : null,
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-            height: 34,
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: enabled
-                    ? accentColor.withValues(alpha: 0.52)
-                    : Colors.white.withValues(alpha: 0.14),
-                width: 1.4,
-              ),
-              boxShadow: enabled
-                  ? [
-                      BoxShadow(
-                        color: accentColor.withValues(alpha: 0.16),
-                        blurRadius: 12,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.keyboard_double_arrow_up_rounded,
-                  color: enabled
-                      ? accentColor
-                      : Colors.white.withValues(alpha: 0.45),
-                  size: 16,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  'TEST',
-                  style: TextStyle(
-                    color: enabled
-                        ? accentColor
-                        : Colors.white.withValues(alpha: 0.45),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomActionBtn extends StatelessWidget {
-  final String label;
-  final Color color;
-  final Color borderColor;
-  final Color textColor;
-  final VoidCallback onTap;
-
-  const _BottomActionBtn({
-    required this.label,
-    required this.color,
-    required this.borderColor,
-    required this.textColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Ink(
-          height: 52,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: borderColor),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: textColor,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-// ─────────────────────────────────────────────
-// TÜPLER SAHNESİ
-// ─────────────────────────────────────────────
-
-class _TutorialStep {
-  final String title;
-  final String message;
-  final Alignment bubbleAlignment;
-
-  const _TutorialStep({
-    required this.title,
-    required this.message,
-    required this.bubbleAlignment,
-  });
 }
 
 class _TubeStage extends StatefulWidget {
@@ -7627,4 +7449,120 @@ class BasinPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _TutorialStep {
+  final String title;
+  final String message;
+  final Alignment bubbleAlignment;
+
+  const _TutorialStep({
+    required this.title,
+    required this.message,
+    required this.bubbleAlignment,
+  });
+}
+
+class _BottomActionBtn extends StatelessWidget {
+  final String label;
+  final Color color;
+  final Color borderColor;
+  final Color textColor;
+  final VoidCallback onTap;
+
+  const _BottomActionBtn({
+    required this.label,
+    required this.color,
+    required this.borderColor,
+    required this.textColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          height: 52,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: borderColor),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TestLevelButton extends StatelessWidget {
+  final bool enabled;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _TestLevelButton({
+    required this.enabled,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = enabled ? accentColor : Colors.white.withValues(alpha: 0.30);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: enabled ? onTap : null,
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F1B33)
+                .withValues(alpha: enabled ? 0.82 : 0.45),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: fg.withValues(alpha: enabled ? 0.45 : 0.18),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: accentColor.withValues(alpha: enabled ? 0.18 : 0.0),
+                blurRadius: 14,
+                spreadRadius: 0.5,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.keyboard_double_arrow_up_rounded, color: fg, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                'TEST',
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

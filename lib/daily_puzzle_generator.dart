@@ -245,8 +245,8 @@ class DailyPuzzleGenerator {
 
     final tubes = <List<int>>[
       ...mixedTubes,
-      <int>[kLavaColorIndex, kLavaColorIndex],
-      <int>[kLavaColorIndex, kLavaColorIndex],
+      <int>[kLavaColorIndex, kLavaColorIndex, kLavaColorIndex, kLavaColorIndex],
+      <int>[kLavaColorIndex, kLavaColorIndex, kLavaColorIndex, kLavaColorIndex],
       <int>[],
       <int>[],
       <int>[],
@@ -256,10 +256,20 @@ class DailyPuzzleGenerator {
     final mountainCapacity = 8;
     final refillQueues = <int, List<List<int>>>{
       sourceTubeA: <List<int>>[
-        <int>[kLavaColorIndex, kLavaColorIndex],
+        <int>[
+          kLavaColorIndex,
+          kLavaColorIndex,
+          kLavaColorIndex,
+          kLavaColorIndex
+        ],
       ],
       sourceTubeB: <List<int>>[
-        <int>[kLavaColorIndex, kLavaColorIndex],
+        <int>[
+          kLavaColorIndex,
+          kLavaColorIndex,
+          kLavaColorIndex,
+          kLavaColorIndex
+        ],
       ],
     };
 

@@ -262,12 +262,12 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
 
   String _dailyDescription() {
     if (_isVolcanoPuzzle) {
-      return 'Bugün volkan modu açık. Lav sadece bu günlükte Map 3 sistemiyle gelir: volkan hedefi, refill tüpleri ve daha yüksek zorluk.';
+      return 'Bugün volkan modu açık. Dağı doldur ve yanardağı patlat.';
     }
     if (_isBlindPuzzle) {
-      return 'Bugünkü kör mod bulmacasında üst katmanları okuyarak ilerle ve dikkatli hamle yap.';
+      return 'Bugün kör mod bulmacasında üst katmanları okuyarak ilerle ve dikkatli hamle yap.';
     }
-    return 'Bugünkü ortak bulmacayı tamamla, ödülünü al ve yeni bulmaca için gece 00:00\'ı bekle.';
+    return 'Bugün standart günlük bulmacayı tamamla.';
   }
 
   @override

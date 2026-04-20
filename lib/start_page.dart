@@ -210,7 +210,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 20),
                   child: Text(
-                    "v1.0.0 · Likora",
+                    "v1.0.2 · Likora",
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.18),
                       fontSize: 11,
