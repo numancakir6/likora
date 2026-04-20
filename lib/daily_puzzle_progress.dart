@@ -8,6 +8,7 @@ class DailyPuzzleSaveState {
   final int lockedAdTubeIndex;
   final bool adTubeUnlocked;
   final List<int>? visibleLayerCounts;
+  final int mountainFillUnits;
 
   const DailyPuzzleSaveState({
     required this.dateKey,
@@ -15,6 +16,7 @@ class DailyPuzzleSaveState {
     required this.lockedAdTubeIndex,
     required this.adTubeUnlocked,
     this.visibleLayerCounts,
+    this.mountainFillUnits = 0,
   });
 }
 
@@ -27,6 +29,7 @@ class DailyPuzzleProgress {
   static const String _kRewardClaimedDate = 'daily_puzzle_reward_claimed_date';
   static const String _kVisibleLayerCounts =
       'daily_puzzle_visible_layer_counts';
+  static const String _kMountainFillUnits = 'daily_puzzle_mountain_fill_units';
 
   static Future<void> clearIfDateChanged(String dateKey) async {
     final prefs = await SharedPreferences.getInstance();
@@ -39,6 +42,7 @@ class DailyPuzzleProgress {
     await prefs.remove(_kLockedAdTubeIndex);
     await prefs.remove(_kAdTubeUnlocked);
     await prefs.remove(_kVisibleLayerCounts);
+    await prefs.remove(_kMountainFillUnits);
   }
 
   static Future<void> saveInProgressState({
@@ -47,6 +51,7 @@ class DailyPuzzleProgress {
     required int lockedAdTubeIndex,
     required bool adTubeUnlocked,
     List<int>? visibleLayerCounts,
+    int mountainFillUnits = 0,
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -54,6 +59,7 @@ class DailyPuzzleProgress {
     await prefs.setString(_kPuzzleTubes, jsonEncode(tubes));
     await prefs.setInt(_kLockedAdTubeIndex, lockedAdTubeIndex);
     await prefs.setBool(_kAdTubeUnlocked, adTubeUnlocked);
+    await prefs.setInt(_kMountainFillUnits, mountainFillUnits);
 
     if (visibleLayerCounts != null) {
       await prefs.setStringList(
@@ -91,6 +97,7 @@ class DailyPuzzleProgress {
     if (lockedAdTubeIndex == null) return null;
 
     final adTubeUnlocked = prefs.getBool(_kAdTubeUnlocked) ?? false;
+    final mountainFillUnits = prefs.getInt(_kMountainFillUnits) ?? 0;
 
     final rawVisible = prefs.getStringList(_kVisibleLayerCounts);
     final visibleLayerCounts =
@@ -102,6 +109,7 @@ class DailyPuzzleProgress {
       lockedAdTubeIndex: lockedAdTubeIndex,
       adTubeUnlocked: adTubeUnlocked,
       visibleLayerCounts: visibleLayerCounts,
+      mountainFillUnits: mountainFillUnits,
     );
   }
 
@@ -112,6 +120,7 @@ class DailyPuzzleProgress {
     await prefs.remove(_kLockedAdTubeIndex);
     await prefs.remove(_kAdTubeUnlocked);
     await prefs.remove(_kVisibleLayerCounts);
+    await prefs.remove(_kMountainFillUnits);
   }
 
   static Future<void> markCompleted(String dateKey) async {
@@ -163,5 +172,6 @@ class DailyPuzzleProgress {
     await prefs.remove(_kCompletedDate);
     await prefs.remove(_kRewardClaimedDate);
     await prefs.remove(_kVisibleLayerCounts);
+    await prefs.remove(_kMountainFillUnits);
   }
 }

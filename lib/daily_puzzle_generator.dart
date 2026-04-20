@@ -5,6 +5,7 @@ import 'puzzle_presets.dart';
 enum DailyPuzzleMapStyle {
   map1,
   map2,
+  map3,
 }
 
 class DailyPuzzleData {
@@ -16,6 +17,10 @@ class DailyPuzzleData {
   final List<List<int>> tubes;
   final int lockedAdTubeIndex;
   final StageLayout layout;
+  final int? mountainCapacity;
+  final List<int>? refillTubeIndexes;
+  final Map<int, List<List<int>>>? refillQueues;
+  final bool stopRefillWhenMountainFull;
 
   const DailyPuzzleData({
     required this.dateKey,
@@ -26,6 +31,10 @@ class DailyPuzzleData {
     required this.tubes,
     required this.lockedAdTubeIndex,
     required this.layout,
+    this.mountainCapacity,
+    this.refillTubeIndexes,
+    this.refillQueues,
+    this.stopRefillWhenMountainFull = false,
   });
 
   DailyPuzzleData copyWith({
@@ -37,6 +46,10 @@ class DailyPuzzleData {
     List<List<int>>? tubes,
     int? lockedAdTubeIndex,
     StageLayout? layout,
+    int? mountainCapacity,
+    List<int>? refillTubeIndexes,
+    Map<int, List<List<int>>>? refillQueues,
+    bool? stopRefillWhenMountainFull,
   }) {
     return DailyPuzzleData(
       dateKey: dateKey ?? this.dateKey,
@@ -47,6 +60,11 @@ class DailyPuzzleData {
       tubes: tubes ?? this.tubes,
       lockedAdTubeIndex: lockedAdTubeIndex ?? this.lockedAdTubeIndex,
       layout: layout ?? this.layout,
+      mountainCapacity: mountainCapacity ?? this.mountainCapacity,
+      refillTubeIndexes: refillTubeIndexes ?? this.refillTubeIndexes,
+      refillQueues: refillQueues ?? this.refillQueues,
+      stopRefillWhenMountainFull:
+          stopRefillWhenMountainFull ?? this.stopRefillWhenMountainFull,
     );
   }
 }
@@ -55,7 +73,7 @@ class DailyPuzzleGenerator {
   static const int _tubeCapacity = 4;
   static const int _emptyTubeCount = 2;
   static const int _lockedAdTubeCount = 1;
-  static const int _maxColorIndexExclusive = 18; // game_page.dart ile uyumlu
+  static const int _maxNormalColorIndexExclusive = 14;
 
   static DailyPuzzleData generateForDate(DateTime date) {
     final local = date.toLocal();
@@ -64,6 +82,14 @@ class DailyPuzzleGenerator {
     final rng = Random(seed);
 
     final mapStyle = _pickMapStyle(seed);
+    if (mapStyle == DailyPuzzleMapStyle.map3) {
+      return _buildMap3Daily(
+        dateKey: dateKey,
+        seed: seed,
+        rng: rng,
+      );
+    }
+
     final mapNumber = mapStyle == DailyPuzzleMapStyle.map2 ? 2 : 1;
     final difficulty = _pickDifficulty(seed, mapStyle);
 
@@ -76,7 +102,7 @@ class DailyPuzzleGenerator {
     final palette = _pickColorPalette(
       rng: rng,
       colorCount: colorCount,
-      maxExclusive: _maxColorIndexExclusive,
+      maxExclusive: _maxNormalColorIndexExclusive,
     );
 
     List<List<int>> tubes = const [];
@@ -102,7 +128,6 @@ class DailyPuzzleGenerator {
     }
 
     if (tubes.isEmpty) {
-      // Güvenli fallback
       tubes = _buildFallbackTubes(
         palette: palette,
         filledTubeCount: filledTubeCount,
@@ -127,17 +152,19 @@ class DailyPuzzleGenerator {
   static String dateKeyOf(DateTime date) => _dateKey(date.toLocal());
 
   static DailyPuzzleMapStyle _pickMapStyle(int seed) {
-    // Bazı günler map1, bazı günler map2.
-    // Aynı tarihte herkes aynı sonucu alır.
-    // İstersen sonra oranı değiştiririz.
+    if (seed % 5 == 0) return DailyPuzzleMapStyle.map3;
     return (seed % 3 == 0)
         ? DailyPuzzleMapStyle.map2
         : DailyPuzzleMapStyle.map1;
   }
 
   static int _pickDifficulty(int seed, DailyPuzzleMapStyle style) {
+    if (style == DailyPuzzleMapStyle.map3) {
+      const options = [5, 5, 6];
+      return options[seed % options.length];
+    }
+
     if (style == DailyPuzzleMapStyle.map2) {
-      // kapalı sıvı günleri biraz daha zor
       const options = [3, 4, 4, 5];
       return options[seed % options.length];
     }
@@ -147,6 +174,17 @@ class DailyPuzzleGenerator {
   }
 
   static int _pickColorCount(int difficulty, DailyPuzzleMapStyle style) {
+    if (style == DailyPuzzleMapStyle.map3) {
+      switch (difficulty) {
+        case 5:
+          return 7;
+        case 6:
+          return 8;
+        default:
+          return 7;
+      }
+    }
+
     if (style == DailyPuzzleMapStyle.map2) {
       switch (difficulty) {
         case 3:
@@ -183,6 +221,64 @@ class DailyPuzzleGenerator {
     return all.take(colorCount).toList(growable: false);
   }
 
+  static DailyPuzzleData _buildMap3Daily({
+    required String dateKey,
+    required int seed,
+    required Random rng,
+  }) {
+    final difficulty = _pickDifficulty(seed, DailyPuzzleMapStyle.map3);
+    final colorCount = _pickColorCount(difficulty, DailyPuzzleMapStyle.map3);
+    final palette = _pickColorPalette(
+      rng: rng,
+      colorCount: colorCount,
+      maxExclusive: _maxNormalColorIndexExclusive,
+    );
+
+    final mixedTubes = _buildCandidateTubes(
+      rng: Random(seed * 13 + 7),
+      palette: palette,
+      filledTubeCount: colorCount,
+    );
+
+    final sourceTubeA = colorCount;
+    final sourceTubeB = colorCount + 1;
+
+    final tubes = <List<int>>[
+      ...mixedTubes,
+      <int>[kLavaColorIndex, kLavaColorIndex],
+      <int>[kLavaColorIndex, kLavaColorIndex],
+      <int>[],
+      <int>[],
+      <int>[],
+    ];
+
+    final lockedAdTubeIndex = tubes.length - 1;
+    final mountainCapacity = 8;
+    final refillQueues = <int, List<List<int>>>{
+      sourceTubeA: <List<int>>[
+        <int>[kLavaColorIndex, kLavaColorIndex],
+      ],
+      sourceTubeB: <List<int>>[
+        <int>[kLavaColorIndex, kLavaColorIndex],
+      ],
+    };
+
+    return DailyPuzzleData(
+      dateKey: dateKey,
+      seed: seed,
+      mapStyle: DailyPuzzleMapStyle.map3,
+      mapNumber: 3,
+      difficulty: difficulty,
+      tubes: tubes,
+      lockedAdTubeIndex: lockedAdTubeIndex,
+      layout: _buildLayout(tubes.length),
+      mountainCapacity: mountainCapacity,
+      refillTubeIndexes: <int>[sourceTubeA, sourceTubeB],
+      refillQueues: refillQueues,
+      stopRefillWhenMountainFull: true,
+    );
+  }
+
   static List<List<int>> _buildCandidateTubes({
     required Random rng,
     required List<int> palette,
@@ -193,10 +289,6 @@ class DailyPuzzleGenerator {
       pieces.addAll([color, color, color, color]);
     }
 
-    // Amaç:
-    // - her dolu tüp 4 katman olsun
-    // - başlangıçta yan yana aynı renk gelmesin
-    // - dağılım karışık olsun
     final tubes = List<List<int>>.generate(
       filledTubeCount,
       (_) => <int>[],
@@ -212,7 +304,6 @@ class DailyPuzzleGenerator {
     );
 
     if (!placedAll) {
-      // Alternatif kurulum
       final counts = <int, int>{for (final c in palette) c: 4};
       for (final t in tubes) {
         t.clear();
@@ -267,7 +358,6 @@ class DailyPuzzleGenerator {
         return false;
       }
 
-      // Daha az dolu tüpleri öne al
       available.sort((a, b) => tubes[a].length.compareTo(tubes[b].length));
 
       final shortestLen = tubes[available.first].length;
@@ -344,18 +434,15 @@ class DailyPuzzleGenerator {
     List<List<int>> tubes, {
     required int filledTubeCount,
   }) {
-    // Dolu tüpler gerçekten dolu mu?
     for (int i = 0; i < filledTubeCount; i++) {
       final t = tubes[i];
       if (t.length != _tubeCapacity) return false;
 
-      // Başlangıçta yan yana aynı renk istemiyoruz
       for (int j = 0; j < t.length - 1; j++) {
         if (t[j] == t[j + 1]) return false;
       }
     }
 
-    // Her renk tam 4 adet mi?
     final counts = <int, int>{};
     for (final t in tubes) {
       for (final c in t) {
@@ -365,7 +452,6 @@ class DailyPuzzleGenerator {
 
     if (counts.values.any((v) => v != 4)) return false;
 
-    // Açılışta en az birkaç legal hamle olsun
     int legalMoveCount = 0;
     for (int from = 0; from < tubes.length; from++) {
       for (int to = 0; to < tubes.length; to++) {
@@ -376,9 +462,7 @@ class DailyPuzzleGenerator {
       }
     }
 
-    if (legalMoveCount < 3) return false;
-
-    return true;
+    return legalMoveCount >= 3;
   }
 
   static bool _canPour(List<List<int>> tubes, int from, int to) {

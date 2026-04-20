@@ -224,7 +224,6 @@ const List<Map<String, dynamic>> kColors = [
   {'name': 'Camgöbeği', 'fill': Color(0xFF00E5FF)},
   {'name': 'Lime', 'fill': Color(0xFFB2FF00)},
   {'name': 'Kahverengi', 'fill': Color(0xFF6D4C41)},
-  {'name': 'Lacivert', 'fill': Color(0xFF001F54)},
   {'name': 'Bordo', 'fill': Color(0xFF8B0000)},
   {'name': 'Pembe', 'fill': Color(0xFFFF4FA3)},
   {'name': 'Zeytin', 'fill': Color(0xFF808000)},
@@ -242,28 +241,29 @@ bool _isLavaColorIndex(int colorIdx) => colorIdx == kLavaColorIndex;
 Color _solidColorForIndex(int colorIdx) =>
     kColors[colorIdx.clamp(0, kColors.length - 1).toInt()]['fill'] as Color;
 
-const int kNavyColorIndex = 9;
-
-bool _isSensitiveDarkColorIndex(int colorIdx) {
-  return colorIdx == kNavyColorIndex;
+double _colorLuminanceForIndex(int colorIdx) {
+  return _solidColorForIndex(colorIdx).computeLuminance();
 }
 
 double _liquidHighlightAlphaFor(int colorIdx, {required bool isHidden}) {
   if (isHidden) return 0.0;
-  if (_isSensitiveDarkColorIndex(colorIdx)) return 0.03;
+
+  final luminance = _colorLuminanceForIndex(colorIdx);
+  if (luminance < 0.10) return 0.025;
+  if (luminance < 0.20) return 0.035;
   return 0.05;
 }
 
 double _liquidShadowAlphaFor(int colorIdx, {required bool isHidden}) {
   if (isHidden) return 0.0;
-  if (_isSensitiveDarkColorIndex(colorIdx)) return 0.05;
+
+  final luminance = _colorLuminanceForIndex(colorIdx);
+  if (luminance < 0.10) return 0.035;
+  if (luminance < 0.20) return 0.045;
   return 0.05;
 }
 
 Color _visibleLiquidFillForIndex(int colorIdx) {
-  if (colorIdx == kNavyColorIndex) {
-    return const Color(0xFF001F54);
-  }
   return _solidColorForIndex(colorIdx);
 }
 
@@ -544,6 +544,10 @@ class GamePage extends StatefulWidget {
   final DailyPuzzleSaveState? restoredDailyState;
   final String? customTitle;
   final List<Color>? customBackground;
+  final int? customMountainCapacity;
+  final List<int>? customRefillTubeIndexes;
+  final Map<int, List<List<int>>>? customRefillQueues;
+  final bool customStopRefillWhenMountainFull;
 
   const GamePage({
     super.key,
@@ -560,6 +564,10 @@ class GamePage extends StatefulWidget {
     this.restoredDailyState,
     this.customTitle,
     this.customBackground,
+    this.customMountainCapacity,
+    this.customRefillTubeIndexes,
+    this.customRefillQueues,
+    this.customStopRefillWhenMountainFull = false,
   });
 
   @override
@@ -673,7 +681,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   RewardedAd? _jokerRewardAd;
   bool _isJokerRewardAdReady = false;
   bool _jokerBusy = false;
-  static const int _jokerCost = 25;
+  static const int _jokerCost = 50;
   List<int> _jokerSearchLimitsForCurrentState() {
     final activeTubeCount = _jokerActiveTubeIndexesFor(_tubes).length;
     final freshStart = _history.isEmpty;
@@ -728,7 +736,24 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool get _isDailyMode =>
       widget.isDailyPuzzleMode && widget.dailyPuzzleDateKey != null;
 
-  int get _mountainCapacity => _preset?.mountainCapacity ?? 0;
+  int get _mountainCapacity =>
+      widget.customMountainCapacity ?? _preset?.mountainCapacity ?? 0;
+
+  List<int> get _activeRefillTubeIndexes =>
+      widget.customRefillTubeIndexes ??
+      _preset?.sourceRefill?.tubeIndexes ??
+      const <int>[];
+
+  bool get _activeStopRefillWhenMountainFull =>
+      widget.customStopRefillWhenMountainFull ||
+      (_preset?.sourceRefill?.stopWhenMountainFull ?? false);
+
+  Map<int, List<List<int>>> _initialRefillQueuesConfig() {
+    if (widget.customRefillQueues != null) {
+      return _cloneRefillQueuesMap(widget.customRefillQueues!);
+    }
+    return _cloneRefillQueues(_preset?.sourceRefill);
+  }
 
   bool get _hasMountainObjective =>
       widget.mapNumber == 3 && _mountainCapacity > 0;
@@ -946,7 +971,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _restoreRefillState() async {
-    _runtimeRefillQueues = _cloneRefillQueues(_preset?.sourceRefill);
+    _runtimeRefillQueues = _initialRefillQueuesConfig();
 
     final key = _effectiveRefillStatePrefsKey;
     if (key == null) return;
@@ -963,7 +988,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         _runtimeRefillQueues = restored;
       }
     } catch (_) {
-      _runtimeRefillQueues = _cloneRefillQueues(_preset?.sourceRefill);
+      _runtimeRefillQueues = _initialRefillQueuesConfig();
     }
   }
 
@@ -978,17 +1003,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   bool isRefillStopped() {
-    final refill = _preset?.sourceRefill;
-    if (refill == null || !refill.stopWhenMountainFull) return false;
+    if (_activeRefillTubeIndexes.isEmpty ||
+        !_activeStopRefillWhenMountainFull) {
+      return false;
+    }
     return _hasMountainObjective && _mountainFillUnits >= _mountainCapacity;
   }
 
   void _tryRefillSourceTube(int tubeIndex) {
-    final refill = _preset?.sourceRefill;
-    if (refill == null) return;
-    if (!refill.tubeIndexes.contains(tubeIndex)) {
+    final refillTubeIndexes = _activeRefillTubeIndexes;
+    if (refillTubeIndexes.isEmpty) return;
+    if (!refillTubeIndexes.contains(tubeIndex)) {
       debugPrint(
-          '[REFILL] tube $tubeIndex NOT in tubeIndexes: ${refill.tubeIndexes}');
+          '[REFILL] tube $tubeIndex NOT in tubeIndexes: $refillTubeIndexes');
       return;
     }
     if (tubeIndex < 0 || tubeIndex >= _tubes.length) return;
@@ -1075,6 +1102,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       }
 
       await _restoreRefillState();
+    } else if (widget.customRefillQueues != null) {
+      await _restoreRefillState();
     }
 
     if (_isDailyMode) {
@@ -1114,7 +1143,23 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           saved.visibleLayerCounts,
           _tubes,
         );
+        _mountainFillUnits = (_mountainCapacity > 0)
+            ? saved.mountainFillUnits.clamp(0, _mountainCapacity).toInt()
+            : 0;
+        _mountainLayers
+          ..clear()
+          ..addAll(
+            _mountainFillUnits > 0
+                ? <_VisualLayer>[
+                    _VisualLayer(
+                      colorIdx: kLavaColorIndex,
+                      volume: _mountainFillUnits.toDouble(),
+                    ),
+                  ]
+                : const <_VisualLayer>[],
+          );
         await _restoreUndoHistoryState();
+        await _restoreRefillState();
       } else {
         _reset(coinsOverride: syncedCoins);
         _history.clear();
@@ -1638,6 +1683,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _tutorialToIdx = null;
     _coins = coinsValue;
     _levelRewardGranted = false;
+    _mountainFillUnits = 0;
+    _mountainLayers.clear();
     setState(() {});
   }
 
@@ -1658,7 +1705,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       coinsValue: coinsOverride ?? _coins,
     );
 
-    _runtimeRefillQueues = _cloneRefillQueues(_preset?.sourceRefill);
+    _runtimeRefillQueues = _initialRefillQueuesConfig();
 
     if (clearSavedState) {
       if (_isDailyMode) {
@@ -1753,6 +1800,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       if (_gameWon) {
         await DailyPuzzleProgress.clearInProgressState();
         await _clearBlindVisibilityState();
+        await _clearRefillState();
         return;
       }
 
@@ -1762,8 +1810,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         lockedAdTubeIndex: _lockedAdTubeIndex,
         adTubeUnlocked: _adTubeUnlocked,
         visibleLayerCounts: _blindModeEnabled ? _visibleLayerCounts : null,
+        mountainFillUnits: _mountainFillUnits,
       );
       await _persistBlindVisibilityState();
+      await _persistRefillState();
       return;
     }
 
@@ -1847,8 +1897,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final targetMountainCapacity =
         _hasMountainObjective ? _mountainCapacity : 0;
     final initialRefillQueues = _cloneRefillQueuesMap(_runtimeRefillQueues);
-    final stopWhenMountainFull =
-        _preset?.sourceRefill?.stopWhenMountainFull ?? false;
+    final stopWhenMountainFull = _activeStopRefillWhenMountainFull;
 
     int heuristic(_JokerSearchNode node) {
       var h = 0;
@@ -3136,133 +3185,162 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   ),
                 ),
               SafeArea(
-                child: Column(
-                  children: [
-                    _buildTopBar(),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: Column(
-                              children: [
-                                Expanded(
-                                  child: Align(
-                                    alignment: Alignment.topCenter,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(top: 0),
-                                      child: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        alignment: Alignment.topCenter,
-                                        child: SizedBox(
-                                          width: _stageLayout.width,
-                                          height: _stageLayout.height,
-                                          child: _TubeStage(
-                                            mapNumber: widget.mapNumber,
-                                            stageLayout: _stageLayout,
-                                            tubes: _tubes,
-                                            selected: _selected,
-                                            activePlans: _activePlans,
-                                            onTap: _handleTap,
-                                            lockedAdTubeIndex:
-                                                _lockedAdTubeIndex,
-                                            showLockedAdTube: _showLockedAdTube,
-                                            celebratingDoneTubes:
-                                                _celebratingDoneTubes,
-                                            gameWon: _gameWon,
-                                            undoSloshingTubes:
-                                                _undoSloshingTubes,
-                                            tutorialActive: _showTutorial,
-                                            tutorialStepIndex:
-                                                _tutorialStepIndex,
-                                            tutorialFromIdx: _tutorialFromIdx,
-                                            tutorialToIdx: _tutorialToIdx,
-                                            blindMode: _blindModeEnabled,
-                                            visibleLayerCounts:
-                                                _visibleLayerCounts,
-                                            blindRevealFlashTicks:
-                                                _blindRevealFlashTicks,
-                                            tubeStyles: {
-                                              for (int i = 0;
-                                                  i < _tubes.length;
-                                                  i++)
-                                                i: _tubeStyleForIndex(i),
-                                            },
-                                            tubeCapacities: {
-                                              for (int i = 0;
-                                                  i < _tubes.length;
-                                                  i++)
-                                                i: _tubeCapacityIn(_tubes, i),
-                                            },
-                                            onMountainTap: _handleMountainTap,
-                                            mountainFillPercent:
-                                                _mountainFillPercent,
-                                            mountainLayers:
-                                                List<_VisualLayer>.from(
-                                              _mountainLayers
-                                                  .map((l) => l.copyWith()),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    const double sideControlRailWidth = 76;
+                    const double sideOuterPadding = 12;
+                    const double topStageGap = 12;
+
+                    return Column(
+                      children: [
+                        _buildTopBar(),
+                        const SizedBox(height: topStageGap),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              const SizedBox(width: sideControlRailWidth),
+                              Expanded(
+                                child: Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: sideOuterPadding,
+                                    ),
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      child: Column(
+                                        children: [
+                                          Expanded(
+                                            child: Align(
+                                              alignment: Alignment.topCenter,
+                                              child: FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                alignment: Alignment.topCenter,
+                                                child: SizedBox(
+                                                  width: _stageLayout.width,
+                                                  height: _stageLayout.height,
+                                                  child: _TubeStage(
+                                                    mapNumber: widget.mapNumber,
+                                                    stageLayout: _stageLayout,
+                                                    tubes: _tubes,
+                                                    selected: _selected,
+                                                    activePlans: _activePlans,
+                                                    onTap: _handleTap,
+                                                    lockedAdTubeIndex:
+                                                        _lockedAdTubeIndex,
+                                                    showLockedAdTube:
+                                                        _showLockedAdTube,
+                                                    celebratingDoneTubes:
+                                                        _celebratingDoneTubes,
+                                                    gameWon: _gameWon,
+                                                    undoSloshingTubes:
+                                                        _undoSloshingTubes,
+                                                    tutorialActive:
+                                                        _showTutorial,
+                                                    tutorialStepIndex:
+                                                        _tutorialStepIndex,
+                                                    tutorialFromIdx:
+                                                        _tutorialFromIdx,
+                                                    tutorialToIdx:
+                                                        _tutorialToIdx,
+                                                    blindMode:
+                                                        _blindModeEnabled,
+                                                    visibleLayerCounts:
+                                                        _visibleLayerCounts,
+                                                    blindRevealFlashTicks:
+                                                        _blindRevealFlashTicks,
+                                                    tubeStyles: {
+                                                      for (int i = 0;
+                                                          i < _tubes.length;
+                                                          i++)
+                                                        i: _tubeStyleForIndex(
+                                                            i),
+                                                    },
+                                                    tubeCapacities: {
+                                                      for (int i = 0;
+                                                          i < _tubes.length;
+                                                          i++)
+                                                        i: _tubeCapacityIn(
+                                                          _tubes,
+                                                          i,
+                                                        ),
+                                                    },
+                                                    onMountainTap:
+                                                        _handleMountainTap,
+                                                    mountainFillPercent:
+                                                        _mountainFillPercent,
+                                                    mountainLayers:
+                                                        List<_VisualLayer>.from(
+                                                      _mountainLayers.map(
+                                                        (l) => l.copyWith(),
+                                                      ),
+                                                    ),
+                                                    mountainCapacity:
+                                                        _mountainCapacity,
+                                                    sourceRefillTubeIndexes: {
+                                                      ..._activeRefillTubeIndexes,
+                                                    },
+                                                    mountainReservoirKey:
+                                                        _mountainReservoirKey,
+                                                  ),
+                                                ),
+                                              ),
                                             ),
-                                            mountainCapacity: _mountainCapacity,
-                                            sourceRefillTubeIndexes: {
-                                              ...?_preset
-                                                  ?.sourceRefill?.tubeIndexes,
-                                            },
-                                            mountainReservoirKey:
-                                                _mountainReservoirKey,
                                           ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              AnimatedOpacity(
+                                duration: const Duration(milliseconds: 180),
+                                opacity: _showTutorial ? 0.22 : 1.0,
+                                child: IgnorePointer(
+                                  ignoring: _showTutorial,
+                                  child: SizedBox(
+                                    width: sideControlRailWidth,
+                                    child: Align(
+                                      alignment: Alignment.center,
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: sideOuterPadding,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            _JokerButton(
+                                              enabled: !_jokerBusy &&
+                                                  _activePlans.isEmpty &&
+                                                  !_gameWon,
+                                              busy: _jokerBusy,
+                                              accentColor: _theme.accentColor,
+                                              canBuy: _canBuyJoker,
+                                              cost: _jokerCost,
+                                              onTap: _useJokerWithEconomy,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            _UndoButton(
+                                              canUndo: _history.isNotEmpty &&
+                                                  _activePlans.isEmpty &&
+                                                  !_gameWon,
+                                              accentColor: _theme.accentColor,
+                                              onTap: _undo,
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ),
-                    // Map 3 için dağ resminin üstüne boşluk bırak
-                    SizedBox(height: widget.mapNumber == 3 ? 160 : 8),
-                  ],
-                ),
-              ),
-              Positioned(
-                right: 0,
-                bottom: 175,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 180),
-                  opacity: _showTutorial ? 0.22 : 1.0,
-                  child: IgnorePointer(
-                    ignoring: _showTutorial,
-                    child: SafeArea(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          _JokerButton(
-                            enabled: !_jokerBusy &&
-                                _activePlans.isEmpty &&
-                                !_gameWon,
-                            busy: _jokerBusy,
-                            accentColor: _theme.accentColor,
-                            canBuy: _canBuyJoker,
-                            cost: _jokerCost,
-                            onTap: _useJokerWithEconomy,
-                          ),
-                          const SizedBox(height: 10),
-                          _UndoButton(
-                            canUndo: _history.isNotEmpty &&
-                                _activePlans.isEmpty &&
-                                !_gameWon,
-                            accentColor: _theme.accentColor,
-                            onTap: _undo,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                        // Map 3 için dağ resminin üstüne boşluk bırak
+                        SizedBox(height: widget.mapNumber == 3 ? 160 : 8),
+                      ],
+                    );
+                  },
                 ),
               ),
               // Sıvı animasyonu — PNG'nin arkasında, bottom:0 ile tam alta hizalı
@@ -3706,16 +3784,14 @@ class _JokerButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius:
-              const BorderRadius.horizontal(left: Radius.circular(14)),
+          borderRadius: BorderRadius.circular(27),
           onTap: enabled ? onTap : null,
           child: Ink(
-            width: 58,
-            height: 44,
+            width: 54,
+            height: 54,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.08),
-              borderRadius:
-                  const BorderRadius.horizontal(left: Radius.circular(14)),
+              borderRadius: BorderRadius.circular(27),
               border: Border.all(
                 color: enabled
                     ? accentColor.withValues(alpha: 0.45)
@@ -3781,16 +3857,14 @@ class _UndoButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius:
-              const BorderRadius.horizontal(left: Radius.circular(14)),
+          borderRadius: BorderRadius.circular(27),
           onTap: canUndo ? onTap : null,
           child: Ink(
-            width: 44,
-            height: 44,
+            width: 54,
+            height: 54,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.08),
-              borderRadius:
-                  const BorderRadius.horizontal(left: Radius.circular(14)),
+              borderRadius: BorderRadius.circular(27),
               border: Border.all(
                 color: canUndo
                     ? accentColor.withValues(alpha: 0.45)

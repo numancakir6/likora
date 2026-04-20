@@ -101,6 +101,8 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
   }
 
   bool get _isBlindPuzzle => _dailyPuzzle.mapStyle == DailyPuzzleMapStyle.map2;
+  bool get _isVolcanoPuzzle =>
+      _dailyPuzzle.mapStyle == DailyPuzzleMapStyle.map3;
 
   String _difficultyText(int difficulty) {
     switch (difficulty) {
@@ -128,9 +130,9 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
       case 4:
         return 150;
       case 5:
-        return 200;
+        return _isVolcanoPuzzle ? 250 : 200;
       case 6:
-        return 300;
+        return 350;
       default:
         return 100;
     }
@@ -144,6 +146,14 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
   }
 
   List<Color> _dailyBackground(String dateKey) {
+    if (_isVolcanoPuzzle) {
+      return const [
+        Color(0xFF1D0B05),
+        Color(0xFF4A0B00),
+        Color(0xFF7A1F00),
+      ];
+    }
+
     final seed = int.tryParse(dateKey) ?? 1;
 
     const palettes = <List<Color>>[
@@ -160,13 +170,13 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
   }
 
   Color _accentColor() {
+    if (_isVolcanoPuzzle) return const Color(0xFFFF6F00);
     return _isBlindPuzzle ? const Color(0xFF8E63D8) : const Color(0xFFFF8A3D);
   }
 
   IconData _dailyIcon() {
-    if (_isBlindPuzzle) {
-      return Icons.visibility_off_outlined;
-    }
+    if (_isVolcanoPuzzle) return Icons.local_fire_department_rounded;
+    if (_isBlindPuzzle) return Icons.visibility_off_outlined;
     return Icons.extension_rounded;
   }
 
@@ -196,6 +206,11 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           customPuzzleTubes: _dailyPuzzle.tubes,
           customLockedAdTubeIndex: _dailyPuzzle.lockedAdTubeIndex,
           customStageLayout: _dailyPuzzle.layout,
+          customMountainCapacity: _dailyPuzzle.mountainCapacity,
+          customRefillTubeIndexes: _dailyPuzzle.refillTubeIndexes,
+          customRefillQueues: _dailyPuzzle.refillQueues,
+          customStopRefillWhenMountainFull:
+              _dailyPuzzle.stopRefillWhenMountainFull,
           isDailyPuzzleMode: true,
           dailyPuzzleDateKey: _dailyPuzzle.dateKey,
           dailyRewardCoins: reward,
@@ -243,6 +258,16 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
       color: Color(0xFFFFC83D),
       size: 18,
     );
+  }
+
+  String _dailyDescription() {
+    if (_isVolcanoPuzzle) {
+      return 'Bugün volkan modu açık. Lav sadece bu günlükte Map 3 sistemiyle gelir: volkan hedefi, refill tüpleri ve daha yüksek zorluk.';
+    }
+    if (_isBlindPuzzle) {
+      return 'Bugünkü kör mod bulmacasında üst katmanları okuyarak ilerle ve dikkatli hamle yap.';
+    }
+    return 'Bugünkü ortak bulmacayı tamamla, ödülünü al ve yeni bulmaca için gece 00:00\'ı bekle.';
   }
 
   @override
@@ -346,6 +371,17 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 14),
           Text(
+            'MOD : ${_isVolcanoPuzzle ? 'VOLKAN' : _isBlindPuzzle ? 'KÖR MOD' : 'KLASİK'}',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: accent,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.7,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
             'ZORLUK : ${_difficultyText(_dailyPuzzle.difficulty)}',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -403,7 +439,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 18),
           Text(
-            'Bugünkü ortak bulmacayı tamamla, ödülünü al ve yeni bulmaca için gece 00:00\'ı bekle.',
+            _dailyDescription(),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.68),
