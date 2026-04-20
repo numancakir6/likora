@@ -1076,35 +1076,104 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _restoreOrResetLevel() async {
-    await PlayerProgress.ensureLoaded();
+    try {
+      await PlayerProgress.ensureLoaded();
 
-    final syncedCoins = widget.initialCoins > 0
-        ? widget.initialCoins
-        : PlayerProgress.coins.value;
+      final syncedCoins = widget.initialCoins > 0
+          ? widget.initialCoins
+          : PlayerProgress.coins.value;
 
-    if (widget.customPuzzleTubes == null && !_isDailyMode) {
-      _preset = PuzzlePresets.getOrNull(
-        mapNumber: widget.mapNumber,
-        levelId: widget.level,
-      );
+      if (widget.customPuzzleTubes == null && !_isDailyMode) {
+        _preset = PuzzlePresets.getOrNull(
+          mapNumber: widget.mapNumber,
+          levelId: widget.level,
+        );
 
-      if (_preset == null) {
+        if (_preset == null) {
+          if (!mounted) return;
+          setState(() {
+            _missingPreset = true;
+            _restoringLevelState = false;
+          });
+          return;
+        }
+
+        await _restoreRefillState();
+      } else if (widget.customRefillQueues != null) {
+        await _restoreRefillState();
+      }
+
+      if (_isDailyMode) {
+        final isAlreadyCompleted =
+            await DailyPuzzleProgress.isCompleted(widget.dailyPuzzleDateKey!);
+
+        if (isAlreadyCompleted) {
+          _applyCompletedLevelState(coinsOverride: syncedCoins);
+          PlayerProgress.setCoins(_coins);
+
+          if (!mounted) return;
+          setState(() {
+            _restoringLevelState = false;
+          });
+          return;
+        }
+
+        final saved = widget.restoredDailyState;
+
+        if (!mounted) return;
+
+        final expectedTubeCount = widget.customPuzzleTubes?.length;
+        final savedTubeCount = saved?.tubes.length;
+        final countMismatch = expectedTubeCount != null &&
+            savedTubeCount != null &&
+            expectedTubeCount != savedTubeCount;
+
+        if (saved != null && saved.tubes.isNotEmpty && !countMismatch) {
+          _applyLevelState(
+            tubes: saved.tubes,
+            lockedAdTubeIndex: saved.lockedAdTubeIndex,
+            adTubeUnlocked: saved.adTubeUnlocked,
+            coinsValue: syncedCoins,
+          );
+
+          _visibleLayerCounts = _normalizeVisibleLayerCounts(
+            saved.visibleLayerCounts,
+            _tubes,
+          );
+          _mountainFillUnits = (_mountainCapacity > 0)
+              ? saved.mountainFillUnits.clamp(0, _mountainCapacity).toInt()
+              : 0;
+          _mountainLayers
+            ..clear()
+            ..addAll(
+              _mountainFillUnits > 0
+                  ? <_VisualLayer>[
+                      _VisualLayer(
+                        colorIdx: kLavaColorIndex,
+                        volume: _mountainFillUnits.toDouble(),
+                      ),
+                    ]
+                  : const <_VisualLayer>[],
+            );
+          await _restoreUndoHistoryState();
+          await _restoreRefillState();
+        } else {
+          _reset(coinsOverride: syncedCoins);
+          _history.clear();
+        }
+
+        PlayerProgress.setCoins(_coins);
+
         if (!mounted) return;
         setState(() {
-          _missingPreset = true;
           _restoringLevelState = false;
         });
         return;
       }
 
-      await _restoreRefillState();
-    } else if (widget.customRefillQueues != null) {
-      await _restoreRefillState();
-    }
-
-    if (_isDailyMode) {
-      final isAlreadyCompleted =
-          await DailyPuzzleProgress.isCompleted(widget.dailyPuzzleDateKey!);
+      final completedLevels =
+          await PlayerProgress.getCompletedLevels(widget.mapNumber);
+      final isAlreadyCompleted = completedLevels.contains(widget.level);
 
       if (isAlreadyCompleted) {
         _applyCompletedLevelState(coinsOverride: syncedCoins);
@@ -1117,45 +1186,37 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         return;
       }
 
-      final saved = widget.restoredDailyState;
+      final saved = await PlayerProgress.getInProgressLevelState(
+        widget.mapNumber,
+        widget.level,
+      );
 
       if (!mounted) return;
 
-      final expectedTubeCount = widget.customPuzzleTubes?.length;
-      final savedTubeCount = saved?.tubes.length;
-      final countMismatch = expectedTubeCount != null &&
-          savedTubeCount != null &&
-          expectedTubeCount != savedTubeCount;
+      if (saved != null && saved.tubes.isNotEmpty) {
+        // Preset ile kayıtlı state tüp sayısı uyuşmuyorsa sıfırla.
+        // Bu, lockedAdTubeIndex kayması ve renk index hataları yaratır.
+        final presetTubeCount = PuzzlePresets.getOrNull(
+          mapNumber: widget.mapNumber,
+          levelId: widget.level,
+        )?.tubes.length;
+        final savedTubeCount = saved.tubes.length;
+        final countMismatch =
+            presetTubeCount != null && savedTubeCount != presetTubeCount;
 
-      if (saved != null && saved.tubes.isNotEmpty && !countMismatch) {
-        _applyLevelState(
-          tubes: saved.tubes,
-          lockedAdTubeIndex: saved.lockedAdTubeIndex,
-          adTubeUnlocked: saved.adTubeUnlocked,
-          coinsValue: syncedCoins,
-        );
-
-        _visibleLayerCounts = _normalizeVisibleLayerCounts(
-          saved.visibleLayerCounts,
-          _tubes,
-        );
-        _mountainFillUnits = (_mountainCapacity > 0)
-            ? saved.mountainFillUnits.clamp(0, _mountainCapacity).toInt()
-            : 0;
-        _mountainLayers
-          ..clear()
-          ..addAll(
-            _mountainFillUnits > 0
-                ? <_VisualLayer>[
-                    _VisualLayer(
-                      colorIdx: kLavaColorIndex,
-                      volume: _mountainFillUnits.toDouble(),
-                    ),
-                  ]
-                : const <_VisualLayer>[],
+        if (countMismatch) {
+          _reset(coinsOverride: syncedCoins);
+          _history.clear();
+        } else {
+          _applyLevelState(
+            tubes: saved.tubes,
+            lockedAdTubeIndex: saved.lockedAdTubeIndex,
+            adTubeUnlocked: saved.adTubeUnlocked,
+            coinsValue: saved.coins,
           );
-        await _restoreUndoHistoryState();
-        await _restoreRefillState();
+          await _restoreBlindVisibilityState();
+          await _restoreUndoHistoryState();
+        }
       } else {
         _reset(coinsOverride: syncedCoins);
         _history.clear();
@@ -1167,66 +1228,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       setState(() {
         _restoringLevelState = false;
       });
-      return;
-    }
-
-    final completedLevels =
-        await PlayerProgress.getCompletedLevels(widget.mapNumber);
-    final isAlreadyCompleted = completedLevels.contains(widget.level);
-
-    if (isAlreadyCompleted) {
-      _applyCompletedLevelState(coinsOverride: syncedCoins);
-      PlayerProgress.setCoins(_coins);
-
+    } catch (e, stack) {
+      debugPrint('_restoreOrResetLevel hatası: $e\n$stack');
       if (!mounted) return;
+      _reset();
       setState(() {
         _restoringLevelState = false;
       });
-      return;
     }
-
-    final saved = await PlayerProgress.getInProgressLevelState(
-      widget.mapNumber,
-      widget.level,
-    );
-
-    if (!mounted) return;
-
-    if (saved != null && saved.tubes.isNotEmpty) {
-      // Preset ile kayıtlı state tüp sayısı uyuşmuyorsa sıfırla.
-      // Bu, lockedAdTubeIndex kayması ve renk index hataları yaratır.
-      final presetTubeCount = PuzzlePresets.getOrNull(
-        mapNumber: widget.mapNumber,
-        levelId: widget.level,
-      )?.tubes.length;
-      final savedTubeCount = saved.tubes.length;
-      final countMismatch =
-          presetTubeCount != null && savedTubeCount != presetTubeCount;
-
-      if (countMismatch) {
-        _reset(coinsOverride: syncedCoins);
-        _history.clear();
-      } else {
-        _applyLevelState(
-          tubes: saved.tubes,
-          lockedAdTubeIndex: saved.lockedAdTubeIndex,
-          adTubeUnlocked: saved.adTubeUnlocked,
-          coinsValue: saved.coins,
-        );
-        await _restoreBlindVisibilityState();
-        await _restoreUndoHistoryState();
-      }
-    } else {
-      _reset(coinsOverride: syncedCoins);
-      _history.clear();
-    }
-
-    PlayerProgress.setCoins(_coins);
-
-    if (!mounted) return;
-    setState(() {
-      _restoringLevelState = false;
-    });
   }
 
   @override
