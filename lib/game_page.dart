@@ -241,28 +241,28 @@ bool _isLavaColorIndex(int colorIdx) => colorIdx == kLavaColorIndex;
 Color _solidColorForIndex(int colorIdx) =>
     kColors[colorIdx.clamp(0, kColors.length - 1).toInt()]['fill'] as Color;
 
-const int kNavyColorIndex = 9;
-
-bool _isSensitiveDarkColorIndex(int colorIdx) {
-  return colorIdx == kNavyColorIndex;
+double _colorLuminanceForIndex(int colorIdx) {
+  final c = _solidColorForIndex(colorIdx);
+  return c.computeLuminance();
 }
 
 double _liquidHighlightAlphaFor(int colorIdx, {required bool isHidden}) {
   if (isHidden) return 0.0;
-  if (_isSensitiveDarkColorIndex(colorIdx)) return 0.03;
+  final lum = _colorLuminanceForIndex(colorIdx);
+  if (lum < 0.10) return 0.03;
+  if (lum < 0.20) return 0.04;
   return 0.05;
 }
 
 double _liquidShadowAlphaFor(int colorIdx, {required bool isHidden}) {
   if (isHidden) return 0.0;
-  if (_isSensitiveDarkColorIndex(colorIdx)) return 0.05;
+  final lum = _colorLuminanceForIndex(colorIdx);
+  if (lum < 0.10) return 0.04;
+  if (lum < 0.20) return 0.05;
   return 0.05;
 }
 
 Color _visibleLiquidFillForIndex(int colorIdx) {
-  if (colorIdx == kNavyColorIndex) {
-    return const Color(0xFF001F54);
-  }
   return _solidColorForIndex(colorIdx);
 }
 
@@ -642,7 +642,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   static const String _tutorialSeenKey = 'likora_tutorial_seen_v1';
 
-  bool _showTutorial = false;
+  bool _showTutorial = false; // tutorial disabled
   int _tutorialStepIndex = 0;
   int? _tutorialFromIdx;
   int? _tutorialToIdx;
@@ -3241,8 +3241,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                             ),
                                             mountainCapacity: _mountainCapacity,
                                             sourceRefillTubeIndexes: {
-                                              ...?_preset
-                                                  ?.sourceRefill?.tubeIndexes,
+                                              ..._activeRefillTubeIndexes,
                                             },
                                             mountainReservoirKey:
                                                 _mountainReservoirKey,
