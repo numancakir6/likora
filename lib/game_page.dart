@@ -3334,8 +3334,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                             fillPercent: animatedFill,
                             liquidColor: _mountainLayers.isEmpty
                                 ? const Color(0xFFFF6A00)
-                                : (kColors[_mountainLayers.last.colorIdx]
-                                    ['fill'] as Color),
+                                : (_isLavaColorIndex(
+                                        _mountainLayers.last.colorIdx)
+                                    ? kLavaOrange
+                                    : _solidColorForIndex(
+                                        _mountainLayers.last.colorIdx)),
                             glow: false,
                             onTap: _handleMountainTap,
                             layers: List<_VisualLayer>.from(
@@ -5606,7 +5609,9 @@ class _TubeDoneBurstState extends State<_TubeDoneBurst>
 
   @override
   Widget build(BuildContext context) {
-    final color = kColors[widget.colorIdx]['fill'] as Color;
+    final color = _isLavaColorIndex(widget.colorIdx)
+        ? kLavaOrange
+        : _solidColorForIndex(widget.colorIdx);
     final hexSize = widget.isGameWin ? 30.0 : 28.0;
 
     return AnimatedBuilder(
@@ -6059,7 +6064,9 @@ class _FlyingTubeState extends State<_FlyingTube>
                 child: IgnorePointer(
                   child: CustomPaint(
                     painter: _LiquidStreamPainter(
-                      color: kColors[widget.plan.colorIdx]['fill'] as Color,
+                      color: _isLavaColorIndex(widget.plan.colorIdx)
+                          ? kLavaOrange
+                          : _solidColorForIndex(widget.plan.colorIdx),
                       start: globalStreamStart,
                       end: dynamicTargetSurface,
                       mouthEntry: targetMouthEntry,
@@ -6117,7 +6124,8 @@ class _LiquidStreamPainter extends CustomPainter {
     required this.flowRate,
   });
 
-  bool get _isLava => color == _solidColorForIndex(kLavaColorIndex);
+  bool get _isLava =>
+      color == kLavaOrange || color == kLavaRed || color == kLavaCore;
 
   @override
   void paint(Canvas canvas, Size size) {
