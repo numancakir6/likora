@@ -46,26 +46,34 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
   }
 
   Future<void> _loadPage() async {
-    final now = DateTime.now().toLocal();
-    final dailyPuzzle = DailyPuzzleGenerator.generateForDate(now);
-    final dateKey = dailyPuzzle.dateKey;
+    try {
+      final now = DateTime.now().toLocal();
+      final dailyPuzzle = DailyPuzzleGenerator.generateForDate(now);
+      final dateKey = dailyPuzzle.dateKey;
 
-    await PlayerProgress.ensureLoaded();
-    await DailyPuzzleProgress.prepareForDate(dateKey);
+      await PlayerProgress.ensureLoaded();
+      await DailyPuzzleProgress.prepareForDate(dateKey);
 
-    final completed = await DailyPuzzleProgress.isCompleted(dateKey);
+      final completed = await DailyPuzzleProgress.isCompleted(dateKey);
 
-    _countdownTimer?.cancel();
+      _countdownTimer?.cancel();
 
-    if (!mounted) return;
-    setState(() {
-      _dailyPuzzle = dailyPuzzle;
-      _completedToday = completed;
-      _timeLeft = _durationUntilNextMidnight();
-      _loading = false;
-    });
+      if (!mounted) return;
+      setState(() {
+        _dailyPuzzle = dailyPuzzle;
+        _completedToday = completed;
+        _timeLeft = _durationUntilNextMidnight();
+        _loading = false;
+      });
 
-    _startCountdown();
+      _startCountdown();
+    } catch (e, stack) {
+      debugPrint('DailyPuzzlePage _loadPage hatası: $e\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+      });
+    }
   }
 
   void _startCountdown() {
@@ -272,7 +280,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _accentColor();
+    final accent = _loading ? const Color(0xFFFF8A3D) : _accentColor();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0415),
