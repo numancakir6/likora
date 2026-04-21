@@ -136,6 +136,10 @@ class StageLayout {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// PUZZLE PRESET
+// ─────────────────────────────────────────────────────────────────
+
 class PuzzlePreset {
   final int mapNumber;
   final int levelId;
@@ -163,6 +167,10 @@ class PuzzlePreset {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────
+// PUZZLE PRESETS
+// ─────────────────────────────────────────────────────────────────
+
 class PuzzlePresets {
   static PuzzlePreset get({
     required int mapNumber,
@@ -170,7 +178,7 @@ class PuzzlePresets {
   }) {
     final preset = getOrNull(mapNumber: mapNumber, levelId: levelId);
     if (preset == null) {
-      throw StateError('Level bulunamadı: map=$mapNumber level=$levelId');
+      throw StateError('Level bulunamadi: map=$mapNumber level=$levelId');
     }
     return preset;
   }
@@ -187,32 +195,54 @@ class PuzzlePresets {
   }
 
   static final Map<int, Map<int, PuzzlePreset>> _presets = {
+    // ═══════════════════════════════════════════════════════════════
+    // MAP 1 — KLASIK MOD (10 Level)
+    // ═══════════════════════════════════════════════════════════════
+    //
+    // Mekanik: Tum sivilar gorunur. Klasik water-sort.
+    //
+    // Zorluk egrisi:
+    //   L1 : 3 renk, 3 tup  — giris, ama az boslukla sikisik
+    //   L2 : 4 renk, 4 tup  — her renk her tupte, latin kare
+    //   L3 : 4 renk, 4 tup  — bazi renkler ayni tupte 2x, kose sikismasi
+    //   L4 : 5 renk, 5 tup  — kritik hamle sirasi var
+    //   L5 : 5 renk, 5 tup  — her tupte 1 renk 2x gomulu
+    //   L6 : 6 renk, 6 tup  — dongusal bagimlilik
+    //   L7 : 6 renk, 6 tup  — joker olmadan cikmaza girebilir
+    //   L8 : 7 renk, 7 tup  — derin bulmaca
+    //   L9 : 8 renk, 8 tup  — cok sikisik
+    //   L10: 8 renk, 8 tup  — neredeyse tek hamle sirasi
+    //
     1: {
       1: PuzzlePreset(
         mapNumber: 1,
         levelId: 1,
         difficulty: 1,
         tubes: [
-          [2, 0, 3, 2],
-          [1, 0, 2, 3],
-          [1, 0, 1, 3],
-          [2, 0, 1, 3],
+          [0, 1, 2, 1],
+          [2, 0, 1, 0],
+          [1, 2, 0, 2],
+          [1, 2, 0, 2],
+          [1, 2, 0, 2],
+          [1, 2, 0, 2],
+          [1, 2, 0, 2],
+          [1, 2, 0, 2],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(7),
-        lockedAdTubeIndex: 6,
+        layout: StageLayout.standardForTubeCount(6),
+        lockedAdTubeIndex: 5,
       ),
       2: PuzzlePreset(
         mapNumber: 1,
         levelId: 2,
         difficulty: 2,
         tubes: [
-          [2, 1, 0, 1],
-          [3, 2, 0, 2],
-          [0, 3, 2, 1],
-          [3, 0, 3, 1],
+          [1, 3, 0, 2],
+          [0, 2, 3, 1],
+          [2, 1, 0, 3],
+          [3, 0, 2, 1],
           [],
           [],
           [],
@@ -223,30 +253,29 @@ class PuzzlePresets {
       3: PuzzlePreset(
         mapNumber: 1,
         levelId: 3,
-        difficulty: 3,
+        difficulty: 2,
         tubes: [
-          [1, 2, 0, 4],
-          [2, 3, 1, 0],
-          [0, 1, 0, 4],
-          [2, 4, 1, 3],
-          [3, 4, 2, 3],
+          [2, 0, 3, 0],
+          [1, 3, 2, 3],
+          [0, 2, 1, 2],
+          [3, 1, 0, 1],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(8),
-        lockedAdTubeIndex: 7,
+        layout: StageLayout.standardForTubeCount(7),
+        lockedAdTubeIndex: 6,
       ),
       4: PuzzlePreset(
         mapNumber: 1,
         levelId: 4,
-        difficulty: 4,
+        difficulty: 3,
         tubes: [
+          [0, 4, 2, 1],
+          [3, 1, 4, 2],
           [4, 0, 3, 4],
-          [3, 1, 4, 0],
-          [4, 2, 1, 2],
-          [0, 2, 1, 3],
-          [0, 1, 3, 2],
+          [2, 3, 0, 3],
+          [1, 2, 1, 0],
           [],
           [],
           [],
@@ -257,32 +286,31 @@ class PuzzlePresets {
       5: PuzzlePreset(
         mapNumber: 1,
         levelId: 5,
-        difficulty: 5,
+        difficulty: 3,
         tubes: [
-          [1, 3, 2, 5],
-          [0, 1, 5, 0],
-          [4, 5, 0, 4],
-          [3, 5, 2, 1],
-          [4, 1, 2, 3],
-          [0, 3, 2, 4],
+          [0, 2, 4, 0],
+          [1, 3, 2, 1],
+          [4, 0, 1, 4],
+          [3, 4, 0, 3],
+          [2, 1, 3, 2],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(9),
-        lockedAdTubeIndex: 8,
+        layout: StageLayout.standardForTubeCount(8),
+        lockedAdTubeIndex: 7,
       ),
       6: PuzzlePreset(
         mapNumber: 1,
         levelId: 6,
-        difficulty: 6,
+        difficulty: 4,
         tubes: [
-          [2, 0, 1, 4],
-          [1, 0, 5, 4],
-          [4, 5, 3, 1],
-          [5, 3, 5, 2],
-          [2, 3, 0, 2],
-          [4, 1, 3, 0],
+          [5, 1, 3, 0],
+          [2, 4, 0, 5],
+          [3, 2, 5, 4],
+          [0, 3, 4, 1],
+          [4, 5, 1, 2],
+          [1, 0, 2, 3],
           [],
           [],
           [],
@@ -293,15 +321,33 @@ class PuzzlePresets {
       7: PuzzlePreset(
         mapNumber: 1,
         levelId: 7,
-        difficulty: 7,
+        difficulty: 4,
         tubes: [
-          [3, 0, 4, 6],
-          [5, 2, 0, 1],
-          [5, 6, 2, 6],
-          [0, 3, 1, 4],
-          [3, 2, 0, 5],
-          [1, 6, 2, 5],
-          [3, 4, 1, 4],
+          [3, 5, 1, 4],
+          [0, 2, 4, 3],
+          [5, 4, 0, 2],
+          [1, 3, 5, 0],
+          [2, 0, 3, 5],
+          [4, 1, 2, 1],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(9),
+        lockedAdTubeIndex: 8,
+      ),
+      8: PuzzlePreset(
+        mapNumber: 1,
+        levelId: 8,
+        difficulty: 4,
+        tubes: [
+          [6, 2, 0, 4],
+          [1, 5, 3, 6],
+          [4, 0, 6, 2],
+          [3, 4, 1, 5],
+          [5, 6, 4, 0],
+          [2, 1, 5, 3],
+          [0, 3, 2, 1],
           [],
           [],
           [],
@@ -309,39 +355,19 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(10),
         lockedAdTubeIndex: 9,
       ),
-      8: PuzzlePreset(
-        mapNumber: 1,
-        levelId: 8,
-        difficulty: 8,
-        tubes: [
-          [2, 7, 0, 4],
-          [4, 1, 0, 6],
-          [3, 6, 1, 6],
-          [2, 3, 7, 3],
-          [2, 7, 0, 6],
-          [1, 5, 3, 4],
-          [5, 7, 0, 5],
-          [4, 2, 5, 1],
-          [],
-          [],
-          [],
-        ],
-        layout: StageLayout.standardForTubeCount(11),
-        lockedAdTubeIndex: 10,
-      ),
       9: PuzzlePreset(
         mapNumber: 1,
         levelId: 9,
-        difficulty: 9,
+        difficulty: 5,
         tubes: [
-          [4, 2, 1, 2],
-          [1, 2, 4, 6],
-          [3, 6, 0, 3],
-          [5, 2, 0, 4],
-          [3, 0, 6, 3],
-          [5, 6, 1, 7],
-          [7, 4, 5, 1],
-          [7, 0, 5, 7],
+          [7, 3, 1, 5],
+          [0, 6, 4, 2],
+          [5, 1, 7, 3],
+          [2, 4, 0, 6],
+          [6, 0, 5, 4],
+          [3, 7, 2, 0],
+          [4, 2, 6, 7],
+          [1, 5, 3, 1],
           [],
           [],
           [],
@@ -352,127 +378,139 @@ class PuzzlePresets {
       10: PuzzlePreset(
         mapNumber: 1,
         levelId: 10,
-        difficulty: 10,
+        difficulty: 5,
         tubes: [
-          [3, 2, 7, 8],
-          [6, 4, 7, 1],
-          [5, 3, 4, 0],
-          [5, 0, 1, 6],
-          [2, 8, 3, 7],
-          [0, 4, 5, 2],
-          [6, 8, 4, 5],
-          [6, 2, 7, 1],
-          [0, 3, 8, 1],
+          [5, 2, 7, 0],
+          [3, 6, 1, 4],
+          [7, 4, 2, 6],
+          [0, 1, 5, 3],
+          [6, 3, 0, 7],
+          [4, 5, 3, 1],
+          [1, 7, 4, 5],
+          [2, 0, 6, 2],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(11),
+        lockedAdTubeIndex: 10,
       ),
     },
     2: {
       1: PuzzlePreset(
         mapNumber: 2,
         levelId: 1,
-        difficulty: 2,
+        difficulty: 1,
         tubes: [
-          [1, 0, 2, 4],
-          [4, 0, 1, 3],
-          [2, 0, 2, 1],
-          [3, 0, 4, 3],
-          [2, 4, 3, 1],
+          [2, 0, 3, 1],
+          [1, 3, 0, 2],
+          [3, 1, 2, 0],
+          [0, 2, 1, 3],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(8),
-        lockedAdTubeIndex: 7,
+        layout: StageLayout.standardForTubeCount(7),
+        lockedAdTubeIndex: 6,
       ),
       2: PuzzlePreset(
         mapNumber: 2,
         levelId: 2,
-        difficulty: 2,
+        difficulty: 1,
         tubes: [
+          [3, 1, 0, 2],
+          [0, 2, 3, 1],
+          [1, 0, 2, 3],
           [2, 3, 1, 0],
-          [2, 3, 4, 3],
-          [1, 3, 0, 4],
-          [4, 0, 1, 2],
-          [0, 2, 4, 1],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(8),
-        lockedAdTubeIndex: 7,
+        layout: StageLayout.standardForTubeCount(7),
+        lockedAdTubeIndex: 6,
       ),
       3: PuzzlePreset(
         mapNumber: 2,
         levelId: 3,
         difficulty: 2,
         tubes: [
-          [3, 5, 0, 2],
-          [3, 2, 4, 1],
-          [4, 1, 5, 0],
-          [1, 4, 0, 5],
-          [3, 2, 1, 2],
-          [5, 0, 4, 3],
+          [0, 4, 2, 3],
+          [3, 1, 4, 0],
+          [4, 2, 0, 1],
+          [2, 3, 1, 4],
+          [1, 0, 3, 2],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(9),
-        lockedAdTubeIndex: 8,
+        layout: StageLayout.standardForTubeCount(8),
+        lockedAdTubeIndex: 7,
       ),
       4: PuzzlePreset(
         mapNumber: 2,
         levelId: 4,
-        difficulty: 3,
+        difficulty: 2,
         tubes: [
-          [3, 1, 3, 0],
-          [2, 3, 1, 5],
-          [5, 4, 2, 4],
-          [0, 3, 5, 0],
-          [1, 2, 0, 4],
-          [2, 1, 5, 4],
+          [1, 4, 0, 3],
+          [3, 0, 2, 4],
+          [4, 3, 1, 0],
+          [0, 2, 4, 1],
+          [2, 1, 3, 2],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(9),
-        lockedAdTubeIndex: 8,
+        layout: StageLayout.standardForTubeCount(8),
+        lockedAdTubeIndex: 7,
       ),
       5: PuzzlePreset(
         mapNumber: 2,
         levelId: 5,
         difficulty: 3,
         tubes: [
-          [6, 2, 0, 6],
-          [2, 5, 3, 2],
-          [4, 5, 1, 6],
-          [1, 3, 4, 5],
-          [1, 0, 4, 3],
-          [2, 0, 5, 6],
-          [0, 1, 3, 4],
+          [5, 2, 0, 4],
+          [1, 4, 3, 5],
+          [3, 0, 5, 2],
+          [4, 1, 2, 3],
+          [0, 3, 4, 1],
+          [2, 5, 1, 0],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(10),
-        lockedAdTubeIndex: 9,
+        layout: StageLayout.standardForTubeCount(9),
+        lockedAdTubeIndex: 8,
       ),
       6: PuzzlePreset(
         mapNumber: 2,
         levelId: 6,
         difficulty: 3,
         tubes: [
-          [1, 0, 6, 4],
-          [5, 2, 1, 6],
-          [4, 5, 0, 3],
-          [3, 0, 2, 6],
-          [5, 1, 2, 4],
-          [0, 4, 5, 3],
-          [1, 2, 3, 6],
+          [2, 5, 3, 0],
+          [4, 0, 2, 5],
+          [5, 3, 4, 1],
+          [0, 4, 1, 3],
+          [3, 1, 0, 4],
+          [1, 2, 5, 2],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(9),
+        lockedAdTubeIndex: 8,
+      ),
+      7: PuzzlePreset(
+        mapNumber: 2,
+        levelId: 7,
+        difficulty: 4,
+        tubes: [
+          [6, 2, 4, 0],
+          [3, 5, 0, 6],
+          [0, 4, 3, 5],
+          [5, 6, 1, 2],
+          [2, 1, 6, 3],
+          [4, 3, 2, 1],
+          [1, 0, 5, 4],
           [],
           [],
           [],
@@ -480,81 +518,79 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(10),
         lockedAdTubeIndex: 9,
       ),
-      7: PuzzlePreset(
-        mapNumber: 2,
-        levelId: 7,
-        difficulty: 4,
-        tubes: [
-          [3, 7, 4, 7],
-          [0, 7, 5, 0],
-          [3, 6, 5, 4],
-          [0, 6, 1, 2],
-          [2, 3, 1, 4],
-          [5, 1, 6, 2],
-          [5, 0, 4, 7],
-          [6, 2, 1, 3],
-          [],
-          [],
-          [],
-        ],
-        layout: StageLayout.standardForTubeCount(11),
-        lockedAdTubeIndex: 10,
-      ),
       8: PuzzlePreset(
         mapNumber: 2,
         levelId: 8,
         difficulty: 4,
         tubes: [
-          [3, 5, 0, 7],
-          [1, 2, 3, 0],
-          [7, 3, 0, 7],
-          [6, 1, 4, 6],
-          [5, 4, 1, 0],
-          [2, 4, 2, 6],
-          [5, 3, 1, 4],
-          [7, 2, 6, 5],
+          [4, 1, 6, 2],
+          [0, 5, 3, 4],
+          [5, 2, 0, 6],
+          [6, 3, 4, 1],
+          [2, 6, 5, 3],
+          [3, 0, 2, 5],
+          [1, 4, 1, 0],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(11),
-        lockedAdTubeIndex: 10,
+        layout: StageLayout.standardForTubeCount(10),
+        lockedAdTubeIndex: 9,
       ),
       9: PuzzlePreset(
         mapNumber: 2,
         levelId: 9,
         difficulty: 4,
         tubes: [
-          [5, 8, 4, 6],
-          [3, 7, 0, 2],
-          [5, 7, 1, 6],
-          [2, 0, 7, 3],
-          [8, 2, 1, 0],
-          [1, 4, 6, 8],
-          [5, 3, 4, 6],
-          [1, 4, 7, 2],
-          [0, 8, 3, 5],
+          [7, 2, 5, 0],
+          [3, 6, 1, 4],
+          [5, 1, 7, 3],
+          [0, 4, 6, 2],
+          [4, 7, 2, 6],
+          [6, 0, 4, 5],
+          [2, 5, 3, 7],
+          [1, 3, 0, 1],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(11),
+        lockedAdTubeIndex: 10,
       ),
       10: PuzzlePreset(
         mapNumber: 2,
         levelId: 10,
         difficulty: 5,
         tubes: [
-          [0, 4, 8, 4],
-          [7, 5, 2, 5],
-          [3, 2, 5, 7],
-          [0, 8, 4, 1],
-          [3, 1, 7, 2],
-          [0, 2, 8, 6],
-          [3, 8, 1, 5],
-          [7, 4, 6, 1],
-          [0, 6, 3, 6],
+          [6, 1, 5, 3],
+          [2, 7, 0, 4],
+          [4, 3, 6, 1],
+          [0, 5, 2, 7],
+          [7, 4, 3, 5],
+          [3, 0, 7, 2],
+          [5, 2, 4, 0],
+          [1, 6, 1, 6],
+          [],
+          [],
+          [],
+        ],
+        layout: StageLayout.standardForTubeCount(11),
+        lockedAdTubeIndex: 10,
+      ),
+      11: PuzzlePreset(
+        mapNumber: 2,
+        levelId: 11,
+        difficulty: 5,
+        tubes: [
+          [8, 3, 1, 5],
+          [0, 7, 4, 2],
+          [6, 1, 8, 3],
+          [4, 5, 0, 7],
+          [2, 8, 6, 4],
+          [5, 0, 3, 8],
+          [7, 4, 2, 6],
+          [3, 6, 7, 0],
+          [1, 2, 5, 1],
           [],
           [],
           [],
@@ -562,81 +598,54 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(12),
         lockedAdTubeIndex: 11,
       ),
-      11: PuzzlePreset(
-        mapNumber: 2,
-        levelId: 11,
-        difficulty: 5,
-        tubes: [
-          [5, 6, 4, 7],
-          [2, 9, 2, 5],
-          [9, 6, 0, 3],
-          [4, 3, 0, 8],
-          [9, 8, 5, 7],
-          [2, 6, 1, 4],
-          [1, 0, 8, 6],
-          [7, 3, 9, 1],
-          [0, 2, 3, 4],
-          [8, 5, 1, 7],
-          [],
-          [],
-          [],
-        ],
-        layout: StageLayout.standardForTubeCount(13),
-        lockedAdTubeIndex: 12,
-      ),
       12: PuzzlePreset(
         mapNumber: 2,
         levelId: 12,
         difficulty: 5,
         tubes: [
-          [4, 2, 9, 1],
-          [4, 2, 3, 1],
-          [7, 6, 0, 7],
-          [9, 5, 4, 10],
-          [7, 5, 8, 3],
-          [10, 2, 5, 8],
-          [6, 9, 8, 10],
-          [0, 6, 4, 3],
-          [1, 7, 0, 5],
-          [1, 8, 9, 6],
-          [0, 3, 2, 10],
+          [5, 8, 2, 6],
+          [1, 4, 7, 0],
+          [8, 6, 3, 5],
+          [0, 2, 8, 4],
+          [6, 1, 0, 7],
+          [4, 7, 5, 3],
+          [3, 0, 4, 8],
+          [7, 5, 1, 2],
+          [2, 3, 6, 1],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(14),
-        lockedAdTubeIndex: 13,
+        layout: StageLayout.standardForTubeCount(12),
+        lockedAdTubeIndex: 11,
       ),
     },
     3: {
       1: PuzzlePreset(
         mapNumber: 3,
         levelId: 1,
-        difficulty: 4,
+        difficulty: 2,
         mountainCapacity: 12,
         tubes: [
-          [16, 0, 6, 4],
-          [1, 3, 5, 16],
-          [16, 2, 16, 3],
-          [4, 16, 0, 2],
-          [1, 5, 16, 6],
-          [3, 16, 4, 0],
-          [2, 1, 16, 5],
+          [16, 2, 16, 0], // refill 0
+          [16, 1, 3, 16], // refill 1
+          [0, 16, 1, 16],
+          [3, 16, 0, 2],
+          [2, 3, 16, 1],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(10),
-        lockedAdTubeIndex: 9,
+        layout: StageLayout.standardForTubeCount(8),
+        lockedAdTubeIndex: 7,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [5, 6],
+          tubeIndexes: [0, 1],
           refillQueues: {
-            5: [
-              [16, 0, 1, 6],
-              [16, 2, 3, 4],
+            0: [
+              [16, 3, 16, 2],
             ],
-            6: [
-              [16, 5, 6, 16],
+            1: [
+              [0, 16, 1, 16],
             ],
           },
           stopWhenMountainFull: true,
@@ -645,31 +654,29 @@ class PuzzlePresets {
       2: PuzzlePreset(
         mapNumber: 3,
         levelId: 2,
-        difficulty: 5,
-        mountainCapacity: 12,
+        difficulty: 2,
+        mountainCapacity: 16,
         tubes: [
-          [16, 0, 5, 16],
-          [1, 3, 16, 6],
-          [16, 2, 4, 16],
-          [0, 16, 1, 5],
-          [2, 6, 16, 3],
-          [4, 0, 16, 3],
-          [1, 4, 2, 5],
+          [16, 0, 16, 3], // refill 0
+          [2, 16, 1, 16], // refill 1
+          [16, 0, 16, 1],
+          [3, 16, 2, 16],
+          [16, 3, 16, 2],
+          [1, 16, 0, 16],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(10),
-        lockedAdTubeIndex: 9,
+        layout: StageLayout.standardForTubeCount(9),
+        lockedAdTubeIndex: 8,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [5, 6],
+          tubeIndexes: [0, 1],
           refillQueues: {
-            5: [
-              [16, 6, 0, 4],
-              [16, 2, 5, 6],
+            0: [
+              [16, 1, 16, 2],
             ],
-            6: [
-              [16, 1, 3, 16],
+            1: [
+              [0, 16, 3, 16],
             ],
           },
           stopWhenMountainFull: true,
@@ -678,31 +685,32 @@ class PuzzlePresets {
       3: PuzzlePreset(
         mapNumber: 3,
         levelId: 3,
-        difficulty: 6,
-        mountainCapacity: 12,
+        difficulty: 3,
+        mountainCapacity: 16,
         tubes: [
-          [16, 0, 6, 16],
-          [1, 3, 16, 5],
-          [16, 2, 4, 16],
-          [0, 16, 1, 6],
-          [2, 5, 16, 3],
-          [4, 0, 16, 3],
-          [1, 4, 2, 5],
+          [16, 2, 16, 0], // refill 0
+          [0, 16, 2, 1], // refill 1
+          [16, 1, 4, 1], // refill 2
+          [3, 16, 3, 4],
+          [16, 16, 16, 16],
+          [16, 16, 16, 2],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(10),
-        lockedAdTubeIndex: 9,
+        layout: StageLayout.standardForTubeCount(9),
+        lockedAdTubeIndex: 8,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [5, 6],
+          tubeIndexes: [0, 1, 2],
           refillQueues: {
-            5: [
-              [16, 6, 0, 4],
-              [16, 2, 3, 6],
+            0: [
+              [0, 16, 3, 0],
             ],
-            6: [
-              [16, 1, 3, 16],
+            1: [
+              [16, 4, 1, 2],
+            ],
+            2: [
+              [16, 4, 3, 16],
             ],
           },
           stopWhenMountainFull: true,
@@ -711,33 +719,33 @@ class PuzzlePresets {
       4: PuzzlePreset(
         mapNumber: 3,
         levelId: 4,
-        difficulty: 7,
-        mountainCapacity: 16,
+        difficulty: 3,
+        mountainCapacity: 20,
         tubes: [
-          [16, 0, 6, 16],
-          [1, 3, 16, 5],
-          [16, 2, 7, 16],
-          [4, 16, 1, 6],
-          [2, 5, 16, 3],
-          [7, 0, 16, 4],
-          [1, 4, 2, 16],
-          [5, 16, 0, 3],
+          [16, 0, 16, 3], // refill 0
+          [4, 16, 2, 16], // refill 1
+          [16, 1, 16, 4], // refill 2
+          [16, 2, 16, 0],
+          [3, 16, 1, 16],
+          [16, 4, 16, 1],
+          [0, 16, 3, 16],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(11),
-        lockedAdTubeIndex: 10,
+        layout: StageLayout.standardForTubeCount(10),
+        lockedAdTubeIndex: 9,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [5, 7],
+          tubeIndexes: [0, 1, 2],
           refillQueues: {
-            5: [
-              [16, 6, 0, 4],
-              [16, 2, 7, 16],
+            0: [
+              [16, 2, 16, 4],
             ],
-            7: [
-              [16, 1, 3, 6],
-              [16, 5, 7, 16],
+            1: [
+              [1, 16, 0, 16],
+            ],
+            2: [
+              [16, 3, 16, 2],
             ],
           },
           stopWhenMountainFull: true,
@@ -746,17 +754,17 @@ class PuzzlePresets {
       5: PuzzlePreset(
         mapNumber: 3,
         levelId: 5,
-        difficulty: 8,
-        mountainCapacity: 16,
+        difficulty: 3,
+        mountainCapacity: 20,
         tubes: [
-          [16, 0, 6, 16],
-          [1, 3, 16, 5],
-          [16, 2, 7, 16],
-          [4, 16, 1, 6],
-          [2, 5, 16, 3],
-          [7, 0, 16, 4],
-          [1, 4, 2, 16],
-          [5, 16, 0, 3],
+          [0, 4, 2, 5], // refill 0
+          [16, 3, 16, 16], // refill 1
+          [16, 1, 0, 16], // refill 2
+          [0, 1, 16, 16],
+          [3, 16, 2, 1],
+          [2, 3, 5, 16],
+          [16, 16, 4, 16],
+          [0, 16, 4, 2],
           [],
           [],
           [],
@@ -764,17 +772,16 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(11),
         lockedAdTubeIndex: 10,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [4, 5, 7],
+          tubeIndexes: [0, 1, 2],
           refillQueues: {
-            4: [
-              [16, 6, 0, 4],
-              [16, 2, 7, 16],
+            0: [
+              [16, 16, 5, 16],
             ],
-            5: [
-              [16, 1, 3, 6],
+            1: [
+              [4, 16, 5, 3],
             ],
-            7: [
-              [16, 5, 7, 16],
+            2: [
+              [16, 1, 16, 16],
             ],
           },
           stopWhenMountainFull: true,
@@ -783,37 +790,37 @@ class PuzzlePresets {
       6: PuzzlePreset(
         mapNumber: 3,
         levelId: 6,
-        difficulty: 9,
-        mountainCapacity: 18,
+        difficulty: 4,
+        mountainCapacity: 24,
         tubes: [
-          [16, 0, 7, 16],
-          [1, 3, 16, 6],
-          [16, 2, 8, 16],
-          [4, 16, 1, 7],
-          [2, 5, 16, 3],
-          [8, 0, 16, 4],
-          [1, 4, 2, 16],
-          [5, 16, 0, 3],
-          [6, 16, 5, 8],
+          [16, 16, 0, 16], // refill 0 — cok lav yogun!
+          [16, 4, 5, 16], // refill 1
+          [5, 0, 3, 1], // refill 2
+          [5, 3, 16, 1], // refill 3
+          [0, 16, 2, 4],
+          [3, 16, 16, 16],
+          [16, 1, 4, 16],
+          [4, 3, 16, 16],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(11),
+        lockedAdTubeIndex: 10,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [4, 6, 8],
+          tubeIndexes: [0, 1, 2, 3],
           refillQueues: {
-            4: [
-              [16, 7, 0, 4],
-              [16, 2, 8, 16],
+            0: [
+              [2, 5, 16, 2],
             ],
-            6: [
-              [16, 1, 3, 6],
-              [16, 5, 7, 16],
+            1: [
+              [16, 16, 16, 0],
             ],
-            8: [
-              [16, 8, 6, 1],
+            2: [
+              [1, 16, 2, 16],
+            ],
+            3: [
+              [16, 16, 16, 16],
             ],
           },
           stopWhenMountainFull: true,
@@ -822,18 +829,18 @@ class PuzzlePresets {
       7: PuzzlePreset(
         mapNumber: 3,
         levelId: 7,
-        difficulty: 10,
-        mountainCapacity: 18,
+        difficulty: 4,
+        mountainCapacity: 24,
         tubes: [
-          [16, 0, 7, 16],
-          [1, 3, 16, 6],
-          [16, 2, 8, 16],
-          [4, 16, 1, 7],
-          [2, 5, 16, 3],
-          [8, 0, 16, 4],
-          [1, 4, 2, 16],
-          [5, 16, 0, 3],
-          [6, 16, 5, 8],
+          [16, 16, 16, 16], // refill 0 — tamamen lav!
+          [2, 1, 5, 16], // refill 1
+          [0, 16, 2, 6], // refill 2
+          [5, 16, 4, 16], // refill 3
+          [1, 4, 6, 2],
+          [16, 0, 16, 2],
+          [3, 16, 16, 16],
+          [1, 16, 16, 0],
+          [16, 6, 16, 4],
           [],
           [],
           [],
@@ -841,19 +848,19 @@ class PuzzlePresets {
         layout: StageLayout.standardForTubeCount(12),
         lockedAdTubeIndex: 11,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [3, 5, 6, 8],
+          tubeIndexes: [0, 1, 2, 3],
           refillQueues: {
+            0: [
+              [3, 5, 16, 0],
+            ],
+            1: [
+              [4, 16, 16, 6],
+            ],
+            2: [
+              [16, 5, 1, 3],
+            ],
             3: [
-              [16, 7, 0, 4],
-            ],
-            5: [
-              [16, 2, 8, 16],
-            ],
-            6: [
-              [16, 1, 3, 6],
-            ],
-            8: [
-              [16, 5, 7, 16],
+              [16, 3, 16, 16],
             ],
           },
           stopWhenMountainFull: true,
@@ -862,38 +869,39 @@ class PuzzlePresets {
       8: PuzzlePreset(
         mapNumber: 3,
         levelId: 8,
-        difficulty: 11,
-        mountainCapacity: 18,
+        difficulty: 4,
+        mountainCapacity: 28,
         tubes: [
-          [16, 0, 7, 16],
-          [1, 3, 16, 6],
-          [16, 2, 8, 16],
-          [4, 16, 1, 7],
-          [2, 5, 16, 3],
-          [8, 0, 16, 4],
-          [1, 4, 2, 16],
-          [5, 16, 0, 3],
-          [6, 16, 5, 8],
+          [16, 16, 2, 16], // refill 0
+          [3, 16, 6, 16], // refill 1
+          [3, 16, 6, 0], // refill 2
+          [4, 16, 3, 16], // refill 3
+          [0, 16, 1, 2],
+          [16, 6, 2, 16],
+          [4, 6, 16, 16],
+          [16, 5, 1, 16],
+          [0, 16, 16, 1],
+          [16, 0, 4, 2],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(13),
+        lockedAdTubeIndex: 12,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [2, 4, 6, 8],
+          tubeIndexes: [0, 1, 2, 3],
           refillQueues: {
+            0: [
+              [5, 16, 16, 5],
+            ],
+            1: [
+              [16, 16, 16, 16],
+            ],
             2: [
-              [16, 8, 2, 6],
+              [5, 3, 16, 16],
             ],
-            4: [
-              [16, 5, 3, 16],
-            ],
-            6: [
-              [16, 1, 4, 7],
-            ],
-            8: [
-              [16, 0, 6, 16],
+            3: [
+              [1, 16, 16, 4],
             ],
           },
           stopWhenMountainFull: true,
@@ -902,40 +910,40 @@ class PuzzlePresets {
       9: PuzzlePreset(
         mapNumber: 3,
         levelId: 9,
-        difficulty: 12,
-        mountainCapacity: 20,
+        difficulty: 5,
+        mountainCapacity: 28,
         tubes: [
-          [16, 0, 7, 16],
-          [1, 3, 16, 6],
-          [16, 2, 8, 16],
-          [4, 16, 1, 7],
-          [2, 5, 16, 3],
-          [8, 0, 16, 4],
-          [1, 4, 2, 16],
-          [5, 16, 0, 3],
-          [6, 16, 5, 8],
+          [16, 2, 7, 1], // refill 0
+          [1, 16, 2, 16], // refill 1
+          [16, 16, 0, 16], // refill 2
+          [16, 3, 16, 4], // refill 3
+          [16, 16, 7, 4],
+          [16, 1, 16, 4],
+          [16, 16, 3, 4],
+          [3, 16, 16, 16],
+          [16, 0, 1, 0],
+          [16, 16, 16, 5],
+          [16, 16, 16, 6],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(14),
+        lockedAdTubeIndex: 13,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [2, 4, 6, 8],
+          tubeIndexes: [0, 1, 2, 3],
           refillQueues: {
+            0: [
+              [5, 6, 7, 6],
+            ],
+            1: [
+              [16, 7, 2, 5],
+            ],
             2: [
-              [16, 8, 2, 6],
-              [16, 0, 7, 16],
+              [16, 2, 16, 5],
             ],
-            4: [
-              [16, 5, 3, 16],
-            ],
-            6: [
-              [16, 1, 4, 7],
-              [16, 2, 8, 16],
-            ],
-            8: [
-              [16, 0, 6, 16],
+            3: [
+              [6, 0, 3, 16],
             ],
           },
           stopWhenMountainFull: true,
@@ -944,38 +952,43 @@ class PuzzlePresets {
       10: PuzzlePreset(
         mapNumber: 3,
         levelId: 10,
-        difficulty: 13,
-        mountainCapacity: 20,
+        difficulty: 5,
+        mountainCapacity: 32,
         tubes: [
-          [16, 0, 7, 16],
-          [1, 3, 16, 6],
-          [16, 2, 8, 16],
-          [4, 16, 1, 7],
-          [2, 5, 16, 3],
-          [8, 0, 16, 4],
-          [1, 4, 2, 16],
-          [5, 16, 0, 3],
-          [6, 16, 5, 8],
+          [4, 16, 16, 16], // refill 0
+          [16, 16, 16, 16], // refill 1 — tamamen lav!
+          [16, 7, 3, 5], // refill 2
+          [16, 1, 16, 16], // refill 3
+          [16, 0, 16, 16], // refill 4
+          [5, 16, 6, 16],
+          [6, 4, 16, 16],
+          [7, 16, 2, 16],
+          [0, 6, 4, 3],
+          [16, 3, 7, 2],
+          [2, 5, 16, 16],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(14),
+        lockedAdTubeIndex: 13,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [1, 3, 6, 8],
+          tubeIndexes: [0, 1, 2, 3, 4],
           refillQueues: {
+            0: [
+              [2, 7, 16, 16],
+            ],
             1: [
-              [16, 6, 1, 16],
+              [1, 16, 0, 1],
+            ],
+            2: [
+              [16, 16, 4, 1],
             ],
             3: [
-              [16, 7, 2, 16],
+              [0, 5, 16, 3],
             ],
-            6: [
-              [16, 3, 4, 16],
-            ],
-            8: [
-              [16, 0, 5, 16],
+            4: [
+              [16, 16, 6, 16],
             ],
           },
           stopWhenMountainFull: true,
@@ -984,46 +997,44 @@ class PuzzlePresets {
       11: PuzzlePreset(
         mapNumber: 3,
         levelId: 11,
-        difficulty: 14,
-        mountainCapacity: 48,
+        difficulty: 5,
+        mountainCapacity: 32,
         tubes: [
-          [16, 0, 7, 16],
-          [1, 3, 16, 6],
-          [16, 2, 8, 16],
-          [4, 16, 1, 7],
-          [2, 5, 16, 3],
-          [8, 0, 16, 4],
-          [5, 16, 6, 3],
-          [5, 16, 7, 6],
-          [16, 4, 8, 16],
+          [16, 6, 16, 16], // refill 0
+          [16, 16, 8, 16], // refill 1
+          [3, 5, 16, 7], // refill 2
+          [1, 5, 4, 16], // refill 3
+          [16, 1, 16, 8], // refill 4
+          [2, 16, 16, 8],
+          [16, 3, 16, 16],
+          [3, 16, 2, 16],
+          [0, 5, 6, 4],
+          [0, 16, 8, 16],
+          [1, 16, 2, 16],
+          [7, 4, 16, 16],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(15),
+        lockedAdTubeIndex: 14,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [0, 2, 5, 7],
+          tubeIndexes: [0, 1, 2, 3, 4],
           refillQueues: {
             0: [
-              [16, 16, 16, 0],
-              [16, 16, 16, 1],
-              [16, 16, 16, 2],
+              [4, 16, 16, 16],
+            ],
+            1: [
+              [0, 5, 16, 0],
             ],
             2: [
-              [16, 16, 16, 3],
-              [16, 16, 16, 4],
-              [16, 16, 16, 5],
+              [16, 6, 1, 16],
             ],
-            5: [
-              [16, 16, 16, 6],
-              [16, 16, 16, 7],
-              [16, 16, 16, 8],
+            3: [
+              [16, 16, 3, 2],
             ],
-            7: [
-              [16, 16, 16, 0],
-              [16, 16, 16, 1],
-              [16, 16, 16, 2],
+            4: [
+              [6, 7, 16, 7],
             ],
           },
           stopWhenMountainFull: true,
@@ -1032,32 +1043,45 @@ class PuzzlePresets {
       12: PuzzlePreset(
         mapNumber: 3,
         levelId: 12,
-        difficulty: 15,
-        mountainCapacity: 20,
+        difficulty: 5,
+        mountainCapacity: 32,
         tubes: [
-          [16, 0, 7, 16],
-          [1, 3, 16, 6],
-          [16, 2, 8, 16],
-          [4, 16, 1, 7],
-          [2, 5, 16, 3],
-          [8, 0, 16, 4],
-          [5, 16, 6, 3],
-          [7, 16, 5, 6],
-          [16, 4, 8, 16],
+          [16, 5, 16, 7], // refill 0
+          [9, 0, 7, 8], // refill 1
+          [16, 1, 16, 16], // refill 2
+          [16, 2, 3, 16], // refill 3
+          [16, 6, 16, 16], // refill 4
+          [0, 16, 1, 16],
+          [16, 16, 16, 1],
+          [4, 16, 16, 0],
+          [8, 3, 6, 16],
+          [16, 16, 9, 16],
+          [16, 16, 4, 1],
+          [16, 8, 16, 7],
+          [7, 3, 8, 5],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(12),
-        lockedAdTubeIndex: 11,
+        layout: StageLayout.standardForTubeCount(16),
+        lockedAdTubeIndex: 15,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [6], // 🔥 TEK REFILL TÜPÜ
+          tubeIndexes: [0, 1, 2, 3, 4],
           refillQueues: {
-            6: [
-              [16, 16, 0, 1],
-              [16, 16, 2, 3],
-              [16, 16, 4, 5],
-              [16, 16, 6, 7],
+            0: [
+              [6, 4, 2, 5],
+            ],
+            1: [
+              [9, 2, 16, 2],
+            ],
+            2: [
+              [4, 16, 0, 16],
+            ],
+            3: [
+              [16, 3, 6, 5],
+            ],
+            4: [
+              [9, 16, 16, 16],
             ],
           },
           stopWhenMountainFull: true,
@@ -1066,39 +1090,46 @@ class PuzzlePresets {
       13: PuzzlePreset(
         mapNumber: 3,
         levelId: 13,
-        difficulty: 16,
-        mountainCapacity: 24,
+        difficulty: 5,
+        mountainCapacity: 36,
         tubes: [
-          [16, 0, 8, 16],
-          [1, 3, 16, 6],
-          [16, 2, 9, 16],
-          [4, 16, 1, 7],
-          [2, 5, 16, 3],
-          [8, 0, 16, 4],
-          [5, 16, 6, 3],
-          [7, 16, 5, 6],
-          [16, 4, 7, 9],
-          [1, 16, 0, 2],
+          [6, 16, 16, 16], // refill 0
+          [16, 16, 0, 2], // refill 1
+          [16, 1, 9, 16], // refill 2
+          [4, 16, 16, 5], // refill 3
+          [5, 16, 7, 8], // refill 4
+          [1, 3, 5, 8],
+          [1, 3, 0, 2],
+          [16, 9, 16, 16],
+          [4, 5, 16, 16],
+          [16, 16, 16, 16],
+          [6, 8, 0, 16],
+          [16, 6, 16, 16],
+          [9, 16, 8, 6],
+          [16, 7, 16, 16],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(13),
-        lockedAdTubeIndex: 12,
+        layout: StageLayout.standardForTubeCount(17),
+        lockedAdTubeIndex: 16,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [6, 8, 9],
+          tubeIndexes: [0, 1, 2, 3, 4],
           refillQueues: {
-            6: [
-              [16, 16, 8, 9],
-              [16, 16, 0, 1],
+            0: [
+              [16, 0, 1, 16],
             ],
-            8: [
-              [16, 16, 2, 3],
-              [16, 16, 4, 5],
+            1: [
+              [16, 3, 16, 9],
             ],
-            9: [
-              [16, 16, 6, 7],
-              [16, 16, 8, 9],
+            2: [
+              [16, 2, 4, 7],
+            ],
+            3: [
+              [7, 3, 16, 16],
+            ],
+            4: [
+              [16, 2, 16, 4],
             ],
           },
           stopWhenMountainFull: true,
@@ -1107,42 +1138,49 @@ class PuzzlePresets {
       14: PuzzlePreset(
         mapNumber: 3,
         levelId: 14,
-        difficulty: 20,
+        difficulty: 5,
         mountainCapacity: 36,
         tubes: [
-          [16, 0, 8, 16],
-          [1, 3, 16, 6],
-          [16, 2, 9, 16],
-          [4, 16, 1, 7],
-          [2, 5, 16, 3],
-          [8, 0, 16, 4],
-          [5, 16, 6, 0],
-          [7, 16, 5, 6],
-          [16, 9, 7, 16],
-          [1, 16, 4, 2],
+          [9, 16, 16, 0], // refill 0
+          [16, 16, 3, 4], // refill 1
+          [0, 7, 16, 2], // refill 2
+          [1, 7, 16, 7], // refill 3
+          [8, 10, 16, 8], // refill 4
+          [16, 2, 6, 1], // refill 5
+          [2, 16, 16, 16],
+          [16, 16, 16, 0],
+          [16, 3, 16, 4],
+          [1, 16, 10, 16],
+          [0, 16, 16, 16],
+          [16, 6, 5, 16],
+          [9, 16, 16, 8],
+          [7, 16, 10, 9],
           [],
           [],
           [],
         ],
-        layout: StageLayout.standardForTubeCount(13),
-        lockedAdTubeIndex: 12,
+        layout: StageLayout.standardForTubeCount(17),
+        lockedAdTubeIndex: 16,
         sourceRefill: SourceTubeRefillConfig(
-          tubeIndexes: [6, 8, 9],
+          tubeIndexes: [0, 1, 2, 3, 4, 5],
           refillQueues: {
-            6: [
-              [16, 16, 0, 1],
-              [16, 16, 2, 4],
-              [16, 16, 5, 6],
-              [16, 16, 7, 3],
-              [16, 16, 8, 9],
+            0: [
+              [9, 8, 4, 16],
             ],
-            8: [
-              [16, 16, 16, 3],
-              [16, 16, 16, 8],
+            1: [
+              [16, 1, 16, 2],
             ],
-            9: [
-              [16, 16, 16, 9],
-              [16, 16, 16, 16],
+            2: [
+              [16, 16, 3, 5],
+            ],
+            3: [
+              [16, 4, 6, 16],
+            ],
+            4: [
+              [5, 10, 16, 5],
+            ],
+            5: [
+              [16, 16, 3, 6],
             ],
           },
           stopWhenMountainFull: true,

@@ -35,8 +35,8 @@ const String kTubeLargeSvgAsset = 'assets/likora/test_tube_large.svg';
 const String kVolcanoReservoirSvgAsset = 'assets/likora/volkan_hazne.png';
 
 // Widget boyutları – SVG oranına göre ayarlandı (84.4 x 182 mm → 60 x 130 px)
-const double kTW = 72.0;
-const double kTH = 155.0;
+const double kTW = 90.0;
+const double kTH = 190.0;
 const double kBasinW = 236.0;
 const double kBasinH = 128.0;
 
@@ -95,19 +95,19 @@ double get kTR => kBodyInnerW / 2; // ≈ 19.88
 double get kUCenterY => kBodyBotY; // daire merkezi tam gövde altında
 
 // Sıvı için iç alan – duvarlara tam yapışık, üstte küçük boşluk
-double get kLiquidLeft => kBodyInnerLeft + 3;
-double get kLiquidRight => kBodyInnerRight - 3;
+double get kLiquidLeft => kBodyInnerLeft + 5;
+double get kLiquidRight => kBodyInnerRight - 5;
 double get kLiquidW => kLiquidRight - kLiquidLeft;
-double get kLiquidTopY => kCapBotY + 19.0;
+double get kLiquidTopY => kCapBotY + 25.0;
 double get kMouthEntryY => kCapBotY + 4.0;
-double get kLiquidBotY => kBodyBotY + kTR - 14;
+double get kLiquidBotY => kBodyBotY + kTR - 18;
 
 // Widget toplam yüksekliği
 // Alt U'nun en altı: SVG'de y=18197.8 → kTH
 double get kWidgetH => kTH;
 double get kWidgetW => kTW;
-const double kTubeGap = 3.0;
-const double kRowGap = 18.0;
+const double kTubeGap = 0.0;
+const double kRowGap = 8.0;
 
 double get kStageW => (kWidgetW * 5) + (kTubeGap * 4) + 12.0;
 double get kStageH => (kWidgetH * 4) + (kRowGap * 3) + 18.0;
@@ -479,12 +479,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       );
   }
 
-  _ResolvedStageLayout get _stageLayout {
-    final base = resolveStageLayout(
-      layout: widget.customStageLayout ?? _preset?.layout,
-      tubeCount: _tubes.length,
-    );
-
+  _ResolvedStageLayout _applyMapSpecificStagePadding(
+    _ResolvedStageLayout base,
+  ) {
     if (widget.mapNumber != 3) return base;
 
     return _ResolvedStageLayout(
@@ -498,6 +495,93 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       width: base.width,
       height: base.height + 176.0,
     );
+  }
+
+  StageLayout _rowsLayoutForTubeCount(
+    int tubeCount,
+    int maxPerRow, {
+    double? tubeGap,
+    double? rowGap,
+  }) {
+    final safeCount = tubeCount < 1 ? 1 : tubeCount;
+    final perRow = max(1, min(maxPerRow, safeCount));
+    final indices = List<int>.generate(safeCount, (i) => i);
+    final rows = <List<int>>[];
+
+    var cursor = 0;
+    while (cursor < indices.length) {
+      final remaining = indices.length - cursor;
+      final take = remaining > perRow ? perRow : remaining;
+      rows.add(indices.sublist(cursor, cursor + take));
+      cursor += take;
+    }
+
+    final paddings = List<double>.filled(rows.length, 0);
+    if (paddings.isNotEmpty) {
+      paddings[paddings.length - 1] = 4;
+    }
+
+    return StageLayout.rows(
+      rows: rows,
+      rowTopPaddings: paddings,
+      tubeGap: tubeGap ?? kTubeGap,
+      rowGap: rowGap ?? kRowGap,
+    );
+  }
+
+  _ResolvedStageLayout _adaptiveStageLayoutFor(BoxConstraints constraints) {
+    final baseLayout = widget.customStageLayout ?? _preset?.layout;
+
+    if (baseLayout?.mode == StageLayoutMode.manual) {
+      return _applyMapSpecificStagePadding(
+        resolveStageLayout(layout: baseLayout, tubeCount: _tubes.length),
+      );
+    }
+
+    if (_tubes.length <= 4) {
+      return _applyMapSpecificStagePadding(
+        resolveStageLayout(layout: baseLayout, tubeCount: _tubes.length),
+      );
+    }
+
+    final candidates = <_ResolvedStageLayout>[];
+    for (final perRow in const [5, 4]) {
+      candidates.add(
+        _applyMapSpecificStagePadding(
+          resolveStageLayout(
+            layout: _rowsLayoutForTubeCount(
+              _tubes.length,
+              perRow,
+              tubeGap: perRow == 5 ? 6.0 : 8.0,
+              rowGap: 12.0,
+            ),
+            tubeCount: _tubes.length,
+          ),
+        ),
+      );
+    }
+
+    final availableW = max(1.0, constraints.maxWidth);
+    final availableH = max(1.0, constraints.maxHeight);
+
+    _ResolvedStageLayout best = candidates.first;
+    double bestScore = -1;
+
+    for (final candidate in candidates) {
+      final scale = min(
+        availableW / candidate.width,
+        availableH / candidate.height,
+      );
+      final usedArea = (candidate.width * scale) * (candidate.height * scale);
+      final rowPenalty = candidate.rows.length * 0.001;
+      final score = usedArea - rowPenalty;
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+
+    return best;
   }
 
   int _tubeCapacityIn(List<List<int>> tubes, int idx) => kCap;
@@ -2742,83 +2826,63 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     _buildTopBar(),
                     const SizedBox(height: 12),
                     Expanded(
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: Column(
-                              children: [
-                                Expanded(
-                                  child: Align(
-                                    alignment: Alignment.topCenter,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(top: 0),
-                                      child: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        alignment: Alignment.topCenter,
-                                        child: SizedBox(
-                                          width: _stageLayout.width,
-                                          height: _stageLayout.height,
-                                          child: _TubeStage(
-                                            mapNumber: widget.mapNumber,
-                                            stageLayout: _stageLayout,
-                                            tubes: _tubes,
-                                            selected: _selected,
-                                            activePlans: _activePlans,
-                                            onTap: _handleTap,
-                                            lockedAdTubeIndex:
-                                                _lockedAdTubeIndex,
-                                            showLockedAdTube: _showLockedAdTube,
-                                            celebratingDoneTubes:
-                                                _celebratingDoneTubes,
-                                            gameWon: _gameWon,
-                                            undoSloshingTubes:
-                                                _undoSloshingTubes,
-                                            tutorialActive: false,
-                                            tutorialStepIndex: 0,
-                                            tutorialFromIdx: null,
-                                            tutorialToIdx: null,
-                                            blindMode: _blindModeEnabled,
-                                            visibleLayerCounts:
-                                                _visibleLayerCounts,
-                                            blindRevealFlashTicks:
-                                                _blindRevealFlashTicks,
-                                            tubeStyles: {
-                                              for (int i = 0;
-                                                  i < _tubes.length;
-                                                  i++)
-                                                i: _tubeStyleForIndex(i),
-                                            },
-                                            tubeCapacities: {
-                                              for (int i = 0;
-                                                  i < _tubes.length;
-                                                  i++)
-                                                i: _tubeCapacityIn(_tubes, i),
-                                            },
-                                            onMountainTap: _handleMountainTap,
-                                            mountainFillPercent:
-                                                _mountainFillPercent,
-                                            mountainLayers:
-                                                List<VisualLayer>.from(
-                                              _mountainLayers
-                                                  .map((l) => l.copyWith()),
-                                            ),
-                                            mountainCapacity: _mountainCapacity,
-                                            sourceRefillTubeIndexes: {
-                                              ..._activeRefillTubeIndexes,
-                                            },
-                                            mountainReservoirKey:
-                                                _mountainReservoirKey,
-                                          ),
-                                        ),
-                                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: LayoutBuilder(
+                          builder: (context, stageConstraints) {
+                            final adaptiveStageLayout =
+                                _adaptiveStageLayoutFor(stageConstraints);
+                            return Align(
+                              alignment: Alignment.topCenter,
+                              child: FittedBox(
+                                fit: BoxFit.contain,
+                                alignment: Alignment.topCenter,
+                                child: SizedBox(
+                                  width: adaptiveStageLayout.width,
+                                  height: adaptiveStageLayout.height,
+                                  child: _TubeStage(
+                                    mapNumber: widget.mapNumber,
+                                    stageLayout: adaptiveStageLayout,
+                                    tubes: _tubes,
+                                    selected: _selected,
+                                    activePlans: _activePlans,
+                                    onTap: _handleTap,
+                                    lockedAdTubeIndex: _lockedAdTubeIndex,
+                                    showLockedAdTube: _showLockedAdTube,
+                                    celebratingDoneTubes: _celebratingDoneTubes,
+                                    gameWon: _gameWon,
+                                    undoSloshingTubes: _undoSloshingTubes,
+                                    tutorialActive: false,
+                                    tutorialStepIndex: 0,
+                                    tutorialFromIdx: null,
+                                    tutorialToIdx: null,
+                                    blindMode: _blindModeEnabled,
+                                    visibleLayerCounts: _visibleLayerCounts,
+                                    blindRevealFlashTicks:
+                                        _blindRevealFlashTicks,
+                                    tubeStyles: {
+                                      for (int i = 0; i < _tubes.length; i++)
+                                        i: _tubeStyleForIndex(i),
+                                    },
+                                    tubeCapacities: {
+                                      for (int i = 0; i < _tubes.length; i++)
+                                        i: _tubeCapacityIn(_tubes, i),
+                                    },
+                                    onMountainTap: _handleMountainTap,
+                                    mountainFillPercent: _mountainFillPercent,
+                                    mountainLayers: List<VisualLayer>.from(
+                                      _mountainLayers.map((l) => l.copyWith()),
                                     ),
+                                    mountainCapacity: _mountainCapacity,
+                                    sourceRefillTubeIndexes: {
+                                      ..._activeRefillTubeIndexes,
+                                    },
+                                    mountainReservoirKey: _mountainReservoirKey,
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -2912,7 +2976,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                               '${_tutorialStepIndex + 1}/${_tutorialSteps.length}',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.55),
-                                fontSize: 11,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -2996,7 +3060,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   Widget _buildBottomBar() {
     final bottomPad = MediaQuery.of(context).padding.bottom;
     return Container(
-      height: 72 + bottomPad,
+      height: 110 + bottomPad,
       padding: EdgeInsets.only(
         left: 24,
         right: 24,
@@ -3284,7 +3348,7 @@ class _JokerButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = busy ? '...' : (canBuy ? '$cost' : 'AD');
-    const double size = 68.0;
+    const double size = 78.0;
     final color = enabled ? accentColor : Colors.white.withValues(alpha: 0.45);
     final fillColor = enabled
         ? accentColor.withValues(alpha: 0.13)
@@ -3310,12 +3374,12 @@ class _JokerButton extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.auto_fix_high_rounded, size: 22, color: color),
+                Icon(Icons.auto_fix_high_rounded, size: 24, color: color),
                 const SizedBox(height: 2),
                 Text(
                   text,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.w800,
                     color: color,
                   ),
@@ -3342,7 +3406,7 @@ class _UndoButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double size = 68.0;
+    const double size = 78.0;
     final color = canUndo ? accentColor : Colors.white.withValues(alpha: 0.45);
     final fillColor = canUndo
         ? accentColor.withValues(alpha: 0.13)
@@ -3366,7 +3430,7 @@ class _UndoButton extends StatelessWidget {
               borderWidth: 1.6,
             ),
             child: Center(
-              child: Icon(Icons.undo_rounded, color: color, size: 26),
+              child: Icon(Icons.undo_rounded, color: color, size: 28),
             ),
           ),
         ),
@@ -3435,7 +3499,7 @@ class _TestLevelButton extends StatelessWidget {
                     color: enabled
                         ? accentColor
                         : Colors.white.withValues(alpha: 0.45),
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.35,
                   ),
@@ -4349,9 +4413,8 @@ class _FlyingTubeState extends State<_FlyingTube>
       return const SizedBox.shrink();
     }
 
-// Seçili tüp zaten sahnede -15 px yukarı kalkmış görünüyor.
-// FlyingTube da aynı kalkık pozisyondan başlamalı ki
-// önce aşağı inip sonra hedefe gitmeye çalışmasın.
+// Seçili tüp sahnede -15 px yukarı kalkmış görünüyor.
+// FlyingTube da aynı kalkık pozisyondan başlamalı.
     final liftedFromPos = fromPos.translate(0, -15.0);
     final targetLip = targetMouthEntry.translate(0, -_extraHoverLift);
 
