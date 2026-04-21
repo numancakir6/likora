@@ -2798,22 +2798,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     },
                   ),
                 ),
-              // Dağ resmi — ekranın tam altına hizalı, tam genişlikte (animasyonun üstünde, butonların arkasında)
-              if (widget.mapNumber == 3)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    child: Image.asset(
-                      kVolcanoReservoirSvgAsset,
-                      width: double.infinity,
-                      fit: BoxFit.fitWidth,
-                      alignment: Alignment.bottomCenter,
-                    ),
-                  ),
-                ),
-
               SafeArea(
                 child: Column(
                   children: [
@@ -2880,8 +2864,41 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
-                    _buildBottomBar(),
+                    // Alan rezervasyonu — BottomBar yüksekliği kadar boşluk bırakır,
+                    // görünmez; asıl butonlar PNG'nin üstündeki Positioned'da.
+                    IgnorePointer(
+                      child: Opacity(
+                        opacity: 0.0,
+                        child: _buildBottomBar(),
+                      ),
+                    ),
                   ],
+                ),
+              ),
+              // Dağ PNG'si — TubeStage ve akış animasyonunun ÜSTÜNDE,
+              // böylece akış dağın arkasından geliyor gibi görünür.
+              if (widget.mapNumber == 3)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: Image.asset(
+                      kVolcanoReservoirSvgAsset,
+                      width: double.infinity,
+                      fit: BoxFit.fitWidth,
+                      alignment: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+              // BottomBar PNG'nin ÜSTÜNDE — butonlar her zaman erişilebilir
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: _buildBottomBar(),
                 ),
               ),
             ],
@@ -3643,7 +3660,10 @@ class _TubeStageState extends State<_TubeStage> {
     if (box == null || stageBox == null || !box.hasSize || !stageBox.hasSize) {
       return null;
     }
-    return box.localToGlobal(localAnchor, ancestor: stageBox);
+    final globalPos = box.localToGlobal(localAnchor);
+    final stageTransform = stageBox.getTransformTo(null);
+    stageTransform.invert();
+    return MatrixUtils.transformPoint(stageTransform, globalPos);
   }
 
   Offset? _mountainMouthPos() {
@@ -3658,10 +3678,17 @@ class _TubeStageState extends State<_TubeStage> {
     // Ağız merkezi: clip path ağzıyla hizalı (h * 0.10)
     final localMouth = Offset(
       mountainBox.size.width / 2,
-      mountainBox.size.height * 0.10,
+      mountainBox.size.height * 0.10 - 60.0, // yukarı offset (+ = yukari)
     );
 
-    return mountainBox.localToGlobal(localMouth, ancestor: stageBox);
+    // Mountain widget stageBox'in descendant'i degil (ayri Stack child).
+    // Global koordinati alip stageBox'in global transform'unun tersini uygulayarak
+    // stage-local koordinata donusturuyoruz. Bu FittedBox scale'ini de hesaba katar.
+    final globalMouth = mountainBox.localToGlobal(localMouth);
+    final stageTransform = stageBox.getTransformTo(null);
+    stageTransform.invert();
+    final stageLocal = MatrixUtils.transformPoint(stageTransform, globalMouth);
+    return stageLocal;
   }
 
   Offset? _mountainSurfacePos(double units) {
@@ -3688,7 +3715,12 @@ class _TubeStageState extends State<_TubeStage> {
     final localY = h - bottomInset - usableHeight * fillRatio;
     final localSurface = Offset(w / 2, localY);
 
-    return mountainBox.localToGlobal(localSurface, ancestor: stageBox);
+    final globalSurface = mountainBox.localToGlobal(localSurface);
+    final stageTransform = stageBox.getTransformTo(null);
+    stageTransform.invert();
+    final stageLocal =
+        MatrixUtils.transformPoint(stageTransform, globalSurface);
+    return stageLocal;
   }
 
   @override
@@ -4404,7 +4436,7 @@ class _FlyingTubeState extends State<_FlyingTube>
     final fromPos = _cachedFromPos;
 
     final targetSurface = widget.plan.isMountainTarget
-        ? widget.getMountainMouth()
+        ? widget.getMountainSurface(widget.plan.toSnapshot.length.toDouble())
         : widget.getRealTargetSurface(
             widget.plan.toIdx,
             widget.plan.toSnapshot.length.toDouble(),
@@ -4421,7 +4453,19 @@ class _FlyingTubeState extends State<_FlyingTube>
 // Seçili tüp sahnede -15 px yukarı kalkmış görünüyor.
 // FlyingTube da aynı kalkık pozisyondan başlamalı.
     final liftedFromPos = fromPos.translate(0, -15.0);
-    final targetLip = targetMouthEntry.translate(0, -_extraHoverLift);
+    // Mountain hedefi için extra hover kaldirmiyoruz — volkan agzi zaten
+    // ekranin altinda, tubu aginzin tam ustune getirmek istiyoruz.
+    final hoverLift = widget.plan.isMountainTarget ? 0.0 : _extraHoverLift;
+
+    // Mountain widget ekranin tamamini kapliyor ama _TubeStage daha dar ve
+    // ortali. Bu yuzden mountain agzinin global-minus-stage x koordinati
+    // stage disina tasabiliyor. Mountain icin hedefin x'ini tup merkezine
+    // sabitliyoruz; tup sadece asagi inip egilerek dokuyor.
+    // Mountain koordinatlari artik getTransformTo ile duzgun hesaplaniyor,
+    // ekstra override gerekmiyor.
+    final effectiveTargetMouth = targetMouthEntry;
+
+    final targetLip = effectiveTargetMouth.translate(0, -hoverLift);
 
     final fromMidX = liftedFromPos.dx + (kWidgetW / 2);
     final tiltSign = fromMidX <= targetLip.dx ? 1.0 : -1.0;
@@ -4523,8 +4567,18 @@ class _FlyingTubeState extends State<_FlyingTube>
         final currentToVolume =
             (widget.plan.toSnapshot.length + widget.plan.count * drainProgress)
                 .clamp(0.0, widget.targetCapacity.toDouble());
+        final rawMountainSurface = widget.plan.isMountainTarget
+            ? widget.getMountainSurface(
+                (widget.plan.mountainFillBefore ?? 0) +
+                    widget.plan.count * drainProgress,
+              )
+            : null;
+        // Mountain surface x'ini tup merkeziyle hizala (mountain widget ekrandan
+        // genis, stage koordinatlarinda x kayabiliyor).
         final dynamicTargetSurface = widget.plan.isMountainTarget
-            ? targetSurface
+            ? (rawMountainSurface != null
+                ? Offset(effectiveTargetMouth.dx, rawMountainSurface.dy)
+                : targetSurface)
             : (widget.getRealTargetSurface(
                   widget.plan.toIdx,
                   currentToVolume,
@@ -4590,7 +4644,7 @@ class _FlyingTubeState extends State<_FlyingTube>
                           : solidColorForIndex(widget.plan.colorIdx),
                       start: globalStreamStart,
                       end: dynamicTargetSurface,
-                      mouthEntry: targetMouthEntry,
+                      mouthEntry: effectiveTargetMouth,
                       headProgress: headProgress,
                       tailProgress: tailProgress,
                       flowRate: easedFlow.clamp(0.0, 1.0),
