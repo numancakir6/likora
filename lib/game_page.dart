@@ -214,13 +214,7 @@ _ResolvedStageLayout resolveStageLayout({
   );
 }
 
-const Duration kPourDuration = Duration(milliseconds: 1350);
-
-// _MapTheme ve _themeForMap kaldırıldı — MapTheme artık map_theme.dart'tan geliyor.
-
-// ─────────────────────────────────────────────
-// OYUN MANTIĞI
-// ─────────────────────────────────────────────
+const Duration kPourDuration = Duration(milliseconds: 800);
 
 // ─────────────────────────────────────────────
 // YARDIMCI MODELLER
@@ -3649,7 +3643,7 @@ class _TubeStageState extends State<_TubeStage> {
     if (box == null || stageBox == null || !box.hasSize || !stageBox.hasSize) {
       return null;
     }
-    return box.localToGlobal(localAnchor) - stageBox.localToGlobal(Offset.zero);
+    return box.localToGlobal(localAnchor, ancestor: stageBox);
   }
 
   Offset? _mountainMouthPos() {
@@ -3723,7 +3717,9 @@ class _TubeStageState extends State<_TubeStage> {
       return null;
     }
 
-    return box.localToGlobal(localAnchor) - stageBox.localToGlobal(Offset.zero);
+    // ancestor parametresiyle stage lokal koordinatlarına dönüştür.
+    // Eski yöntem (globalToGlobal farkı) FittedBox scale ile uyuşmuyordu.
+    return box.localToGlobal(localAnchor, ancestor: stageBox);
   }
 
   Offset? _realTargetMouthPos(int idx) {
@@ -4331,6 +4327,10 @@ class _FlyingTubeState extends State<_FlyingTube>
 
   double _liquidTilt = 0.0;
 
+  // fromPos ilk okunduğunda sabitlenir — böylece animasyon boyunca
+  // tüpün layout pozisyonu değişse bile (isSelected → false) ışınlanma olmaz.
+  Offset? _cachedFromPos;
+
   @override
   void initState() {
     super.initState();
@@ -4396,7 +4396,12 @@ class _FlyingTubeState extends State<_FlyingTube>
 
   @override
   Widget build(BuildContext context) {
-    final fromPos = widget.getPos(widget.plan.fromIdx);
+    // fromPos'u ilk geçerli okumada sabitle.
+    // _selected = null yapıldıktan sonra tüp layout pozisyonu değişebilir
+    // (isSelected: false → liftY=0), bu da her frame'de farklı fromPos
+    // okumaya ve "ışınlanma" etkisine yol açar.
+    _cachedFromPos ??= widget.getPos(widget.plan.fromIdx);
+    final fromPos = _cachedFromPos;
 
     final targetSurface = widget.plan.isMountainTarget
         ? widget.getMountainMouth()
@@ -4423,6 +4428,19 @@ class _FlyingTubeState extends State<_FlyingTube>
 
     final mouthLocal = _tubeMouthCenterLocal();
     final anchorLocal = Offset(kWidgetW / 2, kBodyBotY + kTR);
+
+    // Şişe hedefe giderken ara bir "snap" noktası üretmesin diye,
+    // döküm konumunu builder içinde tekrar tekrar değiştirmiyoruz.
+    // Hedef şişenin ağzına, sabit bir tilt ile TEK bir top-left hesaplayıp
+    // tüm hareketi o noktaya yapıyoruz.
+    final fixedTilt = tiltSign *
+        _targetTiltForRemaining(widget.plan.fromSnapshot.length.toDouble());
+    final fixedPourTopLeft = _tubeTopLeftToMatchMouth(
+      targetMouth: targetLip,
+      mouthLocal: mouthLocal,
+      anchorLocal: anchorLocal,
+      angle: fixedTilt,
+    );
 
     return AnimatedBuilder(
       animation: _ctrl,
