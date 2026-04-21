@@ -2676,6 +2676,66 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
+              // Sıvı animasyonu — ekranın tam altına hizalı (butonların arkasında)
+              if (widget.mapNumber == 3)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: LayoutBuilder(
+                    builder: (ctx, _) {
+                      final screenW =
+                          MediaQuery.of(ctx).size.width.clamp(280.0, 500.0);
+                      final reservoirH = screenW / 1.776;
+                      return TweenAnimationBuilder<double>(
+                        tween: Tween<double>(
+                          begin: 0.0,
+                          end: _mountainFillPercent,
+                        ),
+                        duration: const Duration(milliseconds: 1200),
+                        curve: Curves.easeInOut,
+                        builder: (ctx, animatedFill, _) {
+                          return MountainTubeReservoir(
+                            key: _mountainReservoirKey,
+                            width: screenW,
+                            height: reservoirH,
+                            fillPercent: animatedFill,
+                            liquidColor: _mountainLayers.isEmpty
+                                ? const Color(0xFFFF6A00)
+                                : (isLavaColorIndex(
+                                        _mountainLayers.last.colorIdx)
+                                    ? kLavaOrange
+                                    : solidColorForIndex(
+                                        _mountainLayers.last.colorIdx)),
+                            glow: false,
+                            onTap: _handleMountainTap,
+                            layers: List<VisualLayer>.from(
+                                _mountainLayers.map((l) => l.copyWith())),
+                            capacity: _mountainCapacity,
+                            gameWon: _gameWon,
+                            loopEruption: _loopCompletedVolcano,
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              // Dağ resmi — ekranın tam altına hizalı, tam genişlikte (animasyonun üstünde, butonların arkasında)
+              if (widget.mapNumber == 3)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: Image.asset(
+                      kVolcanoReservoirSvgAsset,
+                      width: double.infinity,
+                      fit: BoxFit.fitWidth,
+                      alignment: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+
               SafeArea(
                 child: Column(
                   children: [
@@ -2762,107 +2822,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
-                    // Map 3 için dağ resminin üstüne boşluk bırak
-                    SizedBox(height: widget.mapNumber == 3 ? 160 : 8),
+                    _buildBottomBar(),
                   ],
                 ),
               ),
-              Positioned(
-                right: 0,
-                bottom: 175,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 180),
-                  opacity: 1.0,
-                  child: IgnorePointer(
-                    ignoring: false,
-                    child: SafeArea(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          _JokerButton(
-                            enabled: !_jokerBusy &&
-                                _activePlans.isEmpty &&
-                                !_gameWon,
-                            busy: _jokerBusy,
-                            accentColor: _theme.accentColor,
-                            canBuy: _canBuyJoker,
-                            cost: _jokerCost,
-                            onTap: _useJokerWithEconomy,
-                          ),
-                          const SizedBox(height: 10),
-                          _UndoButton(
-                            canUndo: _history.isNotEmpty &&
-                                _activePlans.isEmpty &&
-                                !_gameWon,
-                            accentColor: _theme.accentColor,
-                            onTap: _undo,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Sıvı animasyonu — PNG'nin arkasında, bottom:0 ile tam alta hizalı
-              if (widget.mapNumber == 3)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: LayoutBuilder(
-                    builder: (ctx, _) {
-                      final screenW =
-                          MediaQuery.of(ctx).size.width.clamp(280.0, 500.0);
-                      final reservoirH = screenW / 1.776;
-                      return TweenAnimationBuilder<double>(
-                        tween: Tween<double>(
-                          begin: 0.0,
-                          end: _mountainFillPercent,
-                        ),
-                        duration: const Duration(milliseconds: 1200),
-                        curve: Curves.easeInOut,
-                        builder: (ctx, animatedFill, _) {
-                          return MountainTubeReservoir(
-                            key: _mountainReservoirKey,
-                            width: screenW,
-                            height: reservoirH,
-                            fillPercent: animatedFill,
-                            liquidColor: _mountainLayers.isEmpty
-                                ? const Color(0xFFFF6A00)
-                                : (isLavaColorIndex(
-                                        _mountainLayers.last.colorIdx)
-                                    ? kLavaOrange
-                                    : solidColorForIndex(
-                                        _mountainLayers.last.colorIdx)),
-                            glow: false,
-                            onTap: _handleMountainTap,
-                            layers: List<VisualLayer>.from(
-                                _mountainLayers.map((l) => l.copyWith())),
-                            capacity: _mountainCapacity,
-                            gameWon: _gameWon,
-                            loopEruption: _loopCompletedVolcano,
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              // Dağ resmi — ekranın tam altına hizalı, tam genişlikte (animasyonun üstünde)
-              if (widget.mapNumber == 3)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    child: Image.asset(
-                      kVolcanoReservoirSvgAsset,
-                      width: double.infinity,
-                      fit: BoxFit.fitWidth,
-                      alignment: Alignment.bottomCenter,
-                    ),
-                  ),
-                ),
             ],
           ),
         ));
@@ -3024,6 +2987,40 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomBar() {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Container(
+      height: 72 + bottomPad,
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        bottom: bottomPad + 12,
+        top: 12,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Sol — Geri Alma
+          _UndoButton(
+            canUndo: _history.isNotEmpty && _activePlans.isEmpty && !_gameWon,
+            accentColor: _theme.accentColor,
+            onTap: _undo,
+          ),
+          // Sağ — Joker
+          _JokerButton(
+            enabled: !_jokerBusy && _activePlans.isEmpty && !_gameWon,
+            busy: _jokerBusy,
+            accentColor: _theme.accentColor,
+            canBuy: _canBuyJoker,
+            cost: _jokerCost,
+            onTap: _useJokerWithEconomy,
           ),
         ],
       ),
@@ -3221,6 +3218,52 @@ class _AnimatedThemeBg extends StatelessWidget {
 // GERİ ALMA BUTONU
 // ─────────────────────────────────────────────
 
+class _HexagonPainter extends CustomPainter {
+  final Color fillColor;
+  final Color borderColor;
+  final double borderWidth;
+
+  const _HexagonPainter({
+    required this.fillColor,
+    required this.borderColor,
+    required this.borderWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = _hexPath(size);
+    canvas.drawPath(path, Paint()..color = fillColor);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = borderColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = borderWidth,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_HexagonPainter old) =>
+      old.fillColor != fillColor ||
+      old.borderColor != borderColor ||
+      old.borderWidth != borderWidth;
+}
+
+Path _hexPath(Size size) {
+  final cx = size.width / 2;
+  final cy = size.height / 2;
+  final r = min(size.width, size.height) / 2;
+  final path = Path();
+  for (int i = 0; i < 6; i++) {
+    final angle = (pi / 6) + (i * pi / 3);
+    final x = cx + r * cos(angle);
+    final y = cy + r * sin(angle);
+    i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+  }
+  path.close();
+  return path;
+}
+
 class _JokerButton extends StatelessWidget {
   final bool enabled;
   final bool busy;
@@ -3241,57 +3284,40 @@ class _JokerButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = busy ? '...' : (canBuy ? '$cost' : 'AD');
+    const double size = 68.0;
+    final color = enabled ? accentColor : Colors.white.withValues(alpha: 0.45);
+    final fillColor = enabled
+        ? accentColor.withValues(alpha: 0.13)
+        : Colors.white.withValues(alpha: 0.06);
+    final borderColor = enabled
+        ? accentColor.withValues(alpha: 0.55)
+        : Colors.white.withValues(alpha: 0.18);
+
     return AnimatedOpacity(
-      opacity: enabled ? 1.0 : 0.32,
+      opacity: enabled ? 1.0 : 0.38,
       duration: const Duration(milliseconds: 250),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius:
-              const BorderRadius.horizontal(left: Radius.circular(14)),
-          onTap: enabled ? onTap : null,
-          child: Ink(
-            width: 58,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              borderRadius:
-                  const BorderRadius.horizontal(left: Radius.circular(14)),
-              border: Border.all(
-                color: enabled
-                    ? accentColor.withValues(alpha: 0.45)
-                    : Colors.white.withValues(alpha: 0.14),
-                width: 1.4,
-              ),
-              boxShadow: enabled
-                  ? [
-                      BoxShadow(
-                        color: accentColor.withValues(alpha: 0.18),
-                        blurRadius: 12,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: CustomPaint(
+            painter: _HexagonPainter(
+              fillColor: fillColor,
+              borderColor: borderColor,
+              borderWidth: 1.6,
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.auto_fix_high_rounded,
-                  size: 18,
-                  color: enabled
-                      ? accentColor
-                      : Colors.white.withValues(alpha: 0.45),
-                ),
-                const SizedBox(height: 1),
+                Icon(Icons.auto_fix_high_rounded, size: 22, color: color),
+                const SizedBox(height: 2),
                 Text(
                   text,
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 11,
                     fontWeight: FontWeight.w800,
-                    color: enabled
-                        ? accentColor
-                        : Colors.white.withValues(alpha: 0.45),
+                    color: color,
                   ),
                 ),
               ],
@@ -3316,46 +3342,31 @@ class _UndoButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const double size = 68.0;
+    final color = canUndo ? accentColor : Colors.white.withValues(alpha: 0.45);
+    final fillColor = canUndo
+        ? accentColor.withValues(alpha: 0.13)
+        : Colors.white.withValues(alpha: 0.06);
+    final borderColor = canUndo
+        ? accentColor.withValues(alpha: 0.55)
+        : Colors.white.withValues(alpha: 0.18);
+
     return AnimatedOpacity(
-      opacity: canUndo ? 1.0 : 0.32,
+      opacity: canUndo ? 1.0 : 0.38,
       duration: const Duration(milliseconds: 250),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius:
-              const BorderRadius.horizontal(left: Radius.circular(14)),
-          onTap: canUndo ? onTap : null,
-          child: Ink(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              borderRadius:
-                  const BorderRadius.horizontal(left: Radius.circular(14)),
-              border: Border.all(
-                color: canUndo
-                    ? accentColor.withValues(alpha: 0.45)
-                    : Colors.white.withValues(alpha: 0.14),
-                width: 1.4,
-              ),
-              boxShadow: canUndo
-                  ? [
-                      BoxShadow(
-                        color: accentColor.withValues(alpha: 0.18),
-                        blurRadius: 12,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
+      child: GestureDetector(
+        onTap: canUndo ? onTap : null,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: CustomPaint(
+            painter: _HexagonPainter(
+              fillColor: fillColor,
+              borderColor: borderColor,
+              borderWidth: 1.6,
             ),
             child: Center(
-              child: Icon(
-                Icons.undo_rounded,
-                color: canUndo
-                    ? accentColor
-                    : Colors.white.withValues(alpha: 0.45),
-                size: 20,
-              ),
+              child: Icon(Icons.undo_rounded, color: color, size: 26),
             ),
           ),
         ),
@@ -4252,7 +4263,7 @@ class _FlyingTubeState extends State<_FlyingTube>
 
   // Uçan şişeyi hedefin üstünde biraz daha yukarıda tut.
   // İstersen 28 → 36 → 44 diye deneyebilirsin.
-  static const double _extraHoverLift = 112.0;
+  static const double _extraHoverLift = 100.0;
 
   double _liquidTilt = 0.0;
 
