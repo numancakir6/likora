@@ -17,6 +17,9 @@ import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:collection/collection.dart';
+import 'game/core/game_models.dart';
+import 'game/core/game_visuals.dart';
+import 'game/maps/map3/map3_mountain_reservoir.dart';
 
 // ─────────────────────────────────────────────
 // OYUN SABİTLERİ
@@ -211,61 +214,6 @@ _ResolvedStageLayout resolveStageLayout({
 
 const Duration kPourDuration = Duration(milliseconds: 1350);
 
-const List<Map<String, dynamic>> kColors = [
-  // 🎯 ANA RENKLER
-  {'name': 'Kırmızı', 'fill': Color(0xFFFF0000)},
-  {'name': 'Turuncu', 'fill': Color(0xFFFF7A00)},
-  {'name': 'Sarı', 'fill': Color(0xFFFFFF00)},
-  {'name': 'Yeşil', 'fill': Color(0xFF00C853)},
-  {'name': 'Mavi', 'fill': Color(0xFF0000FF)},
-
-  // 🌈 ANA RENKLERDEN UZAK, BİRBİRİNDEN NET AYRILAN EK RENKLER
-  {'name': 'Mor', 'fill': Color(0xFF6A0DAD)},
-  {'name': 'Camgöbeği', 'fill': Color(0xFF00E5FF)},
-  {'name': 'Lime', 'fill': Color(0xFFB2FF00)},
-  {'name': 'Kahverengi', 'fill': Color(0xFF6D4C41)},
-  {'name': 'Bordo', 'fill': Color(0xFF8B0000)},
-  {'name': 'Pembe', 'fill': Color(0xFFFF4FA3)},
-  {'name': 'Zeytin', 'fill': Color(0xFF808000)},
-  {'name': 'Gri', 'fill': Color(0xFF9E9E9E)},
-  {'name': 'Beyaz', 'fill': Color(0xFFFFFFFF)},
-];
-
-const Color kLavaDark = Color(0xFF4A0B00);
-const Color kLavaRed = Color(0xFFC62828);
-const Color kLavaOrange = Color(0xFFFF6F00);
-const Color kLavaGlow = Color(0xFFFFD54F);
-const Color kLavaCore = Color(0xFFFFF59D);
-
-bool _isLavaColorIndex(int colorIdx) => colorIdx == kLavaColorIndex;
-Color _solidColorForIndex(int colorIdx) =>
-    kColors[colorIdx.clamp(0, kColors.length - 1).toInt()]['fill'] as Color;
-
-double _colorLuminanceForIndex(int colorIdx) {
-  final c = _solidColorForIndex(colorIdx);
-  return c.computeLuminance();
-}
-
-double _liquidHighlightAlphaFor(int colorIdx, {required bool isHidden}) {
-  if (isHidden) return 0.0;
-  final lum = _colorLuminanceForIndex(colorIdx);
-  if (lum < 0.10) return 0.03;
-  if (lum < 0.20) return 0.04;
-  return 0.05;
-}
-
-double _liquidShadowAlphaFor(int colorIdx, {required bool isHidden}) {
-  if (isHidden) return 0.0;
-  final lum = _colorLuminanceForIndex(colorIdx);
-  if (lum < 0.10) return 0.04;
-  if (lum < 0.20) return 0.05;
-  return 0.05;
-}
-
-Color _visibleLiquidFillForIndex(int colorIdx) {
-  return _solidColorForIndex(colorIdx);
-}
-
 // _MapTheme ve _themeForMap kaldırıldı — MapTheme artık map_theme.dart'tan geliyor.
 
 // ─────────────────────────────────────────────
@@ -395,138 +343,6 @@ bool isGameDone(List<List<int>> tubes) =>
 // YARDIMCI MODELLER
 // ─────────────────────────────────────────────
 
-class _TransferPlan {
-  final int fromIdx;
-  final int toIdx;
-  final List<int> fromSnapshot;
-  final List<int> toSnapshot;
-  final int colorIdx;
-  final int count;
-  final bool isMountainTarget;
-  final int mountainFillBefore;
-
-  const _TransferPlan({
-    required this.fromIdx,
-    required this.toIdx,
-    required this.fromSnapshot,
-    required this.toSnapshot,
-    required this.colorIdx,
-    required this.count,
-    this.isMountainTarget = false,
-    this.mountainFillBefore = 0,
-  });
-}
-
-class _VisualLayer {
-  final int colorIdx;
-  final double volume;
-
-  const _VisualLayer({required this.colorIdx, required this.volume});
-
-  _VisualLayer copyWith({int? colorIdx, double? volume}) => _VisualLayer(
-        colorIdx: colorIdx ?? this.colorIdx,
-        volume: volume ?? this.volume,
-      );
-}
-
-class _JokerSearchNode {
-  final List<List<int>> tubes;
-  final int mountainFillUnits;
-  final List<String> moves;
-  final Map<int, List<List<int>>> refillQueues;
-  final int priority;
-
-  const _JokerSearchNode({
-    required this.tubes,
-    required this.mountainFillUnits,
-    required this.moves,
-    this.refillQueues = const {},
-    this.priority = 0,
-  });
-
-  String stateId(List<int> activeIndexes) {
-    final normalizedTubes = activeIndexes
-        .map((i) => tubes[i].join(','))
-        .toList(growable: false)
-      ..sort();
-    final tubesPart = normalizedTubes.join('|');
-
-    final normalizedRefills = refillQueues.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-    final refillPart = normalizedRefills
-        .map(
-          (entry) =>
-              '${entry.key}:${entry.value.map((pack) => pack.join(',')).join(';')}',
-        )
-        .join('|');
-
-    return '$tubesPart#$mountainFillUnits#$refillPart';
-  }
-
-  bool isSolved({
-    required List<int> activeIndexes,
-    required int mountainCapacity,
-    required int Function(List<List<int>> tubes, int index) tubeCapacityIn,
-  }) {
-    if (mountainCapacity > 0 && mountainFillUnits < mountainCapacity) {
-      return false;
-    }
-
-    for (final idx in activeIndexes) {
-      final tube = tubes[idx];
-      if (tube.isEmpty) continue;
-      if (tube.length != tubeCapacityIn(tubes, idx)) return false;
-      final first = tube.first;
-      if (tube.any((c) => c != first)) return false;
-    }
-    return true;
-  }
-}
-
-// ─────────────────────────────────────────────
-// ORTAK TEMAS HESABI
-// ─────────────────────────────────────────────
-//
-// Akış çizgisinin hedefteki sıvıya (veya boş şişe dibine) değdiği
-// streamOpen anını hesaplar.
-//
-// Tüm koordinatlar LOCAL şişe koordinatındadır.
-// Akış ağız noktası: kLiquidTopY + kStreamMouthOffset
-// Max iniş mesafesi: kLiquidBotY - (kLiquidTopY + kStreamMouthOffset)
-//
-// Bu sabit her iki yerde (FlyingTube & TubeStage) aynı olmalı.
-const double kStreamMouthOffset = 24.0; // ağız Y = kLiquidTopY + bu değer
-
-double computeContactThreshold(int existingLayerCount) {
-  final fillRatio = (existingLayerCount / kCap).clamp(0.0, 1.0);
-  // Mevcut sıvı yüzey Y (local, 0 katman=dip, 4 katman=üst)
-  final surfaceY = kLiquidBotY - (kLiquidBotY - kLiquidTopY) * fillRatio;
-  // Akış çizgisinin başladığı Y (şişe ağzı)
-  final mouthY = kLiquidTopY + kStreamMouthOffset;
-  // Akışın inmesi gereken mesafe
-  final needed = (surfaceY - mouthY).clamp(0.0, double.infinity);
-  // Akışın inebileceği maksimum mesafe (ağızdan dibe)
-  final maxTravel = (kLiquidBotY - mouthY).clamp(1.0, double.infinity);
-  // 0.90 tavanı: boş şişede bile fillProgress'in çalışacak %10 payı olsun
-  return (needed / maxTravel).clamp(0.0, 0.10);
-}
-
-// ─────────────────────────────────────────────
-// GAME PAGE
-// ─────────────────────────────────────────────
-
-class GamePageResult {
-  final bool completed;
-  final int coinsAfterLevel;
-  final int earnedCoins;
-
-  const GamePageResult({
-    required this.completed,
-    required this.coinsAfterLevel,
-    this.earnedCoins = 0,
-  });
-}
-
 class GamePage extends StatefulWidget {
   final int level;
   final int mapNumber;
@@ -573,6 +389,198 @@ class GamePage extends StatefulWidget {
   State<GamePage> createState() => _GamePageState();
 }
 
+class _TubeDoneBurst extends StatefulWidget {
+  final int colorIdx;
+
+  /// Oyun bitişinde true — daha büyük + daha parlak efekt
+  final bool isGameWin;
+
+  const _TubeDoneBurst({
+    super.key,
+    required this.colorIdx,
+    this.isGameWin = false,
+  });
+
+  @override
+  State<_TubeDoneBurst> createState() => _TubeDoneBurstState();
+}
+
+class _TubeDoneBurstState extends State<_TubeDoneBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final dur = widget.isGameWin
+        ? const Duration(milliseconds: 1200)
+        : const Duration(milliseconds: 900);
+    _ctrl = AnimationController(vsync: this, duration: dur)..forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = kColors[widget.colorIdx]['fill'] as Color;
+    final hexSize = widget.isGameWin ? 30.0 : 28.0;
+
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final t = _ctrl.value;
+
+        final eased = Curves.easeOutCubic.transform(t);
+        final dy = lerpDouble(
+          widget.isGameWin ? 10.0 : 14.0,
+          widget.isGameWin ? -80.0 : -60.0,
+          eased,
+        )!;
+
+        final opacity = t < 0.15
+            ? (t / 0.15).clamp(0.0, 1.0)
+            : (1.0 - ((t - 0.15) / 0.85)).clamp(0.0, 1.0);
+
+        final glowT = (sin(t * pi)).clamp(0.0, 1.0);
+        final scale = 1.0 + glowT * (widget.isGameWin ? 0.45 : 0.28);
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Transform.translate(
+              offset: Offset(0, dy),
+              child: Opacity(
+                opacity: (opacity * glowT * 0.65).clamp(0.0, 1.0),
+                child: Transform.scale(
+                  scale: scale * 1.6,
+                  child: Container(
+                    width: hexSize,
+                    height: hexSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          color.withValues(alpha: 0.55),
+                          color.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Transform.translate(
+              offset: Offset(0, dy),
+              child: Opacity(
+                opacity: opacity,
+                child: Transform.scale(
+                  scale: scale,
+                  child: CustomPaint(
+                    size: Size(hexSize, hexSize),
+                    painter: _BurstHexPainter(
+                      color: color,
+                      glowIntensity: glowT,
+                      isGameWin: widget.isGameWin,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (widget.isGameWin)
+              ...List.generate(6, (i) {
+                final angle = (pi / 3) * i - pi / 2;
+                final dist = lerpDouble(0, 36.0, eased)!;
+                final px = cos(angle) * dist;
+                final py = sin(angle) * dist + dy;
+                final pOpacity = (opacity * (1.0 - t * 0.7)).clamp(0.0, 1.0);
+
+                return Transform.translate(
+                  offset: Offset(px, py),
+                  child: Opacity(
+                    opacity: pOpacity,
+                    child: CustomPaint(
+                      size: const Size(6, 6),
+                      painter: _BurstHexPainter(
+                        color: color,
+                        glowIntensity: glowT * 0.6,
+                        isGameWin: false,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _BurstHexPainter extends CustomPainter {
+  final Color color;
+  final double glowIntensity;
+  final bool isGameWin;
+
+  const _BurstHexPainter({
+    required this.color,
+    this.glowIntensity = 0.0,
+    this.isGameWin = false,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    final r = size.width / 2;
+    final c = Offset(size.width / 2, size.height / 2);
+
+    for (int i = 0; i < 6; i++) {
+      final a = -pi / 2 + (pi / 3) * i;
+      final p = Offset(c.dx + cos(a) * r, c.dy + sin(a) * r);
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    path.close();
+
+    canvas.drawPath(
+      path,
+      Paint()..color = color.withValues(alpha: 0.95),
+    );
+
+    if (glowIntensity > 0.01) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.35 * glowIntensity)
+          ..maskFilter = MaskFilter.blur(
+            BlurStyle.normal,
+            isGameWin ? 4.0 * glowIntensity : 2.5 * glowIntensity,
+          ),
+      );
+    }
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.25 + 0.35 * glowIntensity)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isGameWin ? 1.6 : 1.2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_BurstHexPainter old) =>
+      old.glowIntensity != glowIntensity ||
+      old.color != color ||
+      old.isGameWin != isGameWin;
+}
+
 class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   Future<void> _vibrateTap() async {
     await SettingsPage.vibrateTap();
@@ -613,7 +621,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   late List<List<int>> _tubes;
 
   // Aktif animasyonlar (paralel çalışabilir)
-  final List<_TransferPlan> _activePlans = [];
+  final List<TransferPlan> _activePlans = [];
 
   // Seçim durumu
   int? _selected;
@@ -632,7 +640,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         int fromIdx,
         int toIdx,
         int mountainFillUnits,
-        List<_VisualLayer> mountainLayers,
+        List<VisualLayer> mountainLayers,
       })> _history = [];
 
   late List<int> _visibleLayerCounts;
@@ -672,7 +680,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _restoringLevelState = true;
   bool _missingPreset = false;
   int _mountainFillUnits = 0;
-  final List<_VisualLayer> _mountainLayers = [];
+  final List<VisualLayer> _mountainLayers = [];
   bool _loopCompletedVolcano = false;
   // Rewarded reklam
   RewardedAd? _extraTubeAd;
@@ -773,7 +781,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _mountainLayers
       ..clear()
       ..add(
-        _VisualLayer(
+        VisualLayer(
           colorIdx: kLavaColorIndex,
           volume: capacity.toDouble(),
         ),
@@ -1147,13 +1155,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             ..clear()
             ..addAll(
               _mountainFillUnits > 0
-                  ? <_VisualLayer>[
-                      _VisualLayer(
+                  ? <VisualLayer>[
+                      VisualLayer(
                         colorIdx: kLavaColorIndex,
                         volume: _mountainFillUnits.toDouble(),
                       ),
                     ]
-                  : const <_VisualLayer>[],
+                  : const <VisualLayer>[],
             );
           await _restoreUndoHistoryState();
           await _restoreRefillState();
@@ -1416,7 +1424,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         int fromIdx,
         int toIdx,
         int mountainFillUnits,
-        List<_VisualLayer> mountainLayers,
+        List<VisualLayer> mountainLayers,
       })>[];
 
       for (final item in decoded) {
@@ -1459,7 +1467,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 ? mountainFillUnitsRaw.clamp(0, _mountainCapacity).toInt()
                 : 0)
             : 0;
-        final mountainLayers = <_VisualLayer>[];
+        final mountainLayers = <VisualLayer>[];
         if (mountainLayersRaw is List) {
           for (final layerRaw in mountainLayersRaw) {
             if (layerRaw is! Map) continue;
@@ -1469,7 +1477,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             final volume = volumeRaw is num ? volumeRaw.toDouble() : 0.0;
             if (volume <= 0) continue;
             mountainLayers.add(
-              _VisualLayer(
+              VisualLayer(
                 colorIdx: colorIdx.clamp(0, kColors.length - 1).toInt(),
                 volume: volume,
               ),
@@ -1864,7 +1872,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (!_hasMountainObjective) return false;
     if (_showLockedAdTube && from == _lockedAdTubeIndex) return false;
     if (from < 0 || from >= tubes.length || tubes[from].isEmpty) return false;
-    if (!_isLavaColorIndex(tubes[from].last)) return false;
+    if (!isLavaColorIndex(tubes[from].last)) return false;
     return true;
   }
 
@@ -1904,7 +1912,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final initialRefillQueues = _cloneRefillQueuesMap(_runtimeRefillQueues);
     final stopWhenMountainFull = _activeStopRefillWhenMountainFull;
 
-    int heuristic(_JokerSearchNode node) {
+    int heuristic(JokerSearchNode node) {
       var h = 0;
 
       for (final idx in activeIndexes) {
@@ -1929,13 +1937,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return h;
     }
 
-    int computePriority(_JokerSearchNode node) {
+    int computePriority(JokerSearchNode node) {
       final g = node.moves.length;
       final h = heuristic(node);
       return g + h;
     }
 
-    final startNode = _JokerSearchNode(
+    final startNode = JokerSearchNode(
       tubes: initialTubes,
       mountainFillUnits: initialMountainFillUnits,
       moves: const [],
@@ -1951,7 +1959,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return const [];
     }
 
-    final pq = PriorityQueue<_JokerSearchNode>(
+    final pq = PriorityQueue<JokerSearchNode>(
       (a, b) => a.priority.compareTo(b.priority),
     )..add(startNode);
 
@@ -2007,7 +2015,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             }
           }
 
-          final nextNodeBase = _JokerSearchNode(
+          final nextNodeBase = JokerSearchNode(
             tubes: nextTubes,
             mountainFillUnits: current.mountainFillUnits,
             moves: [...current.moves, '$from->$to'],
@@ -2018,7 +2026,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           if (!visited.add(stateId)) continue;
 
           pq.add(
-            _JokerSearchNode(
+            JokerSearchNode(
               tubes: nextNodeBase.tubes,
               mountainFillUnits: nextNodeBase.mountainFillUnits,
               moves: nextNodeBase.moves,
@@ -2058,7 +2066,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           }
         }
 
-        final nextNodeBase = _JokerSearchNode(
+        final nextNodeBase = JokerSearchNode(
           tubes: nextTubes,
           mountainFillUnits: nextMountainFillUnits,
           moves: [...current.moves, '$from->mountain'],
@@ -2069,7 +2077,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         if (!visited.add(stateId)) continue;
 
         pq.add(
-          _JokerSearchNode(
+          JokerSearchNode(
             tubes: nextNodeBase.tubes,
             mountainFillUnits: nextNodeBase.mountainFillUnits,
             moves: nextNodeBase.moves,
@@ -2491,7 +2499,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     final topColor = _tubes[from].last;
-    if (!_isLavaColorIndex(topColor)) {
+    if (!isLavaColorIndex(topColor)) {
       _vibrateLight();
       setState(() => _selected = null);
       return;
@@ -2527,7 +2535,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return;
     }
 
-    final plan = _TransferPlan(
+    final plan = TransferPlan(
       fromIdx: from,
       toIdx: -1,
       fromSnapshot: List<int>.from(_tubes[from]),
@@ -2574,7 +2582,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           );
         } else {
           _mountainLayers
-              .add(_VisualLayer(colorIdx: colorIdx, volume: count.toDouble()));
+              .add(VisualLayer(colorIdx: colorIdx, volume: count.toDouble()));
         }
         _mountainFillUnits += count;
       });
@@ -2648,7 +2656,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return;
     }
 
-    final plan = _TransferPlan(
+    final plan = TransferPlan(
       fromIdx: from,
       toIdx: to,
       fromSnapshot: List<int>.from(_tubes[from]),
@@ -3244,7 +3252,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                                             mountainFillPercent:
                                                 _mountainFillPercent,
                                             mountainLayers:
-                                                List<_VisualLayer>.from(
+                                                List<VisualLayer>.from(
                                               _mountainLayers
                                                   .map((l) => l.copyWith()),
                                             ),
@@ -3334,14 +3342,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                             fillPercent: animatedFill,
                             liquidColor: _mountainLayers.isEmpty
                                 ? const Color(0xFFFF6A00)
-                                : (_isLavaColorIndex(
+                                : (isLavaColorIndex(
                                         _mountainLayers.last.colorIdx)
                                     ? kLavaOrange
-                                    : _solidColorForIndex(
+                                    : solidColorForIndex(
                                         _mountainLayers.last.colorIdx)),
                             glow: false,
                             onTap: _handleMountainTap,
-                            layers: List<_VisualLayer>.from(
+                            layers: List<VisualLayer>.from(
                                 _mountainLayers.map((l) => l.copyWith())),
                             capacity: _mountainCapacity,
                             gameWon: _gameWon,
@@ -4007,7 +4015,7 @@ class _TubeStage extends StatefulWidget {
   final _ResolvedStageLayout stageLayout;
   final List<List<int>> tubes;
   final int? selected;
-  final List<_TransferPlan> activePlans;
+  final List<TransferPlan> activePlans;
   final void Function(int) onTap;
   final int lockedAdTubeIndex;
   final bool showLockedAdTube;
@@ -4025,7 +4033,7 @@ class _TubeStage extends StatefulWidget {
   final Map<int, int> tubeCapacities;
   final VoidCallback? onMountainTap;
   final double mountainFillPercent;
-  final List<_VisualLayer> mountainLayers;
+  final List<VisualLayer> mountainLayers;
   final int mountainCapacity;
   final Set<int> sourceRefillTubeIndexes;
   final GlobalKey? mountainReservoirKey;
@@ -4221,7 +4229,7 @@ class _TubeStageState extends State<_TubeStage> {
     final bool dimForTutorial = widget.tutorialActive && !tutorialTarget;
 
     final activeTargetPlan =
-        widget.activePlans.cast<_TransferPlan?>().firstWhere(
+        widget.activePlans.cast<TransferPlan?>().firstWhere(
               (p) => p != null && !p.isMountainTarget && p.toIdx == idx,
               orElse: () => null,
             );
@@ -4510,1270 +4518,8 @@ class _TubeStageState extends State<_TubeStage> {
 // VOLKAN REZERVUARI — animasyonlu sıvı + krater ağız efektleri
 // ─────────────────────────────────────────────────────────────────────────────
 
-class MountainTubeReservoir extends StatefulWidget {
-  final double width;
-  final double height;
-  final double fillPercent;
-  final Color liquidColor;
-  final bool glow;
-  final VoidCallback? onTap;
-  final List<_VisualLayer> layers;
-  final int capacity;
-  final bool gameWon;
-  final bool loopEruption;
-
-  const MountainTubeReservoir({
-    super.key,
-    this.width = 250,
-    this.height = 120,
-    this.fillPercent = 0.0,
-    this.liquidColor = const Color(0xFFFF6A00),
-    this.glow = false,
-    this.onTap,
-    this.layers = const [],
-    this.capacity = 18,
-    this.gameWon = false,
-    this.loopEruption = false,
-  });
-
-  @override
-  State<MountainTubeReservoir> createState() => _MountainTubeReservoirState();
-}
-
-// Tek alev huzmesi verisi
-class _FlameJet {
-  double phase; // 0..1 yaşam döngüsü
-  double speed; // faz artış hızı (küçük = yavaş yanma)
-  double laneX; // -1..1, ağız merkezine göre
-  double lean; // eğim
-  double height; // maksimum boy (piksel)
-  double maxAlpha;
-
-  _FlameJet({
-    required this.phase,
-    required this.speed,
-    required this.laneX,
-    required this.lean,
-    required this.height,
-    required this.maxAlpha,
-  });
-}
-
-// Tek duman bulutu verisi
-class _SmokeCloud {
-  double phase; // 0..1
-  double speed;
-  double laneX; // -1..1
-  double size; // piksel
-  double maxAlpha;
-  double drift; // yatay sürüklenme
-
-  _SmokeCloud({
-    required this.phase,
-    required this.speed,
-    required this.laneX,
-    required this.size,
-    required this.maxAlpha,
-    required this.drift,
-  });
-}
-
-// Lav fırlatma tanesi (oyun bitişinde)
-class _LavaProjectile {
-  double phase; // 0..1
-  double speed;
-  double angle; // radyan, yukarı-yana açı
-  double power; // fırlatma gücü (piksel)
-  double size;
-  double maxAlpha;
-  bool isFlame; // true=alev, false=lav damlası
-
-  _LavaProjectile({
-    required this.phase,
-    required this.speed,
-    required this.angle,
-    required this.power,
-    required this.size,
-    required this.maxAlpha,
-    required this.isFlame,
-  });
-}
-
-class _MountainTubeReservoirState extends State<MountainTubeReservoir>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-
-  // Sıvı slosh
-  double _slosh = 0.0;
-  double _sloshVel = 0.0;
-  double _prevFill = 0.0;
-
-  // Krater ağız efektleri
-  final List<_FlameJet> _flames = [];
-  final List<_SmokeCloud> _smokes = [];
-  final _rng = Random();
-
-  // Döküm tetikleme
-  double _pourGlow = 0.0; // 0..1, döküm gelince 1'e çıkar yavaşça söner
-  double _interiorGlow = 0.0; // iç parlaması
-
-  // Oyun bitti eruption
-  bool _eruptionStarted = false;
-  bool _eruptionLooping = false;
-  bool eruptionCycleStarted = false;
-  final List<_LavaProjectile> _projectiles = [];
-  double _eruptionTimer = 0.0; // eruption süresi sayacı (0..1)
-
-  static const double _sloshDecay = 0.965;
-  static const double _sloshSpring = 0.010;
-  double _wavePhase = 0.0; // yavaş dalga fazı (0..1 döngü)
-
-  @override
-  void initState() {
-    super.initState();
-    _prevFill = widget.fillPercent;
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 100),
-    )..repeat();
-    _ctrl.addListener(_tick);
-
-    if (widget.gameWon) {
-      _startEruption(looping: widget.loopEruption);
-    }
-  }
-
-  void _startEruption({required bool looping}) {
-    _eruptionStarted = true;
-    _eruptionLooping = looping;
-    eruptionCycleStarted = true;
-    _eruptionTimer = 0.0;
-    _pourGlow = 1.0;
-    _interiorGlow = 1.0;
-    _projectiles.clear();
-    _spawnEruption();
-  }
-
-  void _restartLoopingEruptionIfNeeded() {
-    if (!widget.gameWon || !widget.loopEruption) return;
-    _startEruption(looping: true);
-  }
-
-  @override
-  void didUpdateWidget(MountainTubeReservoir old) {
-    super.didUpdateWidget(old);
-    if (widget.fillPercent > _prevFill + 0.005) {
-      final impulse = 0.20 + (widget.fillPercent - _prevFill) * 1.2;
-      _sloshVel += impulse * ((_ctrl.value > 0.5) ? 1.0 : -1.0);
-      _pourGlow = 1.0;
-      _interiorGlow = (_interiorGlow + 0.7).clamp(0.0, 1.0);
-      _spawnFlamesForPour();
-    }
-    _prevFill = widget.fillPercent;
-
-    if (widget.gameWon && !old.gameWon) {
-      _startEruption(looping: widget.loopEruption);
-      return;
-    }
-
-    if (widget.gameWon &&
-        old.gameWon &&
-        widget.loopEruption != old.loopEruption &&
-        widget.loopEruption) {
-      _restartLoopingEruptionIfNeeded();
-      return;
-    }
-
-    if (!widget.gameWon && old.gameWon) {
-      _eruptionStarted = false;
-      _eruptionLooping = false;
-      eruptionCycleStarted = false;
-      _eruptionTimer = 0.0;
-      _projectiles.clear();
-    }
-  }
-
-  void _spawnEruption() {
-    for (int i = 0; i < 26; i++) {
-      final isFlame = i < 14;
-      final angle = (-pi * 0.88) + _rng.nextDouble() * pi * 0.76;
-
-      _projectiles.add(
-        _LavaProjectile(
-          phase: 0.0,
-          speed: 0.0032 + _rng.nextDouble() * 0.0020,
-          angle: angle,
-          power: 48 + _rng.nextDouble() * 105,
-          size:
-              isFlame ? 8 + _rng.nextDouble() * 18 : 4 + _rng.nextDouble() * 13,
-          maxAlpha: 0.62 + _rng.nextDouble() * 0.30,
-          isFlame: isFlame,
-        ),
-      );
-    }
-    _spawnFlamesForPour();
-    _pourGlow = 1.0;
-  }
-
-  void _spawnFlamesForPour() {
-    final fill = widget.fillPercent;
-    final count = 2 + (fill * 3).round(); // 2-5 alev
-    for (int i = 0; i < count; i++) {
-      _flames.add(_FlameJet(
-        phase: 0.0,
-        speed: 0.0020 +
-            _rng.nextDouble() *
-                0.0012, // çok yavaş — 0.002 = ~50 tick = ~5 saniye
-        laneX: (_rng.nextDouble() * 2 - 1) * 0.65,
-        lean: (_rng.nextDouble() - 0.5) * 0.28,
-        height: 24 + _rng.nextDouble() * 40 * fill,
-        maxAlpha: 0.50 + fill * 0.38,
-      ));
-    }
-  }
-
-  void spawnSmoke(double laneX) {
-    if (_smokes.length >= 10) return;
-    _smokes.add(_SmokeCloud(
-      phase: 0.0,
-      speed: 0.0014 + _rng.nextDouble() * 0.0008, // duman alevden daha yavaş
-      laneX: laneX + (_rng.nextDouble() - 0.5) * 0.2,
-      size: 8 + _rng.nextDouble() * 12 * widget.fillPercent,
-      maxAlpha: 0.08 + widget.fillPercent * 0.10,
-      drift: (_rng.nextDouble() - 0.5) * 0.35,
-    ));
-  }
-
-  void _tick() {
-    _wavePhase += 0.020;
-
-    final target = 0.0;
-    final acc = (target - _slosh) * _sloshSpring;
-    _sloshVel = (_sloshVel + acc) * _sloshDecay;
-    _slosh += _sloshVel;
-
-    if (_pourGlow > 0.0) {
-      _pourGlow = (_pourGlow - 0.020).clamp(0.0, 1.0);
-    }
-
-    if (_interiorGlow > 0.0) {
-      _interiorGlow = (_interiorGlow - 0.012).clamp(0.0, 1.0);
-    }
-
-    for (int i = _flames.length - 1; i >= 0; i--) {
-      final f = _flames[i];
-      f.phase += f.speed;
-      if (f.phase >= 1.0) {
-        _flames.removeAt(i);
-      }
-    }
-
-    for (int i = _smokes.length - 1; i >= 0; i--) {
-      final s = _smokes[i];
-      s.phase += s.speed;
-      if (s.phase >= 1.0) {
-        _smokes.removeAt(i);
-      }
-    }
-
-    if (_eruptionStarted) {
-      _eruptionTimer = (_eruptionTimer + 0.0018).clamp(0.0, 1.0);
-
-      if (_eruptionTimer < 0.35 &&
-          _rng.nextDouble() < 0.22 &&
-          _projectiles.length < 70) {
-        final isFlame = _rng.nextBool();
-        final angle = (-pi * 0.85) + _rng.nextDouble() * pi * 0.70;
-
-        _projectiles.add(
-          _LavaProjectile(
-            phase: 0.0,
-            speed: 0.0032 + _rng.nextDouble() * 0.0020,
-            angle: angle,
-            power: 45 + _rng.nextDouble() * 100,
-            size: isFlame
-                ? 7 + _rng.nextDouble() * 18
-                : 4 + _rng.nextDouble() * 12,
-            maxAlpha: 0.60 + _rng.nextDouble() * 0.35,
-            isFlame: isFlame,
-          ),
-        );
-      }
-
-      for (int i = _projectiles.length - 1; i >= 0; i--) {
-        final p = _projectiles[i];
-        p.phase += p.speed;
-        if (p.phase >= 1.0) {
-          _projectiles.removeAt(i);
-        }
-      }
-
-      if (_eruptionTimer < 0.6) {
-        _pourGlow = (_pourGlow + 0.01).clamp(0.0, 1.0);
-      }
-
-      if (_eruptionTimer >= 1.0 && _projectiles.isEmpty) {
-        if (_eruptionLooping && widget.gameWon && widget.loopEruption) {
-          _eruptionTimer = 0.0;
-          _projectiles.clear();
-          _spawnEruption();
-        } else {
-          _eruptionStarted = false;
-          eruptionCycleStarted = false;
-        }
-      }
-    }
-
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.removeListener(_tick);
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: widget.width,
-      height: widget.height,
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: widget.onTap,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomCenter,
-          children: [
-            // İç rezervuar
-            Positioned.fill(
-              child: AnimatedBuilder(
-                animation: _ctrl,
-                builder: (_, __) => CustomPaint(
-                  painter: _VolcanoPainter(
-                    layers: widget.layers,
-                    capacity: widget.capacity,
-                    fillPercent: widget.fillPercent,
-                    slosh: _slosh,
-                    time: _ctrl.value,
-                    wavePhase: _wavePhase,
-                    interiorGlow: _interiorGlow,
-                  ),
-                ),
-              ),
-            ),
-            // Krater ağzı efektleri — PNG'nin arkasında, kratere hizalı
-            // Ağız y = height * 0.30, efektler oradan yukarı taşar
-            Positioned(
-              left: -60,
-              right: -60,
-              top: -widget.height * 0.12, // yukarı kaydırıldı
-              height: widget.height * 0.45 + 260,
-              child: AnimatedBuilder(
-                animation: _ctrl,
-                builder: (_, __) => CustomPaint(
-                  painter: _CraterEffectsPainter(
-                    flames: List<_FlameJet>.unmodifiable(_flames),
-                    smokes: List<_SmokeCloud>.unmodifiable(_smokes),
-                    pourGlow: _pourGlow,
-                    fillPercent: widget.fillPercent,
-                    time: _ctrl.value,
-                    // ağız lokal y: container'ın negatif top offset'ini telafi et
-                    mouthLocalY: widget.height * (0.10 + 0.12),
-                    projectiles:
-                        List<_LavaProjectile>.unmodifiable(_projectiles),
-                    eruptionTimer: _eruptionTimer,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// KRATER AĞZI EFEKTLERİ — alev huzmeleri + duman bulutları
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _CraterEffectsPainter extends CustomPainter {
-  final List<_FlameJet> flames;
-  final List<_SmokeCloud> smokes;
-  final double pourGlow;
-  final double fillPercent;
-  final double time;
-  final double mouthLocalY;
-  final List<_LavaProjectile> projectiles;
-  final double eruptionTimer;
-
-  const _CraterEffectsPainter({
-    required this.flames,
-    required this.smokes,
-    required this.pourGlow,
-    required this.fillPercent,
-    required this.time,
-    required this.mouthLocalY,
-    this.projectiles = const [],
-    this.eruptionTimer = 0.0,
-  });
-
-  // Alev için envelope: yavaş fade-in, parlak yanma, yavaş fade-out
-  double _flameA(double phase, double max) {
-    if (phase < 0.20) return max * (phase / 0.20);
-    if (phase < 0.62) return max;
-    return max * (1.0 - (phase - 0.62) / 0.38);
-  }
-
-  // Duman için envelope: geç başlar, daha da yavaş solar
-  double _smokeA(double phase, double max) {
-    if (phase < 0.12) return max * (phase / 0.12);
-    if (phase < 0.55) return max;
-    return max * (1.0 - (phase - 0.55) / 0.45);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // left:-60 offset ile genişletilmiş canvas'ta ağız x merkezi
-    final mouthX = size.width * 0.5;
-    final mouthY = mouthLocalY;
-
-    // Krater sürekli hafif parıltı
-    if (fillPercent > 0.04) {
-      canvas.drawCircle(
-        Offset(mouthX, mouthY),
-        14 + fillPercent * 18,
-        Paint()
-          ..color = kLavaOrange.withValues(alpha: 0.04 + fillPercent * 0.14)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
-      );
-    }
-
-    // Döküm anında krater parlaması — yavaşça söner
-    if (pourGlow > 0.01) {
-      canvas.drawCircle(
-        Offset(mouthX, mouthY),
-        20 + pourGlow * 24,
-        Paint()
-          ..color = kLavaGlow.withValues(alpha: pourGlow * 0.32)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
-      );
-    }
-
-    // ── DUMAN BULUTLARI — alevlerden sonra yavaşça yükselir ─────────────────
-    for (final s in smokes) {
-      final alpha = _smokeA(s.phase, s.maxAlpha);
-      if (alpha < 0.004) continue;
-
-      final rise = s.phase * 120; // daha yüksek yükselme
-      final cx = mouthX + s.laneX * 28 + s.drift * rise * 0.5;
-      final cy = mouthY - rise;
-      final radius = s.size * 1.6 + s.phase * 40; // daha büyük radius
-
-      // Alevden koyu griye renk geçişi
-      final col = Color.lerp(
-        kLavaOrange.withValues(alpha: alpha * 1.4),
-        const Color(0xFF382828).withValues(alpha: alpha * 0.75),
-        s.phase,
-      )!;
-
-      canvas.drawCircle(
-        Offset(cx, cy),
-        radius,
-        Paint()
-          ..color = col
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.65),
-      );
-      // İkinci daha küçük parlak duman katmanı
-      canvas.drawCircle(
-        Offset(cx, cy),
-        radius * 0.55,
-        Paint()
-          ..color = kLavaOrange.withValues(alpha: alpha * 0.45 * (1 - s.phase))
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.3),
-      );
-    }
-
-    // ── ALEV HUZMELERİ — kraterin ağzından yavaşça yükselir ─────────────────
-    for (final f in flames) {
-      final alpha = _flameA(f.phase, f.maxAlpha);
-      if (alpha < 0.004) continue;
-
-      // Alev tabanı ağız noktasında, ucu phase ile yükselir
-      final baseX = mouthX + f.laneX * 22; // daha geniş yayılım
-      final peakH = f.height * 1.45 * min(f.phase * 2.0, 1.0); // %45 daha uzun
-      final tipX = baseX + f.lean * peakH;
-      final tipY = mouthY - peakH;
-
-      final midY = lerpDouble(mouthY, tipY, 0.52)!;
-
-      // Daha geniş alev gövdesi
-      final flamePath = Path()
-        ..moveTo(baseX - 2, mouthY)
-        ..quadraticBezierTo(baseX - 10, midY, tipX, tipY)
-        ..quadraticBezierTo(baseX + 10, midY, baseX + 2, mouthY)
-        ..close();
-
-      final flameRect = Rect.fromLTRB(
-        min(baseX - 12, tipX - 4),
-        tipY,
-        max(baseX + 12, tipX + 4),
-        mouthY,
-      );
-
-      // Renk gradyanı: dip parlak → orta turuncu-kırmızı → uç soluk kırmızı
-      canvas.drawPath(
-        flamePath,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [
-              kLavaCore.withValues(alpha: alpha * 1.0),
-              kLavaGlow.withValues(alpha: alpha * 0.92),
-              kLavaOrange.withValues(alpha: alpha * 0.78),
-              kLavaRed.withValues(alpha: alpha * 0.35),
-            ],
-            stops: const [0.0, 0.28, 0.65, 1.0],
-          ).createShader(flameRect)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.5),
-      );
-
-      // Daha belirgin alev kenar parlaması
-      canvas.drawPath(
-        flamePath,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.8
-          ..color = kLavaGlow.withValues(alpha: alpha * 0.55)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
-      );
-
-      // İç parlak çekirdek
-      final corePath = Path()
-        ..moveTo(baseX - 1, mouthY)
-        ..quadraticBezierTo(
-            baseX - 4, midY + (tipY - midY) * 0.3, tipX, tipY + peakH * 0.18)
-        ..quadraticBezierTo(
-            baseX + 4, midY + (tipY - midY) * 0.3, baseX + 1, mouthY)
-        ..close();
-      canvas.drawPath(
-        corePath,
-        Paint()
-          ..color = kLavaCore.withValues(alpha: alpha * 0.65)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0),
-      );
-    }
-
-    // ── ERUPTION: LAV VE ALEV FIRLATIMLARI ───────────────────────────────────
-    if (projectiles.isNotEmpty) {
-      // Eruption başlangıcında büyük parlama
-      if (eruptionTimer < 0.35) {
-        final burstAlpha = (1.0 - eruptionTimer / 0.35) * 0.55;
-        canvas.drawCircle(
-          Offset(mouthX, mouthY),
-          30 + eruptionTimer * 80,
-          Paint()
-            ..color = kLavaCore.withValues(alpha: burstAlpha)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 28),
-        );
-        canvas.drawCircle(
-          Offset(mouthX, mouthY),
-          18 + eruptionTimer * 40,
-          Paint()
-            ..color = kLavaGlow.withValues(alpha: burstAlpha * 0.85)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
-        );
-      }
-
-      for (final p in projectiles) {
-        // Balistik yörünge: yatay sabit hız, dikey yerçekimi var
-        final t = p.phase;
-        final eased = t; // lineer zaman
-        // Yatay: açıya göre
-        final dx = cos(p.angle) * p.power * eased;
-        // Dikey: önce yukarı, sonra aşağı (yerçekimi)
-        final dy = sin(p.angle) * p.power * eased + 0.5 * 380 * eased * eased;
-        final px = mouthX + dx;
-        final py = mouthY + dy;
-
-        // Alpha: ortada parlak, başta ve sonda solar
-        final alpha = p.maxAlpha *
-            (t < 0.15
-                ? t / 0.15
-                : t > 0.65
-                    ? (1.0 - (t - 0.65) / 0.35).clamp(0.0, 1.0)
-                    : 1.0);
-
-        if (alpha < 0.01) continue;
-
-        if (p.isFlame) {
-          // Alev topu — gradient dolgu
-          final r = p.size * (1.0 + t * 0.5);
-          final rect = Rect.fromCircle(center: Offset(px, py), radius: r * 1.2);
-          canvas.drawCircle(
-            Offset(px, py),
-            r,
-            Paint()
-              ..shader = RadialGradient(
-                colors: [
-                  kLavaCore.withValues(alpha: alpha),
-                  kLavaGlow.withValues(alpha: alpha * 0.80),
-                  kLavaOrange.withValues(alpha: alpha * 0.55),
-                  kLavaRed.withValues(alpha: alpha * 0.15),
-                ],
-                stops: const [0.0, 0.30, 0.65, 1.0],
-              ).createShader(rect)
-              ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.55),
-          );
-          // Parlak çekirdek
-          canvas.drawCircle(
-            Offset(px, py),
-            r * 0.35,
-            Paint()..color = kLavaCore.withValues(alpha: alpha * 0.90),
-          );
-        } else {
-          // Lav damlası — oval, düşerken uzar
-          final r = p.size;
-          final stretchY = 1.0 + t * 1.2; // düşerken aşağı uzar
-          canvas.save();
-          canvas.translate(px, py);
-          canvas.scale(1.0, stretchY);
-          canvas.drawCircle(
-            Offset.zero,
-            r,
-            Paint()
-              ..color = kLavaRed.withValues(alpha: alpha * 0.92)
-              ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.4),
-          );
-          canvas.drawCircle(
-            Offset(0, -r * 0.25),
-            r * 0.45,
-            Paint()..color = kLavaOrange.withValues(alpha: alpha * 0.75),
-          );
-          canvas.restore();
-
-          // Damla izi (kuyruk)
-          if (t > 0.08) {
-            final trailDx = cos(p.angle) * p.power * (t - 0.06);
-            final trailDy = sin(p.angle) * p.power * (t - 0.06) +
-                0.5 * 380 * (t - 0.06) * (t - 0.06);
-            final trailX = mouthX + trailDx;
-            final trailY = mouthY + trailDy;
-            canvas.drawLine(
-              Offset(trailX, trailY),
-              Offset(px, py),
-              Paint()
-                ..color = kLavaOrange.withValues(alpha: alpha * 0.35)
-                ..strokeWidth = r * 0.5
-                ..strokeCap = StrokeCap.round
-                ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.3),
-            );
-          }
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _CraterEffectsPainter old) => true;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// VOLKAN İÇ REZERVUAR — sıvı + iç alevler + kor
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _VolcanoPainter extends CustomPainter {
-  final List<_VisualLayer> layers;
-  final int capacity;
-  final double fillPercent;
-  final double slosh;
-  final double time;
-  final double interiorGlow;
-
-  final double wavePhase;
-
-  const _VolcanoPainter({
-    required this.layers,
-    required this.capacity,
-    required this.fillPercent,
-    required this.slosh,
-    required this.time,
-    this.wavePhase = 0.0,
-    this.interiorGlow = 0.0,
-  });
-
-  // Dağın iç alanını tanımlayan clip path — PNG ile hizalı
-  // Ağız: h*0.18 (daha yukarı), dip: h*1.0 (tam alt), sol taraf daha geniş
-  Path _clipPath(Size size) {
-    final w = size.width;
-    final h = size.height;
-    // Ağıza doğru belirgin daralma: alt geniş (w*0.05..0.95),
-    // orta kısımda hızla daralır, ağızda sadece w*0.42..0.58 genişliğinde
-    return Path()
-      ..moveTo(w * 0.05, h * 1.0)
-      ..quadraticBezierTo(w * 0.08, h * 0.88, w * 0.13, h * 0.74)
-      ..quadraticBezierTo(w * 0.18, h * 0.60, w * 0.26, h * 0.48)
-      ..quadraticBezierTo(w * 0.33, h * 0.36, w * 0.40, h * 0.24)
-      ..quadraticBezierTo(w * 0.43, h * 0.16, w * 0.44, h * 0.10)
-      ..lineTo(w * 0.56, h * 0.10)
-      ..quadraticBezierTo(w * 0.57, h * 0.16, w * 0.60, h * 0.24)
-      ..quadraticBezierTo(w * 0.67, h * 0.36, w * 0.74, h * 0.48)
-      ..quadraticBezierTo(w * 0.82, h * 0.60, w * 0.87, h * 0.74)
-      ..quadraticBezierTo(w * 0.92, h * 0.88, w * 0.95, h * 1.0)
-      ..close();
-  }
-
-  Color _layerColor(int colorIdx) {
-    if (_isLavaColorIndex(colorIdx)) return kLavaRed;
-    return _solidColorForIndex(colorIdx);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final clipPath = _clipPath(size);
-    final bounds = clipPath.getBounds();
-    final sloshShift = slosh * size.width * 0.055; // daha geniş sağa-sola dalga
-    final normalizedFill = fillPercent.clamp(0.0, 1.0);
-
-    // Dış glow — kırmızımsı, doluma göre
-    canvas.drawPath(
-      clipPath,
-      Paint()
-        ..color = kLavaRed.withValues(
-            alpha: 0.07 + normalizedFill * 0.13 + interiorGlow * 0.16)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
-    );
-
-    canvas.save();
-    canvas.clipPath(clipPath);
-
-    final safeCapacity = max(1, capacity);
-    // Lineer doldurma — 16 sıvıdan her biri eşit yükseklik kaplar
-    final easedFill = normalizedFill.clamp(0.0, 1.0);
-    // Doldurulabilir alan: ağız (h*0.28) ile dip (h*1.0) arası = h*0.72
-    // bounds zaten clipPath'in bounding box'ı, ağız bounds.top ~ h*0.28
-    final fillableHeight = bounds.bottom - bounds.top;
-    final totalFillHeight = fillableHeight * easedFill;
-    final liquidTopBase = bounds.bottom - totalFillHeight;
-
-    // Dipte kor parlaması — döküm gelince daha parlak
-    if (normalizedFill > 0.0) {
-      final gI = 0.26 + normalizedFill * 0.36 + interiorGlow * 0.32;
-      final emberRect = Rect.fromLTRB(
-        bounds.left - 10,
-        bounds.bottom - 38,
-        bounds.right + 10,
-        bounds.bottom + 12,
-      );
-      canvas.drawRect(
-        emberRect,
-        Paint()
-          ..shader = RadialGradient(
-            center: const Alignment(0, 1),
-            radius: 1.18,
-            colors: [
-              kLavaCore.withValues(alpha: gI * 0.42),
-              kLavaGlow.withValues(alpha: gI * 0.28),
-              kLavaRed.withValues(alpha: gI * 0.16),
-              Colors.transparent,
-            ],
-            stops: const [0.0, 0.22, 0.55, 1.0],
-          ).createShader(emberRect),
-      );
-    }
-
-    // Arka lav tabanı — derin kızıl
-    if (normalizedFill > 0.0) {
-      final backRect = Rect.fromLTRB(
-        bounds.left - 22,
-        liquidTopBase,
-        bounds.right + 22,
-        bounds.bottom + 22,
-      );
-      canvas.drawRect(
-        backRect,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [
-              const Color(0xFF580000).withValues(alpha: 0.98),
-              kLavaRed.withValues(alpha: 0.97),
-              const Color(0xFFBB2200).withValues(alpha: 0.93),
-            ],
-            stops: const [0.0, 0.50, 1.0],
-          ).createShader(backRect),
-      );
-    }
-
-    // İç alevler — kırmızı ağırlıklı, döküm gelince canlanır
-    if (normalizedFill > 0.02) {
-      final flameBoost = 1.0 + interiorGlow * 0.65;
-      final flameTopLimit =
-          max(bounds.top + 8, liquidTopBase - bounds.height * 0.18);
-
-      for (int i = 0; i < 9; i++) {
-        final lane = i / 8.0;
-        final x = lerpDouble(bounds.left + 18, bounds.right - 18, lane)! +
-            sin(time * pi * 1.5 + i * 1.0) * 4.5 +
-            sloshShift * 0.3;
-        final rawH = lerpDouble(
-          16,
-          55 * flameBoost,
-          sin(time * pi * 1.7 + i * 1.2) * 0.5 + 0.5,
-        )!;
-        final topY = max(flameTopLimit, bounds.bottom - 3 - rawH);
-
-        final path = Path()
-          ..moveTo(x, bounds.bottom - 3)
-          ..quadraticBezierTo(x - 7 - sin(time * pi * 2 + i) * 2,
-              lerpDouble(bounds.bottom - 3, topY, 0.58)!, x, topY)
-          ..quadraticBezierTo(x + 7 + cos(time * pi * 2 + i) * 2,
-              lerpDouble(bounds.bottom - 3, topY, 0.58)!, x, bounds.bottom - 3)
-          ..close();
-
-        final rect = Rect.fromLTRB(x - 12, topY, x + 12, bounds.bottom - 3);
-
-        canvas.drawPath(
-          path,
-          Paint()
-            ..shader = LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                const Color(0xFF6A0000).withValues(alpha: 0.22),
-                kLavaRed.withValues(alpha: 0.48),
-                kLavaOrange.withValues(alpha: 0.55),
-                kLavaGlow.withValues(alpha: 0.25),
-              ],
-              stops: const [0.0, 0.36, 0.70, 1.0],
-            ).createShader(rect)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
-        );
-      }
-    }
-
-    // Katmanlar
-    double currentBottom = bounds.bottom;
-    if (layers.isNotEmpty) {
-      final totalVolume = layers.fold<double>(0.0, (a, b) => a + b.volume);
-      if (totalVolume > 0.0001) {
-        for (int i = layers.length - 1; i >= 0; i--) {
-          final layer = layers[i];
-          final ratio = (layer.volume / safeCapacity).clamp(0.0, 1.0);
-          final hPart = fillableHeight * ratio;
-          final top = currentBottom - hPart;
-          final rect = Rect.fromLTRB(
-              bounds.left - 18, top, bounds.right + 18, currentBottom + 8);
-          final base = _layerColor(layer.colorIdx);
-          final isLava = _isLavaColorIndex(layer.colorIdx);
-
-          canvas.drawRect(
-            rect,
-            Paint()
-              ..shader = LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: isLava
-                    ? [
-                        const Color(0xFF580000),
-                        kLavaRed,
-                        const Color(0xFFBB2200)
-                      ]
-                    : [
-                        base.withValues(alpha: 0.95),
-                        Color.lerp(base, Colors.white, 0.10)!
-                            .withValues(alpha: 0.96),
-                        Color.lerp(base, Colors.black, 0.10)!
-                            .withValues(alpha: 0.96),
-                      ],
-                stops: const [0.0, 0.58, 1.0],
-              ).createShader(rect),
-          );
-
-          final edgeY = top + sin(time * 2 * pi + i * 0.9) * 1.1;
-          canvas.drawRect(
-            Rect.fromLTRB(
-                bounds.left - 10, edgeY, bounds.right + 10, edgeY + 2.0),
-            Paint()
-              ..shader = LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  Colors.transparent,
-                  (isLava ? kLavaCore : Colors.white).withValues(alpha: 0.26),
-                  Colors.transparent,
-                ],
-              ).createShader(
-                  Rect.fromLTRB(bounds.left, edgeY, bounds.right, edgeY + 2.0)),
-          );
-          currentBottom = top;
-        }
-      }
-    } else if (normalizedFill > 0.0) {
-      final rect = Rect.fromLTRB(bounds.left - 18, liquidTopBase,
-          bounds.right + 18, bounds.bottom + 8);
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [
-              const Color(0xFF580000),
-              kLavaRed,
-              const Color(0xFFBB2200)
-            ],
-            stops: const [0.0, 0.52, 1.0],
-          ).createShader(rect),
-      );
-    }
-
-    // Üst dalga yüzeyi
-    if (normalizedFill > 0.0) {
-      final waveY = liquidTopBase;
-      // Yavaş, temiz dalga — wavePhase 0..1 döngü (~4 sn)
-      final wSlowBase = wavePhase * 2 * pi;
-      final waveAmp = 6.0 + slosh.abs() * 6.0;
-
-      // Her kontrol noktası farklı fazda sinüs → gerçekçi yavaş dalga
-      final wShift1 = sloshShift + sin(wSlowBase) * bounds.width * 0.06;
-      final wShift2 =
-          sloshShift * 0.5 + sin(wSlowBase + 1.2) * bounds.width * 0.05;
-      final wShift3 = sloshShift - sin(wSlowBase + 2.4) * bounds.width * 0.06;
-
-      final wPath = Path()
-        ..moveTo(bounds.left - 20, bounds.bottom + 10)
-        ..lineTo(bounds.left - 20, waveY)
-        ..quadraticBezierTo(
-          bounds.left + bounds.width * 0.25 + wShift1,
-          waveY - waveAmp,
-          bounds.left + bounds.width * 0.50 + wShift2,
-          waveY + waveAmp * 0.35,
-        )
-        ..quadraticBezierTo(
-          bounds.left + bounds.width * 0.75 + wShift3,
-          waveY + waveAmp,
-          bounds.right + 20,
-          waveY - waveAmp * 0.15,
-        )
-        ..lineTo(bounds.right + 20, bounds.bottom + 10)
-        ..close();
-
-      canvas.drawPath(
-          wPath,
-          Paint()
-            ..color = kLavaRed.withValues(alpha: 0.18)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
-
-      canvas.drawPath(
-        Path()
-          ..moveTo(bounds.left, waveY)
-          ..quadraticBezierTo(
-            bounds.left + bounds.width * 0.25 + wShift1,
-            waveY - waveAmp,
-            bounds.left + bounds.width * 0.50 + wShift2,
-            waveY + waveAmp * 0.35,
-          )
-          ..quadraticBezierTo(
-            bounds.left + bounds.width * 0.75 + wShift3,
-            waveY + waveAmp,
-            bounds.right,
-            waveY - waveAmp * 0.15,
-          ),
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0
-          ..color = kLavaOrange.withValues(alpha: 0.55),
-      );
-    }
-
-    // Kabarcıklar — dipten yukarı sürekli yükselme döngüsü
-    if (normalizedFill > 0.05) {
-      // Her kabarcığın kendi döngü fazı: farklı hızlar ve başlangıç ofsetleri
-      // ile dipten yüzeye doğru bağımsız yükseliyor
-      const int bubbleCount = 26;
-      for (int i = 0; i < bubbleCount; i++) {
-        // Her kabarcığın birbirinden farklı yükselme hızı (yavaş)
-        final speed = 0.018 + (i % 7) * 0.006; // 0.018..0.054 (çok yavaş)
-        // Döngü fazı: 0..1 arası, 1'e ulaşınca dipten yeniden başlar
-        final phase = ((time * speed + i * 0.13) % 1.0);
-        // Hafif yatay titreme — kabarcık yükselirken sağa-sola sallanır
-        final wobble = sin(time * pi * 0.4 + i * 1.7) * 3.5;
-        // Yatay konum — her kabarcığın sabit bir "şeridi" var
-        final laneRatio = (i % 9) / 8.0;
-        final x = lerpDouble(bounds.left + 12, bounds.right - 12, laneRatio)! +
-            wobble +
-            sloshShift * 0.4;
-        // Dikey konum: phase=0 → dip, phase=1 → yüzey
-        final y = lerpDouble(bounds.bottom - 4, liquidTopBase + 8, phase)!;
-        // Yüzeye yaklaşınca küçülüp solar (patlar)
-        final nearSurface = (phase > 0.80) ? ((1.0 - phase) / 0.20) : 1.0;
-        final r = lerpDouble(1.5, 4.5, (i % 5) / 4.0)! * nearSurface;
-        final alpha = nearSurface;
-
-        if (y < liquidTopBase - 2 || y > bounds.bottom - 1 || r < 0.3) continue;
-
-        canvas.drawCircle(
-            Offset(x, y),
-            r,
-            Paint()
-              ..color = kLavaGlow.withValues(alpha: 0.16 * alpha)
-              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5));
-        canvas.drawCircle(Offset(x, y), r * 0.38,
-            Paint()..color = kLavaCore.withValues(alpha: 0.55 * alpha));
-      }
-    }
-
-    // Sol iç parlama
-    final shineRect = Rect.fromLTWH(
-      bounds.left + bounds.width * 0.08,
-      bounds.top,
-      bounds.width * 0.14,
-      bounds.height,
-    );
-    canvas.drawRect(
-        shineRect,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              Colors.white.withValues(alpha: 0.07),
-              Colors.white.withValues(alpha: 0.00)
-            ],
-          ).createShader(shineRect));
-
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _VolcanoPainter oldDelegate) {
-    if (oldDelegate.capacity != capacity) return true;
-    if ((oldDelegate.fillPercent - fillPercent).abs() > 0.0001) return true;
-    if ((oldDelegate.slosh - slosh).abs() > 0.0001) return true;
-    if ((oldDelegate.time - time).abs() > 0.0001) return true;
-    if ((oldDelegate.wavePhase - wavePhase).abs() > 0.0001) return true;
-    if ((oldDelegate.interiorGlow - interiorGlow).abs() > 0.0001) return true;
-    if (oldDelegate.layers.length != layers.length) return true;
-    for (int i = 0; i < layers.length; i++) {
-      if (oldDelegate.layers[i].colorIdx != layers[i].colorIdx) return true;
-      if ((oldDelegate.layers[i].volume - layers[i].volume).abs() > 0.0001)
-        return true;
-    }
-    return false;
-  }
-}
-// ─────────────────────────────────────────────
-// TEK ŞİŞE TAMAMLANDI — ALTIEGEN PATLAMA
-// ─────────────────────────────────────────────
-
-class _TubeDoneBurst extends StatefulWidget {
-  final int colorIdx;
-
-  /// Oyun bitişinde true — daha büyük + daha parlak efekt
-  final bool isGameWin;
-
-  const _TubeDoneBurst({
-    required this.colorIdx,
-    this.isGameWin = false,
-  });
-
-  @override
-  State<_TubeDoneBurst> createState() => _TubeDoneBurstState();
-}
-
-class _TubeDoneBurstState extends State<_TubeDoneBurst>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    final dur = widget.isGameWin
-        ? const Duration(milliseconds: 1200)
-        : const Duration(milliseconds: 900);
-    _ctrl = AnimationController(vsync: this, duration: dur)..forward();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _isLavaColorIndex(widget.colorIdx)
-        ? kLavaOrange
-        : _solidColorForIndex(widget.colorIdx);
-    final hexSize = widget.isGameWin ? 30.0 : 28.0;
-
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) {
-        final t = _ctrl.value;
-
-        // ── Ana altıgen: şişeden çıkıp yukarı uçar ──────────────────────────
-        final eased = Curves.easeOutCubic.transform(t);
-        final dy = lerpDouble(widget.isGameWin ? 10.0 : 14.0,
-            widget.isGameWin ? -80.0 : -60.0, eased)!;
-
-        // Önce hızla belirsin, sonra yavaş yavaş kaybolsun
-        final opacity = t < 0.15
-            ? (t / 0.15).clamp(0.0, 1.0)
-            : (1.0 - ((t - 0.15) / 0.85)).clamp(0.0, 1.0);
-
-        // Parlaklık: t=0.25'te zirve yapar
-        final glowT = (sin(t * pi)).clamp(0.0, 1.0);
-
-        // Hafif büyüme-küçülme
-        final scale = 1.0 + glowT * (widget.isGameWin ? 0.45 : 0.28);
-
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            // Glow halkası
-            Transform.translate(
-              offset: Offset(0, dy),
-              child: Opacity(
-                opacity: (opacity * glowT * 0.65).clamp(0.0, 1.0),
-                child: Transform.scale(
-                  scale: scale * 1.6,
-                  child: Container(
-                    width: hexSize,
-                    height: hexSize,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          color.withValues(alpha: 0.55),
-                          color.withValues(alpha: 0.0),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // Altıgen kendisi
-            Transform.translate(
-              offset: Offset(0, dy),
-              child: Opacity(
-                opacity: opacity,
-                child: Transform.scale(
-                  scale: scale,
-                  child: CustomPaint(
-                    size: Size(hexSize, hexSize),
-                    painter: _BurstHexPainter(
-                      color: color,
-                      glowIntensity: glowT,
-                      isGameWin: widget.isGameWin,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // Oyun bitişi: ek mini parçacıklar
-            if (widget.isGameWin)
-              ...List.generate(6, (i) {
-                final angle = (pi / 3) * i - pi / 2;
-                final dist = lerpDouble(0, 36.0, eased)!;
-                final px = cos(angle) * dist;
-                final py = sin(angle) * dist + dy;
-                final pOpacity = (opacity * (1.0 - t * 0.7)).clamp(0.0, 1.0);
-                return Transform.translate(
-                  offset: Offset(px, py),
-                  child: Opacity(
-                    opacity: pOpacity,
-                    child: CustomPaint(
-                      size: const Size(6, 6),
-                      painter: _BurstHexPainter(
-                        color: color,
-                        glowIntensity: glowT * 0.6,
-                        isGameWin: false,
-                      ),
-                    ),
-                  ),
-                );
-              }),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _BurstHexPainter extends CustomPainter {
-  final Color color;
-  final double glowIntensity;
-  final bool isGameWin;
-
-  const _BurstHexPainter({
-    required this.color,
-    this.glowIntensity = 0.0,
-    this.isGameWin = false,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path();
-    final r = size.width / 2;
-    final c = Offset(size.width / 2, size.height / 2);
-    for (int i = 0; i < 6; i++) {
-      final a = -pi / 2 + (pi / 3) * i;
-      final p = Offset(c.dx + cos(a) * r, c.dy + sin(a) * r);
-      if (i == 0) {
-        path.moveTo(p.dx, p.dy);
-      } else {
-        path.lineTo(p.dx, p.dy);
-      }
-    }
-    path.close();
-
-    // Dolgu — rengin kendisi
-    canvas.drawPath(path, Paint()..color = color.withValues(alpha: 0.95));
-
-    // İç parlama (glowIntensity ile büyür)
-    if (glowIntensity > 0.01) {
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = Colors.white.withValues(alpha: 0.35 * glowIntensity)
-          ..maskFilter = MaskFilter.blur(
-            BlurStyle.normal,
-            isGameWin ? 4.0 * glowIntensity : 2.5 * glowIntensity,
-          ),
-      );
-    }
-
-    // Dış çerçeve
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.25 + 0.35 * glowIntensity)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = isGameWin ? 1.6 : 1.2,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_BurstHexPainter old) =>
-      old.glowIntensity != glowIntensity;
-}
-
-// ─────────────────────────────────────────────
-// UÇAN TÜP
-
-// ─────────────────────────────────────────────
-
 class _FlyingTube extends StatefulWidget {
-  final _TransferPlan plan;
+  final TransferPlan plan;
   final Offset? Function(int idx) getPos;
   final Offset? Function(int idx, Offset local) getAnchor;
   final Offset? Function(int idx) getRealTargetMouth;
@@ -5806,6 +4552,18 @@ class _FlyingTube extends StatefulWidget {
 
   @override
   State<_FlyingTube> createState() => _FlyingTubeState();
+}
+
+class GamePageResult {
+  final bool completed;
+  final int coinsAfterLevel;
+  final int earnedCoins;
+
+  const GamePageResult({
+    required this.completed,
+    required this.coinsAfterLevel,
+    this.earnedCoins = 0,
+  });
 }
 
 class _FlyingTubeState extends State<_FlyingTube>
@@ -6064,9 +4822,9 @@ class _FlyingTubeState extends State<_FlyingTube>
                 child: IgnorePointer(
                   child: CustomPaint(
                     painter: _LiquidStreamPainter(
-                      color: _isLavaColorIndex(widget.plan.colorIdx)
+                      color: isLavaColorIndex(widget.plan.colorIdx)
                           ? kLavaOrange
-                          : _solidColorForIndex(widget.plan.colorIdx),
+                          : solidColorForIndex(widget.plan.colorIdx),
                       start: globalStreamStart,
                       end: dynamicTargetSurface,
                       mouthEntry: targetMouthEntry,
@@ -6305,9 +5063,9 @@ class _TubeWidgetState extends State<_TubeWidget>
 
   bool _hasLava() {
     if (widget.tubeStyle == PuzzleTubeStyle.largeCollector) return true;
-    if (_isLavaColorIndex(widget.incomingColorIdx ?? -1)) return true;
+    if (isLavaColorIndex(widget.incomingColorIdx ?? -1)) return true;
     for (final c in widget.tube) {
-      if (_isLavaColorIndex(c)) return true;
+      if (isLavaColorIndex(c)) return true;
     }
     return false;
   }
@@ -7063,8 +5821,8 @@ class _LiquidPainter extends CustomPainter {
 
   // blindMode=false → normal (ardışık aynı renk birleşir)
   // blindMode=true  → gizli katmanlar ayrı tutulur; açılmış ardışık aynı renk birleşir
-  List<_VisualLayer> _buildLayers() {
-    final layers = <_VisualLayer>[];
+  List<VisualLayer> _buildLayers() {
+    final layers = <VisualLayer>[];
 
     if (blindMode) {
       // visibleLayerCount: en üstteki kaç katmanın görünür olduğunu söyler.
@@ -7085,7 +5843,7 @@ class _LiquidPainter extends CustomPainter {
           layers[layers.length - 1] =
               layers.last.copyWith(volume: layers.last.volume + 1);
         } else {
-          layers.add(_VisualLayer(colorIdx: c, volume: 1));
+          layers.add(VisualLayer(colorIdx: c, volume: 1));
         }
       }
     } else {
@@ -7094,7 +5852,7 @@ class _LiquidPainter extends CustomPainter {
           final l = layers.removeLast();
           layers.add(l.copyWith(volume: l.volume + 1));
         } else {
-          layers.add(_VisualLayer(colorIdx: c, volume: 1));
+          layers.add(VisualLayer(colorIdx: c, volume: 1));
         }
       }
     }
@@ -7121,7 +5879,7 @@ class _LiquidPainter extends CustomPainter {
           final l = layers.removeLast();
           layers.add(l.copyWith(volume: l.volume + add));
         } else {
-          layers.add(_VisualLayer(colorIdx: incomingColorIdx!, volume: add));
+          layers.add(VisualLayer(colorIdx: incomingColorIdx!, volume: add));
         }
       }
     }
@@ -7167,11 +5925,11 @@ class _LiquidPainter extends CustomPainter {
 
       final fill = isHidden
           ? const Color(0xFF2A2535)
-          : _visibleLiquidFillForIndex(safeIdx);
-      final isLavaLayer = !isHidden && _isLavaColorIndex(safeIdx);
+          : visibleLiquidFillForIndex(safeIdx);
+      final isLavaLayer = !isHidden && isLavaColorIndex(safeIdx);
       final highlightAlpha =
-          _liquidHighlightAlphaFor(safeIdx, isHidden: isHidden);
-      final shadowAlpha = _liquidShadowAlphaFor(safeIdx, isHidden: isHidden);
+          liquidHighlightAlphaFor(safeIdx, isHidden: isHidden);
+      final shadowAlpha = liquidShadowAlphaFor(safeIdx, isHidden: isHidden);
 
       final bandPath = _band(vBot, vTop, tilt, isTop ? slosh : slosh * 0.45);
       if (isLavaLayer) {
@@ -7452,7 +6210,7 @@ class _LiquidPainter extends CustomPainter {
     // Üst yüzey parlaması
     if (totalVol > 0.0001) {
       final topColorIdx = layers.isNotEmpty ? layers.last.colorIdx : -1;
-      final topIsLava = _isLavaColorIndex(topColorIdx);
+      final topIsLava = isLavaColorIndex(topColorIdx);
       canvas.drawPath(
         _surfaceLine(totalVol, tilt, slosh),
         Paint()
@@ -7485,8 +6243,8 @@ class _LiquidPainter extends CustomPainter {
     if (totalVol > 0.0001 && bubbleBurst > 0.01) {
       final s = _surface(totalVol, tilt, slosh * 0.25);
       final topColorIdx = layers.isNotEmpty ? layers.last.colorIdx : -1;
-      final burstIsLava = _isLavaColorIndex(topColorIdx) ||
-          (incomingColorIdx != null && _isLavaColorIndex(incomingColorIdx!));
+      final burstIsLava = isLavaColorIndex(topColorIdx) ||
+          (incomingColorIdx != null && isLavaColorIndex(incomingColorIdx!));
 
       final bubbleBaseColor =
           burstIsLava ? const Color(0xFFFF8C00) : Colors.white;
