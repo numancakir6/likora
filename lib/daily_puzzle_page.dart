@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
+import 'game/core/game_models.dart';
 import 'audio_service.dart';
 import 'daily_puzzle_generator.dart';
 import 'daily_puzzle_progress.dart';

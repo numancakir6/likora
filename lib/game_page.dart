@@ -19,15 +19,17 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:collection/collection.dart';
 import 'game/core/game_models.dart';
 import 'game/core/game_visuals.dart';
+import 'game/core/game_logic.dart';
+import 'game/core/game_refill.dart';
 import 'game/maps/map3/map3_mountain_reservoir.dart';
+import 'game/maps/map2/map2_visibility.dart';
+import 'game/maps/map2/map2_ui.dart';
 
 // ─────────────────────────────────────────────
 // OYUN SABİTLERİ
 // ─────────────────────────────────────────────
 
 const int kCap = 4;
-const int kNColors = 18;
-const int kEmpty = 2;
 const String kTubeSvgAsset = 'assets/likora/test_tube.svg';
 const String kTubeLargeSvgAsset = 'assets/likora/test_tube_large.svg';
 const String kVolcanoReservoirSvgAsset = 'assets/likora/volkan_hazne.png';
@@ -220,125 +222,6 @@ const Duration kPourDuration = Duration(milliseconds: 1350);
 // OYUN MANTIĞI
 // ─────────────────────────────────────────────
 
-List<List<int>> legacyGenerateTubes({
-  required int level,
-  required int difficulty,
-}) {
-  final patterns = <List<List<int>>>[
-    [
-      [0, 1, 2, 3],
-      [4, 5, 6, 7],
-      [1, 2, 3, 4],
-      [5, 6, 7, 0],
-      [2, 3, 4, 5],
-      [6, 7, 0, 1],
-      [3, 4, 5, 6],
-      [7, 0, 1, 2],
-      [],
-      [],
-      [],
-    ],
-    [
-      [0, 4, 1, 5],
-      [2, 6, 3, 7],
-      [1, 5, 2, 6],
-      [3, 7, 4, 0],
-      [2, 6, 5, 1],
-      [4, 0, 7, 3],
-      [5, 1, 6, 2],
-      [7, 3, 0, 4],
-      [],
-      [],
-      [],
-    ],
-    [
-      [0, 2, 4, 6],
-      [1, 3, 5, 7],
-      [2, 4, 6, 1],
-      [3, 5, 7, 0],
-      [4, 6, 1, 3],
-      [5, 7, 0, 2],
-      [6, 1, 3, 5],
-      [7, 0, 2, 4],
-      [],
-      [],
-      [],
-    ],
-    [
-      [0, 3, 1, 4],
-      [2, 5, 6, 7],
-      [1, 4, 2, 5],
-      [6, 7, 0, 3],
-      [2, 5, 3, 6],
-      [7, 0, 4, 1],
-      [3, 6, 5, 2],
-      [4, 1, 7, 0],
-      [],
-      [],
-      [],
-    ],
-    [
-      [0, 5, 2, 7],
-      [1, 6, 3, 4],
-      [2, 7, 4, 1],
-      [3, 0, 5, 6],
-      [4, 1, 6, 3],
-      [5, 2, 7, 0],
-      [6, 3, 0, 5],
-      [7, 4, 1, 2],
-      [],
-      [],
-      [],
-    ],
-  ];
-
-  final safeDifficulty = difficulty.clamp(1, 5);
-  final patternIndex = (level + safeDifficulty - 2) % patterns.length;
-  final chosen = patterns[patternIndex];
-  return chosen
-      .map((tube) => List<int>.of(tube, growable: true))
-      .toList(growable: true);
-}
-
-bool canPour(List<List<int>> tubes, int from, int to) {
-  if (tubes[from].isEmpty) return false;
-  if (tubes[to].length >= kCap) return false;
-  final top = tubes[from].last;
-  if (tubes[to].isNotEmpty && tubes[to].last != top) return false;
-  return true;
-}
-
-int pourCount(List<List<int>> tubes, int from, int to) {
-  if (!canPour(tubes, from, to)) return 0;
-  final top = tubes[from].last;
-  int count = 0;
-  final available = kCap - tubes[to].length;
-  for (int i = tubes[from].length - 1; i >= 0; i--) {
-    if (tubes[from][i] == top)
-      count++;
-    else
-      break;
-  }
-  return count.clamp(0, available);
-}
-
-void doPour(List<List<int>> tubes, int from, int to) {
-  final fromTube = List<int>.from(tubes[from]);
-  final toTube = List<int>.from(tubes[to]);
-
-  final top = fromTube.last;
-  while (fromTube.isNotEmpty && fromTube.last == top && toTube.length < kCap) {
-    toTube.add(fromTube.removeLast());
-  }
-
-  tubes[from] = fromTube;
-  tubes[to] = toTube;
-}
-
-bool isTubeDone(List<int> t) => t.length == kCap && t.every((c) => c == t[0]);
-bool isGameDone(List<List<int>> tubes) =>
-    tubes.every((t) => t.isEmpty || isTubeDone(t));
-
 // ─────────────────────────────────────────────
 // YARDIMCI MODELLER
 // ─────────────────────────────────────────────
@@ -387,198 +270,6 @@ class GamePage extends StatefulWidget {
 
   @override
   State<GamePage> createState() => _GamePageState();
-}
-
-class _TubeDoneBurst extends StatefulWidget {
-  final int colorIdx;
-
-  /// Oyun bitişinde true — daha büyük + daha parlak efekt
-  final bool isGameWin;
-
-  const _TubeDoneBurst({
-    super.key,
-    required this.colorIdx,
-    this.isGameWin = false,
-  });
-
-  @override
-  State<_TubeDoneBurst> createState() => _TubeDoneBurstState();
-}
-
-class _TubeDoneBurstState extends State<_TubeDoneBurst>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    final dur = widget.isGameWin
-        ? const Duration(milliseconds: 1200)
-        : const Duration(milliseconds: 900);
-    _ctrl = AnimationController(vsync: this, duration: dur)..forward();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = kColors[widget.colorIdx]['fill'] as Color;
-    final hexSize = widget.isGameWin ? 30.0 : 28.0;
-
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) {
-        final t = _ctrl.value;
-
-        final eased = Curves.easeOutCubic.transform(t);
-        final dy = lerpDouble(
-          widget.isGameWin ? 10.0 : 14.0,
-          widget.isGameWin ? -80.0 : -60.0,
-          eased,
-        )!;
-
-        final opacity = t < 0.15
-            ? (t / 0.15).clamp(0.0, 1.0)
-            : (1.0 - ((t - 0.15) / 0.85)).clamp(0.0, 1.0);
-
-        final glowT = (sin(t * pi)).clamp(0.0, 1.0);
-        final scale = 1.0 + glowT * (widget.isGameWin ? 0.45 : 0.28);
-
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            Transform.translate(
-              offset: Offset(0, dy),
-              child: Opacity(
-                opacity: (opacity * glowT * 0.65).clamp(0.0, 1.0),
-                child: Transform.scale(
-                  scale: scale * 1.6,
-                  child: Container(
-                    width: hexSize,
-                    height: hexSize,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          color.withValues(alpha: 0.55),
-                          color.withValues(alpha: 0.0),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Transform.translate(
-              offset: Offset(0, dy),
-              child: Opacity(
-                opacity: opacity,
-                child: Transform.scale(
-                  scale: scale,
-                  child: CustomPaint(
-                    size: Size(hexSize, hexSize),
-                    painter: _BurstHexPainter(
-                      color: color,
-                      glowIntensity: glowT,
-                      isGameWin: widget.isGameWin,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (widget.isGameWin)
-              ...List.generate(6, (i) {
-                final angle = (pi / 3) * i - pi / 2;
-                final dist = lerpDouble(0, 36.0, eased)!;
-                final px = cos(angle) * dist;
-                final py = sin(angle) * dist + dy;
-                final pOpacity = (opacity * (1.0 - t * 0.7)).clamp(0.0, 1.0);
-
-                return Transform.translate(
-                  offset: Offset(px, py),
-                  child: Opacity(
-                    opacity: pOpacity,
-                    child: CustomPaint(
-                      size: const Size(6, 6),
-                      painter: _BurstHexPainter(
-                        color: color,
-                        glowIntensity: glowT * 0.6,
-                        isGameWin: false,
-                      ),
-                    ),
-                  ),
-                );
-              }),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _BurstHexPainter extends CustomPainter {
-  final Color color;
-  final double glowIntensity;
-  final bool isGameWin;
-
-  const _BurstHexPainter({
-    required this.color,
-    this.glowIntensity = 0.0,
-    this.isGameWin = false,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path();
-    final r = size.width / 2;
-    final c = Offset(size.width / 2, size.height / 2);
-
-    for (int i = 0; i < 6; i++) {
-      final a = -pi / 2 + (pi / 3) * i;
-      final p = Offset(c.dx + cos(a) * r, c.dy + sin(a) * r);
-      if (i == 0) {
-        path.moveTo(p.dx, p.dy);
-      } else {
-        path.lineTo(p.dx, p.dy);
-      }
-    }
-    path.close();
-
-    canvas.drawPath(
-      path,
-      Paint()..color = color.withValues(alpha: 0.95),
-    );
-
-    if (glowIntensity > 0.01) {
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = Colors.white.withValues(alpha: 0.35 * glowIntensity)
-          ..maskFilter = MaskFilter.blur(
-            BlurStyle.normal,
-            isGameWin ? 4.0 * glowIntensity : 2.5 * glowIntensity,
-          ),
-      );
-    }
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.25 + 0.35 * glowIntensity)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = isGameWin ? 1.6 : 1.2,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_BurstHexPainter old) =>
-      old.glowIntensity != glowIntensity ||
-      old.color != color ||
-      old.isGameWin != isGameWin;
 }
 
 class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
@@ -817,52 +508,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         PuzzleTubeStyle.classic;
   }
 
-  bool _canPourIn(List<List<int>> tubes, int from, int to) {
-    if (from == to) return false;
-    if (from < 0 || from >= tubes.length || to < 0 || to >= tubes.length)
-      return false;
-    if (tubes[from].isEmpty) return false;
-    if (tubes[to].length >= _tubeCapacityIn(tubes, to)) return false;
-
-    final movingColor = tubes[from].last;
-    if (tubes[to].isNotEmpty && tubes[to].last != movingColor) return false;
-    return true;
-  }
-
-  int _pourCountIn(List<List<int>> tubes, int from, int to) {
-    if (!_canPourIn(tubes, from, to)) return 0;
-    final top = tubes[from].last;
-    int count = 0;
-    final available = _tubeCapacityIn(tubes, to) - tubes[to].length;
-    for (int i = tubes[from].length - 1; i >= 0; i--) {
-      if (tubes[from][i] == top) {
-        count++;
-      } else {
-        break;
-      }
-    }
-    return count.clamp(0, available);
-  }
-
-  void _doPourIn(List<List<int>> tubes, int from, int to) {
-    final fromTube = List<int>.from(tubes[from]);
-    final toTube = List<int>.from(tubes[to]);
-    final top = fromTube.last;
-    final cap = _tubeCapacityIn(tubes, to);
-    while (fromTube.isNotEmpty && fromTube.last == top && toTube.length < cap) {
-      toTube.add(fromTube.removeLast());
-    }
-    tubes[from] = fromTube;
-    tubes[to] = toTube;
-  }
-
   bool _isTubeDoneIn(List<List<int>> tubes, int idx) {
-    final tube = tubes[idx];
-    if (tube.isEmpty) return false;
-    final cap = _tubeCapacityIn(tubes, idx);
-    if (tube.length != cap) return false;
-    if (!tube.every((c) => c == tube.first)) return false;
-    return true;
+    return isTubeDoneBoard(
+      tubes[idx],
+      cap: _tubeCapacityIn(tubes, idx),
+    );
   }
 
   bool _isGameDoneIn(List<List<int>> tubes) {
@@ -872,82 +522,30 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     for (int i = 0; i < tubes.length; i++) {
       if (tubes[i].isEmpty) continue;
-      if (!_isTubeDoneIn(tubes, i)) return false;
+      if (!isTubeDoneBoard(tubes[i], cap: _tubeCapacityIn(tubes, i)))
+        return false;
     }
     return true;
   }
 
   Map<int, List<List<int>>> _cloneRefillQueues(SourceTubeRefillConfig? refill) {
-    if (refill == null) return {};
-
-    return refill.refillQueues.map(
-      (tubeIndex, queue) => MapEntry(
-        tubeIndex,
-        queue
-            .map((pack) => List<int>.from(pack, growable: true))
-            .toList(growable: true),
-      ),
-    );
+    return cloneRefillQueues(refill);
   }
 
   Map<int, List<List<int>>> _cloneRefillQueuesMap(
     Map<int, List<List<int>>> source,
   ) {
-    return source.map(
-      (tubeIndex, queue) => MapEntry(
-        tubeIndex,
-        queue
-            .map((pack) => List<int>.from(pack, growable: true))
-            .toList(growable: true),
-      ),
-    );
+    return cloneRefillQueuesMap(source);
   }
 
   Map<int, List<List<int>>> _decodeRuntimeRefillQueues(dynamic raw) {
-    final result = <int, List<List<int>>>{};
-    if (raw is! Map) return result;
-
-    raw.forEach((key, value) {
-      final tubeIndex = int.tryParse(key.toString());
-      if (tubeIndex == null || value is! List) return;
-
-      final queue = <List<int>>[];
-      for (final packRaw in value) {
-        if (packRaw is! List) continue;
-
-        final pack = <int>[];
-        var valid = true;
-        for (final cell in packRaw) {
-          if (cell is int) {
-            pack.add(cell);
-          } else {
-            valid = false;
-            break;
-          }
-        }
-
-        if (valid) {
-          queue.add(pack);
-        }
-      }
-
-      result[tubeIndex] = queue;
-    });
-
-    return result;
+    return decodeRuntimeRefillQueues(raw);
   }
 
   Map<String, dynamic> _encodeRuntimeRefillQueues(
     Map<int, List<List<int>>> queues,
   ) {
-    return queues.map(
-      (tubeIndex, queue) => MapEntry(
-        tubeIndex.toString(),
-        queue.map((pack) => List<int>.from(pack, growable: false)).toList(
-              growable: false,
-            ),
-      ),
-    );
+    return encodeRuntimeRefillQueues(queues);
   }
 
   String get _refillStatePrefsKey =>
@@ -961,86 +559,47 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _isDailyMode ? _dailyRefillStatePrefsKey : _refillStatePrefsKey;
 
   Future<void> _persistRefillState() async {
-    final key = _effectiveRefillStatePrefsKey;
-    if (key == null) return;
-
-    final prefs = await SharedPreferences.getInstance();
-
-    if (_gameWon || _runtimeRefillQueues.isEmpty) {
-      await prefs.remove(key);
-      return;
-    }
-
-    await prefs.setString(
-      key,
-      jsonEncode(_encodeRuntimeRefillQueues(_runtimeRefillQueues)),
+    await persistRefillState(
+      key: _effectiveRefillStatePrefsKey,
+      gameWon: _gameWon,
+      runtimeRefillQueues: _runtimeRefillQueues,
     );
   }
 
   Future<void> _restoreRefillState() async {
-    _runtimeRefillQueues = _initialRefillQueuesConfig();
-
-    final key = _effectiveRefillStatePrefsKey;
-    if (key == null) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(key);
-    if (raw == null || raw.isEmpty) return;
-
-    try {
-      final decoded = jsonDecode(raw);
-      final restored = _decodeRuntimeRefillQueues(decoded);
-
-      if (restored.isNotEmpty) {
-        _runtimeRefillQueues = restored;
-      }
-    } catch (_) {
-      _runtimeRefillQueues = _initialRefillQueuesConfig();
-    }
+    _runtimeRefillQueues = await restoreRefillState(
+      initialRefillQueues: _initialRefillQueuesConfig(),
+      key: _effectiveRefillStatePrefsKey,
+    );
   }
 
   Future<void> _clearRefillState() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_refillStatePrefsKey);
-
-    final dailyKey = _dailyRefillStatePrefsKey;
-    if (dailyKey != null) {
-      await prefs.remove(dailyKey);
-    }
+    await clearRefillState(
+      refillStatePrefsKey: _refillStatePrefsKey,
+      dailyRefillStatePrefsKey: _dailyRefillStatePrefsKey,
+    );
   }
 
   bool isRefillStopped() {
-    if (_activeRefillTubeIndexes.isEmpty ||
-        !_activeStopRefillWhenMountainFull) {
-      return false;
-    }
-    return _hasMountainObjective && _mountainFillUnits >= _mountainCapacity;
+    return refillStopped(
+      activeRefillTubeIndexes: _activeRefillTubeIndexes,
+      activeStopRefillWhenMountainFull: _activeStopRefillWhenMountainFull,
+      hasMountainObjective: _hasMountainObjective,
+      mountainFillUnits: _mountainFillUnits,
+      mountainCapacity: _mountainCapacity,
+    );
   }
 
   void _tryRefillSourceTube(int tubeIndex) {
-    final refillTubeIndexes = _activeRefillTubeIndexes;
-    if (refillTubeIndexes.isEmpty) return;
-    if (!refillTubeIndexes.contains(tubeIndex)) {
-      debugPrint(
-          '[REFILL] tube $tubeIndex NOT in tubeIndexes: $refillTubeIndexes');
-      return;
-    }
-    if (tubeIndex < 0 || tubeIndex >= _tubes.length) return;
-    if (_tubes[tubeIndex].isNotEmpty) {
-      debugPrint('[REFILL] tube $tubeIndex not empty, skipping');
-      return;
-    }
-
-    final queue = _runtimeRefillQueues[tubeIndex];
-    if (queue == null || queue.isEmpty) {
-      debugPrint(
-          '[REFILL] tube $tubeIndex queue is null or empty. keys: ${_runtimeRefillQueues.keys}');
-      return;
-    }
-
-    debugPrint('[REFILL] tube $tubeIndex refilled successfully');
-    final nextPack = queue.removeAt(0);
-    _tubes[tubeIndex] = List<int>.from(nextPack, growable: true);
+    final result = tryRefillSourceTube(
+      refillTubeIndexes: _activeRefillTubeIndexes,
+      runtimeRefillQueues: _runtimeRefillQueues,
+      tubes: _tubes,
+      tubeIndex: tubeIndex,
+      stopRefill: isRefillStopped(),
+    );
+    _runtimeRefillQueues = result.runtimeRefillQueues;
+    _tubes = result.tubes;
   }
 
   Future<void> _returnToMapPage() async {
@@ -1352,7 +911,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return completer.future;
   }
 
-  bool get _blindModeEnabled => widget.mapNumber == 2;
+  bool get _blindModeEnabled => isBlindModeForMap(widget.mapNumber);
 
   String get _blindVisibilityPrefsKey =>
       'likora_blind_visibility_${widget.mapNumber}_${widget.level}';
@@ -1367,33 +926,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   bool _isLockedAdTubeIndex(int idx) =>
       _showLockedAdTube && idx == _lockedAdTubeIndex;
 
-  List<int> _defaultVisibleLayerCountsFor(List<List<int>> tubes) {
-    if (!_blindModeEnabled) {
-      return List<int>.generate(
-        tubes.length,
-        (i) => tubes[i].length,
-        growable: true,
-      );
-    }
-
-    return List<int>.generate(
-      tubes.length,
-      (i) => tubes[i].isEmpty ? 0 : 1,
-      growable: true,
-    );
-  }
-
   List<int> _normalizeVisibleLayerCounts(
     List<int>? raw,
     List<List<int>> tubes,
   ) {
-    final fallback = _defaultVisibleLayerCountsFor(tubes);
-    if (raw == null || raw.length != tubes.length) return fallback;
-
-    return List<int>.generate(
-      tubes.length,
-      (i) => raw[i].clamp(0, tubes[i].length).toInt(),
-      growable: true,
+    return normalizeVisibleLayerCounts(
+      raw,
+      tubes,
+      blindModeEnabled: _blindModeEnabled,
     );
   }
 
@@ -1458,7 +998,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         final visibleRaw = item['visibleLayerCounts'];
         final visible = visibleRaw is List
             ? visibleRaw.map((e) => e is int ? e : 0).toList(growable: true)
-            : _defaultVisibleLayerCountsFor(tubes);
+            : defaultVisibleLayerCountsFor(
+                blindModeEnabled: _blindModeEnabled,
+                tubes: tubes,
+              );
 
         final mountainFillUnitsRaw = item['mountainFillUnits'];
         final mountainLayersRaw = item['mountainLayers'];
@@ -1543,7 +1086,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   Future<void> _restoreBlindVisibilityState() async {
     if (!_blindModeEnabled) {
-      _visibleLayerCounts = _defaultVisibleLayerCountsFor(_tubes);
+      _visibleLayerCounts = defaultVisibleLayerCountsFor(
+        blindModeEnabled: _blindModeEnabled,
+        tubes: _tubes,
+      );
       return;
     }
 
@@ -1582,60 +1128,34 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   void _updateBlindVisibilityAfterPour(int from, int to, int pouredCount) {
-    if (!_blindModeEnabled) return;
+    final result = updateBlindVisibilityAfterPour(
+      blindModeEnabled: _blindModeEnabled,
+      visibleLayerCounts: _visibleLayerCounts,
+      tubes: _tubes,
+      from: from,
+      to: to,
+      pouredCount: pouredCount,
+    );
 
-    final oldFromVisible = _visibleLayerCounts[from]
-        .clamp(0, _tubes[from].length + pouredCount)
-        .toInt();
-    final oldToVisible = _visibleLayerCounts[to]
-        .clamp(0, max(0, _tubes[to].length - pouredCount))
-        .toInt();
-    final newFromLen = _tubes[from].length;
-    final newToLen = _tubes[to].length;
+    _visibleLayerCounts = result.visibleLayerCounts;
 
-    final removedVisible = min(oldFromVisible, pouredCount);
-    var newFromVisible = max(0, oldFromVisible - removedVisible);
-
-    final removedHiddenAbove = pouredCount > removedVisible;
-    final shouldRevealNextTop =
-        newFromLen > 0 && (newFromVisible == 0 || removedHiddenAbove);
-    if (shouldRevealNextTop) {
-      newFromVisible = min(newFromLen, newFromVisible + 1);
-    }
-    _visibleLayerCounts[from] = newFromVisible.clamp(0, newFromLen).toInt();
-
-    // Hedef tüpe dökülen sıvı görünür olarak eklenir.
-    // oldToVisible: döküm öncesi görünür sayısı (clamp ile döküm öncesi uzunluğa sınırlı)
-    // + pouredCount: yeni dökülen katmanlar da görünür.
-    // Bu sayede altındaki orijinal gizli katmanlar açılmaz;
-    // sadece dökülen kadar görünürlük artar.
-    _visibleLayerCounts[to] = (oldToVisible + pouredCount).clamp(0, newToLen);
-
-    if (shouldRevealNextTop) {
+    if (result.shouldRevealFromSource) {
       _triggerBlindRevealFlash(from);
     }
   }
 
   void _updateBlindVisibilityAfterMountainPour(int from, int pouredCount) {
-    if (!_blindModeEnabled) return;
+    final result = updateBlindVisibilityAfterMountainPour(
+      blindModeEnabled: _blindModeEnabled,
+      visibleLayerCounts: _visibleLayerCounts,
+      tubes: _tubes,
+      from: from,
+      pouredCount: pouredCount,
+    );
 
-    final oldFromVisible = _visibleLayerCounts[from]
-        .clamp(0, _tubes[from].length + pouredCount)
-        .toInt();
-    final newFromLen = _tubes[from].length;
+    _visibleLayerCounts = result.visibleLayerCounts;
 
-    final removedVisible = min(oldFromVisible, pouredCount);
-    var newFromVisible = max(0, oldFromVisible - removedVisible);
-
-    final removedHiddenAbove = pouredCount > removedVisible;
-    final shouldRevealNextTop =
-        newFromLen > 0 && (newFromVisible == 0 || removedHiddenAbove);
-    if (shouldRevealNextTop) {
-      newFromVisible = min(newFromLen, newFromVisible + 1);
-    }
-    _visibleLayerCounts[from] = newFromVisible.clamp(0, newFromLen).toInt();
-
-    if (shouldRevealNextTop) {
+    if (result.shouldRevealFromSource) {
       _triggerBlindRevealFlash(from);
     }
   }
@@ -1679,7 +1199,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _tubes = tubes
         .map((t) => List<int>.of(t, growable: true))
         .toList(growable: true);
-    _visibleLayerCounts = _defaultVisibleLayerCountsFor(_tubes);
+    _visibleLayerCounts = defaultVisibleLayerCountsFor(
+      blindModeEnabled: _blindModeEnabled,
+      tubes: _tubes,
+    );
     // lockedAdTubeIndex'in geçerli tubes aralığında olduğundan emin ol.
     _lockedAdTubeIndex = lockedAdTubeIndex.clamp(0, _tubes.length - 1).toInt();
     _activePlans.clear();
@@ -1733,42 +1256,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   List<List<int>> _buildCompletedTubesFromInitial(
       List<List<int>> initialTubes) {
-    final colorCounts = <int, int>{};
-    for (final tube in initialTubes) {
-      for (final color in tube) {
-        colorCounts[color] = (colorCounts[color] ?? 0) + 1;
-      }
-    }
-
-    final solvedColors = colorCounts.keys.toList()..sort();
-    final result = <List<int>>[];
-    final usedColors = <int>{};
-
-    for (int i = 0; i < initialTubes.length; i++) {
-      if (initialTubes[i].isEmpty) {
-        result.add(<int>[]);
-        continue;
-      }
-
-      final nextColor = solvedColors.firstWhere(
-        (color) =>
-            !usedColors.contains(color) &&
-            colorCounts[color]! >= _tubeCapacityIn(initialTubes, i),
-        orElse: () => solvedColors.firstWhere(
-          (color) => !usedColors.contains(color),
-          orElse: () => solvedColors.first,
-        ),
-      );
-      usedColors.add(nextColor);
-      result.add(List<int>.filled(_tubeCapacityIn(initialTubes, i), nextColor,
-          growable: true));
-    }
-
-    while (result.length < initialTubes.length) {
-      result.add(<int>[]);
-    }
-
-    return result;
+    return buildCompletedTubesFromInitialBoard(
+      initialTubes,
+      tubeCapacityResolver: _tubeCapacityIn,
+    );
   }
 
   void _applyCompletedLevelState({int? coinsOverride}) {
@@ -1849,12 +1340,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     await _persistRefillState();
   }
 
-  List<List<int>> _cloneBoard(List<List<int>> source) {
-    return source
-        .map((tube) => List<int>.from(tube, growable: true))
-        .toList(growable: true);
-  }
-
   List<int> _jokerActiveTubeIndexesFor(List<List<int>> tubes) {
     final indexes = <int>[];
     for (int i = 0; i < tubes.length; i++) {
@@ -1865,7 +1350,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   bool _canPourInSimulation(List<List<int>> tubes, int from, int to) {
-    return _canPourIn(tubes, from, to);
+    return canPourBoard(tubes, from, to, cap: _tubeCapacityIn(tubes, to));
   }
 
   bool _canPourToMountainInSimulation(List<List<int>> tubes, int from) {
@@ -1904,7 +1389,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     int? mountainFillUnits,
     int maxIterations = 40000,
   }) {
-    final initialTubes = _cloneBoard(sourceTubes ?? _tubes);
+    final initialTubes = cloneBoardState(sourceTubes ?? _tubes);
     final initialMountainFillUnits = mountainFillUnits ?? _mountainFillUnits;
     final activeIndexes = _jokerActiveTubeIndexesFor(initialTubes);
     final targetMountainCapacity =
@@ -2000,8 +1485,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             if (earlierEquivalentEmpty) continue;
           }
 
-          final nextTubes = _cloneBoard(current.tubes);
-          _doPourIn(nextTubes, from, to);
+          final nextTubes = cloneBoardState(current.tubes);
+          doPourBoard(nextTubes, from, to, cap: _tubeCapacityIn(nextTubes, to));
 
           final nextRefillQueues = _cloneRefillQueuesMap(current.refillQueues);
           if (nextTubes[from].isEmpty) {
@@ -2048,7 +1533,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
         if (mountainCount <= 0) continue;
 
-        final nextTubes = _cloneBoard(current.tubes);
+        final nextTubes = cloneBoardState(current.tubes);
         for (int i = 0; i < mountainCount; i++) {
           nextTubes[from].removeLast();
         }
@@ -2329,7 +1814,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       if (_tubes[from].isEmpty) continue;
       for (final to in lowerTargets) {
         if (from == to) continue;
-        if (_canPourIn(_tubes, from, to) && _tubes[to].isEmpty) {
+        if (canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to)) &&
+            _tubes[to].isEmpty) {
           return (from, to);
         }
       }
@@ -2339,7 +1825,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       if (_tubes[from].isEmpty) continue;
       for (final to in allTargets) {
         if (from == to) continue;
-        if (_canPourIn(_tubes, from, to) && _tubes[to].isEmpty) {
+        if (canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to)) &&
+            _tubes[to].isEmpty) {
           return (from, to);
         }
       }
@@ -2349,7 +1836,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       if (_tubes[from].isEmpty) continue;
       for (final to in lowerTargets) {
         if (from == to) continue;
-        if (_canPourIn(_tubes, from, to)) {
+        if (canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to))) {
           return (from, to);
         }
       }
@@ -2359,7 +1846,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       if (_tubes[from].isEmpty) continue;
       for (final to in allTargets) {
         if (from == to) continue;
-        if (_canPourIn(_tubes, from, to)) {
+        if (canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to))) {
           return (from, to);
         }
       }
@@ -2446,7 +1933,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final to = idx;
 
     _vibrateTap();
-    if (!_canPourIn(_tubes, from, to)) {
+    if (!canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to))) {
       setState(() => _selected = null);
       return;
     }
@@ -2618,7 +2105,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         _activePlans.remove(plan);
         _gameWon = didWin;
         if (didWin) {
-          _loopCompletedVolcano = false;
+          _loopCompletedVolcano = widget.mapNumber == 3;
         }
       });
       _persistLevelState();
@@ -2645,12 +2132,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _startPour(int from, int to) async {
-    if (!_canPourIn(_tubes, from, to)) {
+    if (!canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to))) {
       _vibrateLight();
       return;
     }
 
-    final count = _pourCountIn(_tubes, from, to);
+    final count =
+        pourCountBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to));
     if (count <= 0) {
       _vibrateLight();
       return;
@@ -2676,7 +2164,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     ));
 
     // Mantık durumunu hemen güncelle (animasyon gösterimi snapshot tabanlı)
-    _doPourIn(_tubes, from, to);
+    doPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to));
 
     setState(() {
       _selected = null;
@@ -2721,7 +2209,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         _activePlans.remove(plan);
         _gameWon = didWin;
         if (didWin) {
-          _loopCompletedVolcano = false;
+          _loopCompletedVolcano = widget.mapNumber == 3;
         }
       });
       _persistLevelState();
@@ -3372,6 +2860,41 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                       width: double.infinity,
                       fit: BoxFit.fitWidth,
                       alignment: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+              // Win anında eruption öne gelsin; normalde ana rezervuar PNG'nin arkasında kalır
+              if (widget.mapNumber == 3 && _gameWon)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: LayoutBuilder(
+                      builder: (ctx, _) {
+                        final screenW =
+                            MediaQuery.of(ctx).size.width.clamp(280.0, 500.0);
+                        final reservoirH = screenW / 1.776;
+                        return MountainTubeReservoir(
+                          width: screenW,
+                          height: reservoirH,
+                          fillPercent: _mountainFillPercent,
+                          liquidColor: _mountainLayers.isEmpty
+                              ? const Color(0xFFFF6A00)
+                              : (isLavaColorIndex(_mountainLayers.last.colorIdx)
+                                  ? kLavaOrange
+                                  : solidColorForIndex(
+                                      _mountainLayers.last.colorIdx)),
+                          glow: true,
+                          onTap: () {},
+                          layers: List<VisualLayer>.from(
+                            _mountainLayers.map((l) => l.copyWith()),
+                          ),
+                          capacity: _mountainCapacity,
+                          gameWon: true,
+                          loopEruption: true,
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -4518,6 +4041,205 @@ class _TubeStageState extends State<_TubeStage> {
 // VOLKAN REZERVUARI — animasyonlu sıvı + krater ağız efektleri
 // ─────────────────────────────────────────────────────────────────────────────
 
+class _TubeDoneBurst extends StatefulWidget {
+  final int colorIdx;
+
+  /// Oyun bitişinde true — daha büyük + daha parlak efekt
+  final bool isGameWin;
+
+  const _TubeDoneBurst({
+    required this.colorIdx,
+    this.isGameWin = false,
+  });
+
+  @override
+  State<_TubeDoneBurst> createState() => _TubeDoneBurstState();
+}
+
+class _TubeDoneBurstState extends State<_TubeDoneBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final dur = widget.isGameWin
+        ? const Duration(milliseconds: 1200)
+        : const Duration(milliseconds: 900);
+    _ctrl = AnimationController(vsync: this, duration: dur)..forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isLavaColorIndex(widget.colorIdx)
+        ? kLavaOrange
+        : solidColorForIndex(widget.colorIdx);
+    final hexSize = widget.isGameWin ? 30.0 : 28.0;
+
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final t = _ctrl.value;
+
+        // ── Ana altıgen: şişeden çıkıp yukarı uçar ──────────────────────────
+        final eased = Curves.easeOutCubic.transform(t);
+        final dy = lerpDouble(widget.isGameWin ? 10.0 : 14.0,
+            widget.isGameWin ? -80.0 : -60.0, eased)!;
+
+        // Önce hızla belirsin, sonra yavaş yavaş kaybolsun
+        final opacity = t < 0.15
+            ? (t / 0.15).clamp(0.0, 1.0)
+            : (1.0 - ((t - 0.15) / 0.85)).clamp(0.0, 1.0);
+
+        // Parlaklık: t=0.25'te zirve yapar
+        final glowT = (sin(t * pi)).clamp(0.0, 1.0);
+
+        // Hafif büyüme-küçülme
+        final scale = 1.0 + glowT * (widget.isGameWin ? 0.45 : 0.28);
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            // Glow halkası
+            Transform.translate(
+              offset: Offset(0, dy),
+              child: Opacity(
+                opacity: (opacity * glowT * 0.65).clamp(0.0, 1.0),
+                child: Transform.scale(
+                  scale: scale * 1.6,
+                  child: Container(
+                    width: hexSize,
+                    height: hexSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          color.withValues(alpha: 0.55),
+                          color.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Altıgen kendisi
+            Transform.translate(
+              offset: Offset(0, dy),
+              child: Opacity(
+                opacity: opacity,
+                child: Transform.scale(
+                  scale: scale,
+                  child: CustomPaint(
+                    size: Size(hexSize, hexSize),
+                    painter: _BurstHexPainter(
+                      color: color,
+                      glowIntensity: glowT,
+                      isGameWin: widget.isGameWin,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Oyun bitişi: ek mini parçacıklar
+            if (widget.isGameWin)
+              ...List.generate(6, (i) {
+                final angle = (pi / 3) * i - pi / 2;
+                final dist = lerpDouble(0, 36.0, eased)!;
+                final px = cos(angle) * dist;
+                final py = sin(angle) * dist + dy;
+                final pOpacity = (opacity * (1.0 - t * 0.7)).clamp(0.0, 1.0);
+                return Transform.translate(
+                  offset: Offset(px, py),
+                  child: Opacity(
+                    opacity: pOpacity,
+                    child: CustomPaint(
+                      size: const Size(6, 6),
+                      painter: _BurstHexPainter(
+                        color: color,
+                        glowIntensity: glowT * 0.6,
+                        isGameWin: false,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _BurstHexPainter extends CustomPainter {
+  final Color color;
+  final double glowIntensity;
+  final bool isGameWin;
+
+  const _BurstHexPainter({
+    required this.color,
+    this.glowIntensity = 0.0,
+    this.isGameWin = false,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    final r = size.width / 2;
+    final c = Offset(size.width / 2, size.height / 2);
+    for (int i = 0; i < 6; i++) {
+      final a = -pi / 2 + (pi / 3) * i;
+      final p = Offset(c.dx + cos(a) * r, c.dy + sin(a) * r);
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    path.close();
+
+    // Dolgu — rengin kendisi
+    canvas.drawPath(path, Paint()..color = color.withValues(alpha: 0.95));
+
+    // İç parlama (glowIntensity ile büyür)
+    if (glowIntensity > 0.01) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.35 * glowIntensity)
+          ..maskFilter = MaskFilter.blur(
+            BlurStyle.normal,
+            isGameWin ? 4.0 * glowIntensity : 2.5 * glowIntensity,
+          ),
+      );
+    }
+
+    // Dış çerçeve
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.25 + 0.35 * glowIntensity)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isGameWin ? 1.6 : 1.2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_BurstHexPainter old) =>
+      old.glowIntensity != glowIntensity;
+}
+
+// ─────────────────────────────────────────────
+// UÇAN TÜP
+
+// ─────────────────────────────────────────────
+
 class _FlyingTube extends StatefulWidget {
   final TransferPlan plan;
   final Offset? Function(int idx) getPos;
@@ -4552,18 +4274,6 @@ class _FlyingTube extends StatefulWidget {
 
   @override
   State<_FlyingTube> createState() => _FlyingTubeState();
-}
-
-class GamePageResult {
-  final bool completed;
-  final int coinsAfterLevel;
-  final int earnedCoins;
-
-  const GamePageResult({
-    required this.completed,
-    required this.coinsAfterLevel,
-    this.earnedCoins = 0,
-  });
 }
 
 class _FlyingTubeState extends State<_FlyingTube>
@@ -4757,11 +4467,7 @@ class _FlyingTubeState extends State<_FlyingTube>
             (widget.plan.toSnapshot.length + widget.plan.count * drainProgress)
                 .clamp(0.0, widget.targetCapacity.toDouble());
         final dynamicTargetSurface = widget.plan.isMountainTarget
-            ? (widget.getMountainSurface(
-                  widget.plan.mountainFillBefore +
-                      (widget.plan.count * drainProgress),
-                ) ??
-                targetSurface)
+            ? targetSurface
             : (widget.getRealTargetSurface(
                   widget.plan.toIdx,
                   currentToVolume,
@@ -5028,6 +4734,7 @@ class _TubeWidget extends StatefulWidget {
   final double pourProgress;
   final double bubbleBurst;
   final double receiveFlow;
+  final double lavaTime; // 0→1 döngüsel, AnimationController'dan
   final bool blindMode;
   final int visibleLayerCount;
   final int revealGlowTick;
@@ -5051,6 +4758,7 @@ class _TubeWidget extends StatefulWidget {
     this.revealGlowTick = 0,
     this.tubeStyle = PuzzleTubeStyle.classic,
     this.capacity = kCap,
+    this.lavaTime = 0.0,
   });
 
   @override
@@ -5115,7 +4823,6 @@ class _TubeWidgetState extends State<_TubeWidget>
   Widget build(BuildContext context) {
     if (widget.tubeStyle == PuzzleTubeStyle.largeCollector) {
       // largeCollector da lavaCtrl ile çalışır — her zaman lava var
-      final lavaTime = _lavaCtrl?.value ?? 0.0;
       Widget basinWidget(double t) => SizedBox(
             width: kBasinW,
             height: kBasinH,
@@ -5658,8 +5365,7 @@ class _VolcanicBasinPainter extends CustomPainter {
   bool shouldRepaint(covariant _VolcanicBasinPainter oldDelegate) {
     return oldDelegate.currentUnits != currentUnits ||
         oldDelegate.capacity != capacity ||
-        oldDelegate.highlight != highlight ||
-        oldDelegate.lavaTime != lavaTime;
+        oldDelegate.highlight != highlight;
   }
 }
 
@@ -5678,11 +5384,11 @@ class _LiquidPainter extends CustomPainter {
   final double pourProgress;
   final double bubbleBurst;
   final double receiveFlow;
+  final double lavaTime; // 0→1 döngüsel, AnimationController'dan
   final bool blindMode;
   final int visibleLayerCount;
   final int revealGlowTick;
   final int capacity;
-  final double lavaTime; // 0→1 döngüsel, AnimationController'dan
 
   const _LiquidPainter({
     required this.tube,
@@ -5695,11 +5401,11 @@ class _LiquidPainter extends CustomPainter {
     required this.pourProgress,
     required this.bubbleBurst,
     required this.receiveFlow,
+    this.lavaTime = 0.0,
     required this.revealGlowTick,
     this.blindMode = false,
     this.visibleLayerCount = kCap,
     this.capacity = kCap,
-    this.lavaTime = 0.0,
   });
 
   // İç alan sınırları
@@ -5924,7 +5630,7 @@ class _LiquidPainter extends CustomPainter {
           blindMode && (i < hiddenOriginalCount || layer.colorIdx < 0);
 
       final fill = isHidden
-          ? const Color(0xFF2A2535)
+          ? BlindLayerUiHelper.hiddenFillColor
           : visibleLiquidFillForIndex(safeIdx);
       final isLavaLayer = !isHidden && isLavaColorIndex(safeIdx);
       final highlightAlpha =
@@ -6135,72 +5841,42 @@ class _LiquidPainter extends CustomPainter {
         );
       }
 
-      // Reveal glow: en son görünür katmanın (yani hiddenOriginalCount'tan sonraki
-      // ilk layer) index'i. Birleştirme sonrası bu her zaman hiddenOriginalCount'a eşittir.
-      final revealLayerIndex =
-          blindMode && safeVisibleCount > 0 ? hiddenOriginalCount : -1;
+      final revealLayerIndex = BlindLayerUiHelper.computeRevealLayerIndex(
+        blindMode: blindMode,
+        safeVisibleCount: safeVisibleCount,
+        blindBaseLayerCount: blindBaseLayerCount,
+        renderedLayerCount: layers.length,
+      );
       final isRevealLayer = blindMode && !isHidden && i == revealLayerIndex;
 
-      if (isRevealLayer && revealGlowTick > 0) {
-        final revealPulse = 1.0;
-        canvas.drawPath(
-          bandPath,
-          Paint()
-            ..color = Colors.white.withValues(alpha: 0.18 * revealPulse)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0),
-        );
-        canvas.drawPath(
-          bandPath,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.0
-            ..color = Colors.white.withValues(alpha: 0.24 * revealPulse),
+      if (isRevealLayer) {
+        BlindLayerUiHelper.paintRevealGlow(
+          canvas: canvas,
+          bandPath: bandPath,
+          revealGlowTick: revealGlowTick,
         );
       }
 
-      // blindMode: gri katmanlar arası ince ayırıcı çizgi + ortasına '?'
       if (isHidden) {
-        // Katmanlar arası ince çizgi (üst kenar)
-        // Gizli katmanlar arası ince ayırıcı çizgi:
-        // Bu katmandan sonra bir sonraki katman da hâlâ gizliyse çiz
-        if (i < hiddenOriginalCount - 1) {
-          // üstteki katmanın alt yüzeyi = bu katmanın üst yüzeyi
-          final divSurface = _surface(vTop, tilt, slosh * 0.2);
-          canvas.drawPath(
-            Path()
-              ..moveTo(_il, divSurface.lY)
-              ..quadraticBezierTo(
-                  _il + _iw / 2, divSurface.cY, _ir, divSurface.rY),
-            Paint()
-              ..color = Colors.white.withValues(alpha: 0.18)
-              ..strokeWidth = 0.8
-              ..style = PaintingStyle.stroke
-              ..strokeCap = StrokeCap.round,
-          );
-        }
-
-        // Katmanın ortasına '?' çiz
-        final midVol = (vBot + vTop) / 2;
-        final midSurface = _surface(midVol, 0, 0);
-        final midY = midSurface.cY;
-        final midX = (_il + _ir) / 2;
-
-        final textPainter = TextPainter(
-          text: const TextSpan(
-            text: '?',
-            style: TextStyle(
-              color: Color(0xAAFFFFFF),
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              height: 1.0,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-
-        textPainter.paint(
-          canvas,
-          Offset(midX - textPainter.width / 2, midY - textPainter.height / 2),
+        BlindLayerUiHelper.paintHiddenLayerDecorations(
+          canvas: canvas,
+          layerIndex: i,
+          renderedLayerCount: layers.length,
+          vBot: vBot,
+          vTop: vTop,
+          il: _il,
+          iw: _iw,
+          ir: _ir,
+          tilt: tilt,
+          slosh: slosh,
+          surface: (volume, tiltValue, sloshValue) {
+            final s = _surface(volume, tiltValue, sloshValue);
+            return BlindLayerSurfacePoint(
+              lY: s.lY,
+              cY: s.cY,
+              rY: s.rY,
+            );
+          },
         );
       }
 
