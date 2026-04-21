@@ -35,22 +35,9 @@ class BlindLayerUiHelper {
     required Path bandPath,
     required int revealGlowTick,
   }) {
-    if (revealGlowTick <= 0) return;
-
-    const revealPulse = 1.0;
-    canvas.drawPath(
-      bandPath,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.18 * revealPulse)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0),
-    );
-    canvas.drawPath(
-      bandPath,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0
-        ..color = Colors.white.withValues(alpha: 0.24 * revealPulse),
-    );
+    // Map 2'de açılan katmanda ekstra parlama istemiyoruz.
+    // Siyah gizli katman ve ? işareti kalacak, ama açılan renk düz görünecek.
+    return;
   }
 
   static void paintHiddenLayerDecorations({

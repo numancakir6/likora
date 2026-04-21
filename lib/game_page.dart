@@ -2863,41 +2863,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-              // Win anında eruption öne gelsin; normalde ana rezervuar PNG'nin arkasında kalır
-              if (widget.mapNumber == 3 && _gameWon)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    child: LayoutBuilder(
-                      builder: (ctx, _) {
-                        final screenW =
-                            MediaQuery.of(ctx).size.width.clamp(280.0, 500.0);
-                        final reservoirH = screenW / 1.776;
-                        return MountainTubeReservoir(
-                          width: screenW,
-                          height: reservoirH,
-                          fillPercent: _mountainFillPercent,
-                          liquidColor: _mountainLayers.isEmpty
-                              ? const Color(0xFFFF6A00)
-                              : (isLavaColorIndex(_mountainLayers.last.colorIdx)
-                                  ? kLavaOrange
-                                  : solidColorForIndex(
-                                      _mountainLayers.last.colorIdx)),
-                          glow: true,
-                          onTap: () {},
-                          layers: List<VisualLayer>.from(
-                            _mountainLayers.map((l) => l.copyWith()),
-                          ),
-                          capacity: _mountainCapacity,
-                          gameWon: true,
-                          loopEruption: true,
-                        );
-                      },
-                    ),
-                  ),
-                ),
             ],
           ),
         ));
