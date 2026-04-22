@@ -328,7 +328,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     if (!mounted) return;
     setState(() {
       _completionSceneIntroSeen = true;
-      _showPersistentCompletionScene = true;
+      _showPersistentCompletionScene = false;
       _showFirstCompletionScene = true;
     });
 
@@ -563,7 +563,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     if (!mounted) return;
 
     setState(() {
-      _showPersistentCompletionScene = true;
+      _showPersistentCompletionScene = seen;
       _showFirstCompletionScene = !seen;
       _completionSceneIntroSeen = true;
     });

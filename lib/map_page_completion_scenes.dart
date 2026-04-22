@@ -857,62 +857,65 @@ class _Map2CompletionPainter extends CustomPainter {
     }
 
     // ── Fish ──────────────────────────────────────────────────────────────
-    // intense: 4 fish in the middle zone of the screen (0.30 – 0.65 height)
-    // normal : 2 fish near bottom
+    // Balıklar artık ileri-geri sallanmıyor.
+    // Sağdan gelen sola geçip kaybolur, soldan gelen sağa geçip kaybolur.
     if (intense) {
       if (waterLevel > 0.55) {
-        // Fish data: [xBase(0..1), yBase(0..1 of screen), speedMult, phase, goRight]
+        // Fish data: [yBase(0..1 of screen), speedMult, phase, goRight]
         const fishData = [
-          [0.18, 0.42, 1.0, 0.0, 1.0],
-          [0.65, 0.52, 0.75, 1.8, 0.0],
-          [0.38, 0.60, 1.2, 3.5, 1.0],
-          [0.80, 0.37, 0.9, 5.1, 0.0],
+          [0.42, 1.00, 0.00, 1.0],
+          [0.52, 0.75, 1.80, 0.0],
+          [0.60, 1.20, 3.50, 1.0],
+          [0.37, 0.90, 5.10, 0.0],
         ];
         final fishAlpha = ((waterLevel - 0.55) / 0.15).clamp(0.0, 1.0);
+        final travelWidth = size.width + 72.0;
         for (final fd in fishData) {
-          final xBase = fd[0] as double;
-          final yBase = fd[1] as double;
-          final speed = fd[2] as double;
-          final phase = fd[3] as double;
-          final goRight = (fd[4] as double) > 0.5;
+          final yBase = fd[0] as double;
+          final speed = fd[1] as double;
+          final phase = fd[2] as double;
+          final goRight = (fd[3] as double) > 0.5;
+          final progress = (t * speed + phase / (pi * 2)) % 1.0;
+          final fx = goRight
+              ? lerpDouble(-36.0, size.width + 36.0, progress)!
+              : lerpDouble(size.width + 36.0, -36.0, progress)!;
+          final fy =
+              size.height * yBase + sin(progress * pi * 2 + phase + 1.1) * 10;
 
-          // Fish swim back and forth within their lane
-          final fx = size.width * xBase +
-              sin(t * pi * 2 * speed + phase) * size.width * 0.22;
-          final fy = size.height * yBase +
-              sin(t * pi * 2 * speed * 0.6 + phase + 1.1) * 14;
-
-          // Only draw fish if they are below the water surface
-          final surfY =
-              _surfaceY(fx, size.width, topY, sloshAmp, sloshPhase, waveAmp);
+          final surfY = _surfaceY(fx.clamp(0.0, size.width), size.width, topY,
+              sloshAmp, sloshPhase, waveAmp);
           if (fy > surfY + 8) {
             _drawFish(canvas, Offset(fx, fy), goRight, fishAlpha);
           }
         }
       }
     } else {
-      // Normal (sabit) modda 5 balık — su %70+ dolunca belirmeye başlar
+      // Normal (sabit) modda da sürekli bir taraftan girip diğer taraftan çıkarlar
       if (waterLevel > 0.50) {
         final fishAlpha = ((waterLevel - 0.50) / 0.25).clamp(0.0, 1.0);
         const normalFishData = [
-          [0.15, 0.30, 1.0, 0.0, 1.0],
-          [0.70, 0.45, 0.80, 1.8, 0.0],
-          [0.40, 0.60, 1.1, 3.2, 1.0],
-          [0.82, 0.25, 0.90, 4.7, 0.0],
-          [0.28, 0.75, 0.70, 2.5, 1.0],
+          [0.30, 1.00, 0.00, 1.0],
+          [0.45, 0.80, 1.80, 0.0],
+          [0.60, 1.10, 3.20, 1.0],
+          [0.25, 0.90, 4.70, 0.0],
+          [0.75, 0.70, 2.50, 1.0],
         ];
-        for (int i = 0; i < normalFishData.length; i++) {
-          final fd = normalFishData[i];
-          final xBase = fd[0] as double;
-          final yBase = fd[1] as double;
-          final speed = fd[2] as double;
-          final phase = fd[3] as double;
-          final goRight = (fd[4] as double) > 0.5;
-          final fx = size.width * xBase +
-              sin(t * pi * 2 * speed + phase) * size.width * 0.18;
-          final fy = size.height * yBase +
-              sin(t * pi * 2 * speed * 0.6 + phase + 1.1) * 12;
-          _drawFish(canvas, Offset(fx, fy), goRight, fishAlpha);
+        for (final fd in normalFishData) {
+          final yBase = fd[0] as double;
+          final speed = fd[1] as double;
+          final phase = fd[2] as double;
+          final goRight = (fd[3] as double) > 0.5;
+          final progress = (t * speed + phase / (pi * 2)) % 1.0;
+          final fx = goRight
+              ? lerpDouble(-36.0, size.width + 36.0, progress)!
+              : lerpDouble(size.width + 36.0, -36.0, progress)!;
+          final fy =
+              size.height * yBase + sin(progress * pi * 2 + phase + 1.1) * 8;
+          final surfY = _surfaceY(fx.clamp(0.0, size.width), size.width, topY,
+              sloshAmp, sloshPhase, waveAmp);
+          if (fy > surfY + 8) {
+            _drawFish(canvas, Offset(fx, fy), goRight, fishAlpha);
+          }
         }
       }
     }
