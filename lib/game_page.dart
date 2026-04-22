@@ -1808,155 +1808,94 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
+      left: 92,
+      right: 92,
+      bottom: bottomPad + 30,
       child: IgnorePointer(
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 110 + bottomPad,
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                bottom: bottomPad + 12,
-                top: 12,
-              ),
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.94, end: 1.0),
-                    duration: const Duration(milliseconds: 550),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, scale, child) {
-                      return Transform.scale(scale: scale, child: child);
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(24),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                        child: Container(
-                          constraints: const BoxConstraints(maxWidth: 250),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(24),
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                const Color(0xFF12081F).withValues(alpha: 0.92),
-                                _theme.bgDark.withValues(alpha: 0.84),
-                              ],
-                            ),
-                            border: Border.all(
-                              color: accent.withValues(alpha: 0.30),
-                              width: 1.1,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: accent.withValues(alpha: 0.18),
-                                blurRadius: 22,
-                                spreadRadius: 1.5,
-                                offset: const Offset(0, 10),
-                              ),
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.28),
-                                blurRadius: 18,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    Container(
-                                      width: 22,
-                                      height: 22,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        gradient: RadialGradient(
-                                          colors: [
-                                            secondary.withValues(alpha: 0.95),
-                                            accent.withValues(alpha: 0.20),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 1.8,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                          secondary,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Joker çalışıyor',
-                                    style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.96),
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.2,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'En iyi hamle hesaplanıyor',
-                                    style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.62),
-                                      fontSize: 11.2,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(width: 10),
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: secondary,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: secondary.withValues(alpha: 0.65),
-                                      blurRadius: 10,
-                                      spreadRadius: 0.5,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.96, end: 1.0),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          builder: (context, scale, child) {
+            return Transform.scale(scale: scale, child: child);
+          },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: Container(
+                height: 52,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF12081F).withValues(alpha: 0.92),
+                      _theme.bgDark.withValues(alpha: 0.84),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: accent.withValues(alpha: 0.30),
+                    width: 1.1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.18),
+                      blurRadius: 18,
+                      spreadRadius: 1.0,
+                      offset: const Offset(0, 8),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.26),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.8,
+                        valueColor: AlwaysStoppedAnimation<Color>(secondary),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Joker çalışıyor',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.96),
+                          fontSize: 12.8,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.15,
                         ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: secondary,
+                        boxShadow: [
+                          BoxShadow(
+                            color: secondary.withValues(alpha: 0.65),
+                            blurRadius: 8,
+                            spreadRadius: 0.4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
