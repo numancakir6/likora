@@ -6,7 +6,8 @@ import 'player_progress.dart';
 import 'settings_page.dart';
 import 'audio_service.dart';
 import 'game/core/game_models.dart';
-import 'game/map_finish_overlays.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'map_page_completion_scenes.dart';
 // ─────────────────────────────────────────────
 //  DIFFICULTY
 // ─────────────────────────────────────────────
@@ -209,7 +210,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const double _nodeWidgetSize = 72;
   static const double _nodeHalfSize = _nodeWidgetSize / 2;
   static const double _nodeMinCenterDistance = 80;
-  static const bool _showDebugButtons = false;
+  static const bool _showDebugButtons = true;
 
   static final Map<int, Set<int>> _mapCompletedLevels = {
     for (var i = 1; i <= _maxMapCount; i++) i: <int>{},
@@ -225,9 +226,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   late Set<int> completedLevels;
   late Set<int> _unlocked;
   late List<LevelNodeData> _levels;
-  bool _showMapFinishOverlay = false;
-  bool _mapFinishOverlayHandled = false;
-  int? _pendingSwitchToMap;
+  bool _showFirstCompletionScene = false;
+  bool _showPersistentCompletionScene = false;
+  bool _completionSceneIntroSeen = false;
 
   @override
   void initState() {
@@ -254,16 +255,28 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     _loadProgress();
   }
 
+  String get _completionSceneSeenPrefsKey =>
+      'likora_map_completion_scene_seen_$_mapNumber';
+
+  bool _isMapFullyCompleted(Set<int> levels) =>
+      levels.length >= _layout.totalLevels;
+
   Future<void> _loadProgress() async {
     await PlayerProgress.ensureLoaded();
 
     final savedCompleted = await PlayerProgress.getCompletedLevels(_mapNumber);
     _mapCompletedLevels[_mapNumber] = Set<int>.from(savedCompleted);
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool(_completionSceneSeenPrefsKey) ?? false;
+    final fullyCompleted = _isMapFullyCompleted(savedCompleted);
 
     if (!mounted) return;
 
     setState(() {
       completedLevels = Set<int>.from(savedCompleted);
+      _completionSceneIntroSeen = seen;
+      _showPersistentCompletionScene = fullyCompleted;
+      _showFirstCompletionScene = false;
       _rebuildLevels();
     });
   }
@@ -289,7 +302,54 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     if (!mounted) return;
     setState(() {
       completedLevels = Set<int>.from(allLevelIds);
+      _showPersistentCompletionScene = true;
+      _showFirstCompletionScene = false;
       _rebuildLevels();
+    });
+  }
+
+  Duration _sceneRevealDurationForMap(int mapNumber) {
+    switch (mapNumber) {
+      case 1:
+        return const Duration(milliseconds: 2600);
+      case 2:
+        return const Duration(milliseconds: 3000);
+      case 3:
+        return const Duration(milliseconds: 3600);
+      default:
+        return const Duration(milliseconds: 2600);
+    }
+  }
+
+  Future<void> _runCompletionSceneTest() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_completionSceneSeenPrefsKey, true);
+
+    if (!mounted) return;
+    setState(() {
+      _completionSceneIntroSeen = true;
+      _showPersistentCompletionScene = true;
+      _showFirstCompletionScene = true;
+    });
+
+    await Future.delayed(_sceneRevealDurationForMap(_mapNumber));
+    if (!mounted) return;
+
+    setState(() {
+      _showFirstCompletionScene = false;
+      _showPersistentCompletionScene = true;
+    });
+  }
+
+  Future<void> _resetCompletionSceneTest() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_completionSceneSeenPrefsKey);
+
+    if (!mounted) return;
+    setState(() {
+      _completionSceneIntroSeen = false;
+      _showFirstCompletionScene = false;
+      _showPersistentCompletionScene = false;
     });
   }
 
@@ -483,45 +543,51 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
       await _saveProgress();
 
-      final isMapFullyCompleted =
-          updatedCompleted.length >= _layout.totalLevels;
-
+      final isMapFullyCompleted = _isMapFullyCompleted(updatedCompleted);
       if (isMapFullyCompleted) {
-        await _handleMapCompletionSequence();
+        await _handleMapCompletionSceneActivation();
       }
     }
   }
 
-  Future<void> _handleMapCompletionSequence() async {
-    if (_mapFinishOverlayHandled) return;
-    _mapFinishOverlayHandled = true;
+  Future<void> _handleMapCompletionSceneActivation() async {
+    if (_showPersistentCompletionScene && _completionSceneIntroSeen) return;
 
     if (_mapNumber < _maxMapCount && _mapNumber < _playableMapCount) {
       await PlayerProgress.unlockMap(_mapNumber + 1);
-      _pendingSwitchToMap = _mapNumber + 1;
-    } else {
-      _pendingSwitchToMap = null;
     }
 
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool(_completionSceneSeenPrefsKey) ?? false;
+
     if (!mounted) return;
+
     setState(() {
-      _showMapFinishOverlay = true;
+      _showPersistentCompletionScene = true;
+      _showFirstCompletionScene = !seen;
+      _completionSceneIntroSeen = true;
     });
+
+    if (!seen) {
+      await prefs.setBool(_completionSceneSeenPrefsKey, true);
+      await Future.delayed(_sceneRevealDurationForMap(_mapNumber));
+      if (!mounted) return;
+      setState(() {
+        _showFirstCompletionScene = false;
+      });
+    }
   }
 
-  Future<void> _handleMapFinishOverlayCompleted() async {
-    if (!mounted) return;
-
-    final targetMap = _pendingSwitchToMap;
-    setState(() {
-      _showMapFinishOverlay = false;
-    });
-
-    if (targetMap != null && targetMap != _mapNumber) {
-      Future.delayed(const Duration(milliseconds: 180), () {
-        if (!mounted) return;
-        _switchToMap(targetMap);
-      });
+  Duration sceneRevealDurationForMap(int mapNumber) {
+    switch (mapNumber) {
+      case 1:
+        return const Duration(milliseconds: 2800);
+      case 2:
+        return const Duration(milliseconds: 3000);
+      case 3:
+        return const Duration(milliseconds: 3200);
+      default:
+        return const Duration(milliseconds: 2500);
     }
   }
 
@@ -600,13 +666,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             const SizedBox(height: 10),
           ]),
         ),
-        if (_showMapFinishOverlay)
-          Positioned.fill(
-            child: MapFinishOverlay(
-              mapNumber: _mapNumber,
-              onCompleted: _handleMapFinishOverlayCompleted,
-            ),
-          ),
       ]),
     );
   }
@@ -643,14 +702,38 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           ),
         ),
         const Spacer(),
-        // ── TEST BUTONU ──
-        if (_showDebugButtons)
+        // ── DEBUG BUTONLARI ──
+        if (_showDebugButtons) ...[
           _GlassButton(
             accentColor: Colors.orange,
             onTap: _unlockAllLevels,
-            child: const Icon(Icons.lock_open_rounded,
-                color: Colors.orange, size: 20),
+            child: const Icon(
+              Icons.lock_open_rounded,
+              color: Colors.orange,
+              size: 20,
+            ),
           ),
+          const SizedBox(width: 8),
+          _GlassButton(
+            accentColor: Colors.cyan,
+            onTap: _runCompletionSceneTest,
+            child: const Icon(
+              Icons.play_arrow_rounded,
+              color: Colors.cyan,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 8),
+          _GlassButton(
+            accentColor: Colors.redAccent,
+            onTap: _resetCompletionSceneTest,
+            child: const Icon(
+              Icons.restart_alt_rounded,
+              color: Colors.redAccent,
+              size: 20,
+            ),
+          ),
+        ],
       ]),
     );
   }
@@ -810,6 +893,24 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                         data: level,
                         theme: _theme,
                         onTap: () => _navigateToLevel(level.id),
+                      ),
+                    ),
+                  ),
+                if (!isComingSoon && _showPersistentCompletionScene)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: MapCompletionAmbientScene(
+                        mapNumber: _mapNumber,
+                        intense: false,
+                      ),
+                    ),
+                  ),
+                if (!isComingSoon && _showFirstCompletionScene)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: MapCompletionAmbientScene(
+                        mapNumber: _mapNumber,
+                        intense: true,
                       ),
                     ),
                   ),

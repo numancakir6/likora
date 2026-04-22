@@ -24,7 +24,6 @@ import 'game/core/game_refill.dart';
 import 'game/maps/map3/map3_mountain_reservoir.dart';
 import 'game/maps/map2/map2_visibility.dart';
 import 'game/maps/map2/map2_ui.dart';
-import 'game/map_finish_overlays.dart';
 
 // ─────────────────────────────────────────────
 // OYUN SABİTLERİ
@@ -368,9 +367,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   int _mountainFillUnits = 0;
   final List<VisualLayer> _mountainLayers = [];
   bool _loopCompletedVolcano = false;
-  bool _showMapFinishOverlay = false;
-  bool _mapFinishOverlayStarted = false;
-  bool _winDialogQueued = false;
   // Rewarded reklam
   RewardedAd? _extraTubeAd;
   bool _isExtraTubeAdReady = false;
@@ -620,11 +616,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return cloneRefillQueuesMap(source);
   }
 
-  Map<int, List<List<int>>> decodeRuntimeRefillQueues(dynamic raw) {
+  Map<int, List<List<int>>> _decodeRuntimeRefillQueues(dynamic raw) {
     return decodeRuntimeRefillQueues(raw);
   }
 
-  Map<String, dynamic> encodeRuntimeRefillQueues(
+  Map<String, dynamic> _encodeRuntimeRefillQueues(
     Map<int, List<List<int>>> queues,
   ) {
     return encodeRuntimeRefillQueues(queues);
@@ -1303,7 +1299,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _levelRewardGranted = false;
     _mountainFillUnits = 0;
     _mountainLayers.clear();
-    _resetPostWinOverlayFlags();
     setState(() {});
   }
 
@@ -1679,8 +1674,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       }
 
       if (i < limits.length - 1 && mounted) {
-        final nextLimit = limits[i + 1];
-        showBottomHint('Joker daha derin arıyor... ($limit → $nextLimit)');
         await Future.delayed(const Duration(milliseconds: 90));
       }
     }
@@ -1732,27 +1725,23 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             final parts = firstMove.split('->');
             if (parts.length != 2) {
               _vibrateLight();
-              showBottomHint('Joker hamlesi çözülemedi');
               return;
             }
 
             final from = int.parse(parts[0]);
             final to = int.parse(parts[1]);
-            showBottomHint('Joker: ${from + 1} → ${to + 1}');
             await _startPour(from, to);
           }
           return;
         }
 
         if (_history.isNotEmpty) {
-          showBottomHint('Bu konumdan çözüm yok, bir hamle geri alınıyor...');
           await _undo();
           await Future.delayed(const Duration(milliseconds: 200));
           continue;
         }
 
         _vibrateLight();
-        showBottomHint('Çözüm bulunamadı, reklam tüpünü açmayı dene!');
         return;
       }
     } finally {
@@ -1779,51 +1768,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     });
     PlayerProgress.setCoins(_coins);
     _persistLevelState();
-  }
-
-  void _resetPostWinOverlayFlags() {
-    _showMapFinishOverlay = false;
-    _mapFinishOverlayStarted = false;
-    _winDialogQueued = false;
-  }
-
-  void _startPostWinSequence() {
-    if (_winDialogQueued) return;
-    _winDialogQueued = true;
-
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-      final allDone = <int, int>{};
-      for (int i = 0; i < _tubes.length; i++) {
-        if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
-          allDone[i] = _tubes[i].first;
-        }
-      }
-      _triggerDoneCelebration(allDone, isWin: true);
-    });
-
-    if (widget.mapNumber == 3) {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (!mounted || _mapFinishOverlayStarted) return;
-        setState(() {
-          _mapFinishOverlayStarted = true;
-          _showMapFinishOverlay = true;
-        });
-      });
-    } else {
-      Future.delayed(const Duration(milliseconds: 2100), () {
-        if (!mounted || _showMapFinishOverlay) return;
-        _showWinDialog();
-      });
-    }
-  }
-
-  void _handleMapFinishOverlayCompleted() {
-    if (!mounted) return;
-    setState(() {
-      _showMapFinishOverlay = false;
-    });
-    _showWinDialog();
   }
 
   int get _levelReward =>
@@ -1854,6 +1798,170 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         ),
         backgroundColor: const Color(0xFF2A223D),
         elevation: 0,
+      ),
+    );
+  }
+
+  Widget _buildJokerWorkingOverlay() {
+    final accent = _theme.accentColor;
+    final secondary = Color.lerp(accent, Colors.white, 0.18) ?? accent;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 110 + bottomPad,
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                bottom: bottomPad + 12,
+                top: 12,
+              ),
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.94, end: 1.0),
+                    duration: const Duration(milliseconds: 550),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, scale, child) {
+                      return Transform.scale(scale: scale, child: child);
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 250),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(24),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                const Color(0xFF12081F).withValues(alpha: 0.92),
+                                _theme.bgDark.withValues(alpha: 0.84),
+                              ],
+                            ),
+                            border: Border.all(
+                              color: accent.withValues(alpha: 0.30),
+                              width: 1.1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withValues(alpha: 0.18),
+                                blurRadius: 22,
+                                spreadRadius: 1.5,
+                                offset: const Offset(0, 10),
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.28),
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Container(
+                                      width: 22,
+                                      height: 22,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: RadialGradient(
+                                          colors: [
+                                            secondary.withValues(alpha: 0.95),
+                                            accent.withValues(alpha: 0.20),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 1.8,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                          secondary,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Joker çalışıyor',
+                                    style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.96),
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'En iyi hamle hesaplanıyor',
+                                    style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.62),
+                                      fontSize: 11.2,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 10),
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: secondary,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: secondary.withValues(alpha: 0.65),
+                                      blurRadius: 10,
+                                      spreadRadius: 0.5,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2171,6 +2279,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     ));
 
     setState(() {
+      // Yeni liste referansı — shouldRepaint(old.tube != tube) tetiklensin
       final updated = List<int>.from(_tubes[from]);
       for (int i = 0; i < count; i++) {
         updated.removeLast();
@@ -2181,8 +2290,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _activePlans.add(plan);
     });
 
-    final mountainFillStartMs = (kPourDuration.inMilliseconds * 0.68).round();
-
+    // Volkan dolumu: akışın sıvıya değdiği anda başlasın (animasyonun %68'i = vHeadEnd)
+    // Tüp yola çıkar çıkmaz değil, döküm ortasında başlasın.
+    final mountainFillStartMs =
+        (kPourDuration.inMilliseconds * 0.68).round(); // vHeadEnd
     Future.delayed(Duration(milliseconds: mountainFillStartMs), () {
       if (!mounted || !_activePlans.contains(plan)) return;
       setState(() {
@@ -2193,40 +2304,32 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             volume: _mountainLayers.last.volume + count.toDouble(),
           );
         } else {
-          _mountainLayers.add(
-            VisualLayer(colorIdx: colorIdx, volume: count.toDouble()),
-          );
+          _mountainLayers
+              .add(VisualLayer(colorIdx: colorIdx, volume: count.toDouble()));
         }
         _mountainFillUnits += count;
       });
     });
-
     _persistLevelState();
     unawaited(_persistUndoHistoryState());
 
-    final waterStartMs = (kPourDuration.inMilliseconds * 0.15).round();
-    final waterStopMs = (kPourDuration.inMilliseconds * 0.92).round();
+    final waterStartMs = (kPourDuration.inMilliseconds * 0.58).round();
+    final waterStopMs = (kPourDuration.inMilliseconds * 0.90).round();
     int? waterToken;
 
     Future.delayed(Duration(milliseconds: waterStartMs), () async {
-      if (!mounted) return;
+      if (!mounted || !_activePlans.contains(plan)) return;
       waterToken = await SfxService.startWater();
     });
 
     Future.delayed(Duration(milliseconds: waterStopMs), () async {
-      if (waterToken != null) {
-        await SfxService.stopWater(waterToken);
-        waterToken = null;
-      }
+      if (!mounted || !_activePlans.contains(plan)) return;
+      await SfxService.stopWater(waterToken);
+      waterToken = null;
     });
 
-    Future.delayed(kPourDuration, () async {
+    Future.delayed(kPourDuration, () {
       if (!mounted) return;
-
-      if (waterToken != null) {
-        await SfxService.stopWater(waterToken);
-        waterToken = null;
-      }
 
       _tryRefillSourceTube(from);
 
@@ -2244,7 +2347,20 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _persistLevelState();
 
       if (didWin && _activePlans.isEmpty) {
-        _startPostWinSequence();
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (!mounted) return;
+          final allDone = <int, int>{};
+          for (int i = 0; i < _tubes.length; i++) {
+            if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
+              allDone[i] = _tubes[i].first;
+            }
+          }
+          _triggerDoneCelebration(allDone, isWin: true);
+        });
+        // Eruption animasyonunun (~3.5sn) bitmesini bekle
+        Future.delayed(const Duration(milliseconds: 4500), () {
+          if (mounted) _showWinDialog();
+        });
       }
 
       _drainQueue();
@@ -2252,103 +2368,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _startPour(int from, int to) async {
-    if (!canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to))) {
-      _vibrateLight();
-      return;
-    }
-
-    final count =
-        pourCountBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to));
-    if (count <= 0) {
-      _vibrateLight();
-      return;
-    }
-
-    final plan = TransferPlan(
-      fromIdx: from,
-      toIdx: to,
-      fromSnapshot: List<int>.from(_tubes[from]),
-      toSnapshot: List<int>.from(_tubes[to]),
-      colorIdx: _tubes[from].last,
-      count: count,
-    );
-
-    _history.add((
-      tubes: _tubes.map((t) => List<int>.from(t)).toList(),
-      visibleLayerCounts: List<int>.from(_visibleLayerCounts),
-      fromIdx: from,
-      toIdx: to,
-      mountainFillUnits: _mountainFillUnits,
-      mountainLayers: _mountainLayers.map((l) => l.copyWith()).toList(),
-    ));
-
-    doPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to));
-
-    setState(() {
-      _selected = null;
-      _activePlans.add(plan);
-    });
-    _persistLevelState();
-    unawaited(_persistUndoHistoryState());
-
-    final waterStartMs = (kPourDuration.inMilliseconds * 0.15).round();
-    final waterStopMs = (kPourDuration.inMilliseconds * 0.92).round();
-    int? waterToken;
-
-    Future.delayed(Duration(milliseconds: waterStartMs), () async {
-      if (!mounted) return;
-      waterToken = await SfxService.startWater();
-    });
-
-    Future.delayed(Duration(milliseconds: waterStopMs), () async {
-      if (waterToken != null) {
-        await SfxService.stopWater(waterToken);
-        waterToken = null;
-      }
-    });
-
-    Future.delayed(kPourDuration, () async {
-      if (!mounted) return;
-
-      if (waterToken != null) {
-        await SfxService.stopWater(waterToken);
-        waterToken = null;
-      }
-
-      _tryRefillSourceTube(from);
-      _tryRefillSourceTube(to);
-
-      _updateBlindVisibilityAfterPour(from, to, count);
-
-      final newlyDone = <int, int>{};
-      for (final i in [from, to]) {
-        if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
-          newlyDone[i] = _tubes[i].first;
-        }
-      }
-      final didWin = _isGameDoneIn(_tubes);
-
-      setState(() {
-        _activePlans.remove(plan);
-        _gameWon = didWin;
-        if (didWin) {
-          _loopCompletedVolcano = widget.mapNumber == 3;
-        }
-      });
-      _persistLevelState();
-
-      if (didWin) {
-        if (_activePlans.isEmpty) {
-          _startPostWinSequence();
-        }
-      } else {
-        _triggerDoneCelebration(newlyDone);
-        _drainQueue();
-      }
-    });
-  }
-
-  Future<void> startPour(int from, int to) async {
     if (!canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to))) {
       _vibrateLight();
       return;
@@ -2432,11 +2451,32 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _persistLevelState();
 
       if (didWin) {
+        // Tüm paralel akışlar bitene kadar kutlamayı ve win dialog'u bekle
         if (_activePlans.isEmpty) {
-          _startPostWinSequence();
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (!mounted) return;
+            final allDone = <int, int>{};
+            for (int i = 0; i < _tubes.length; i++) {
+              if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
+                allDone[i] = _tubes[i].first;
+              }
+            }
+            _triggerDoneCelebration(allDone, isWin: true);
+          });
+          // Map 3'te eruption animasyonunu bekle, diğerlerinde kısa gecikme
+          final winDelay = widget.mapNumber == 3
+              ? const Duration(milliseconds: 4500)
+              : const Duration(milliseconds: 2100);
+          Future.delayed(winDelay, () {
+            if (mounted) _showWinDialog();
+          });
         }
+        // Eğer başka aktif plan varsa, o planın kendi future'ı bitince
+        // _activePlans.isEmpty kontrolüne girecek ve oradan tetikleyecek.
       } else {
+        // Normal tamamlama — sadece yeni dolan şişeler
         _triggerDoneCelebration(newlyDone);
+        // Kuyruktaki komutları işle
         _drainQueue();
       }
     });
@@ -3019,13 +3059,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   child: _buildBottomBar(),
                 ),
               ),
-              if (_showMapFinishOverlay)
-                Positioned.fill(
-                  child: MapFinishOverlay(
-                    mapNumber: widget.mapNumber,
-                    onCompleted: _handleMapFinishOverlayCompleted,
-                  ),
-                ),
+              if (_jokerBusy) _buildJokerWorkingOverlay(),
             ],
           ),
         ));
