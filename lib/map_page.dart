@@ -6,6 +6,7 @@ import 'player_progress.dart';
 import 'settings_page.dart';
 import 'audio_service.dart';
 import 'game/core/game_models.dart';
+import 'game/map_finish_overlays.dart';
 // ─────────────────────────────────────────────
 //  DIFFICULTY
 // ─────────────────────────────────────────────
@@ -224,6 +225,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   late Set<int> completedLevels;
   late Set<int> _unlocked;
   late List<LevelNodeData> _levels;
+  bool _showMapFinishOverlay = false;
+  bool _mapFinishOverlayHandled = false;
+  int? _pendingSwitchToMap;
 
   @override
   void initState() {
@@ -482,16 +486,42 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       final isMapFullyCompleted =
           updatedCompleted.length >= _layout.totalLevels;
 
-      if (isMapFullyCompleted &&
-          _mapNumber < _maxMapCount &&
-          _mapNumber < _playableMapCount) {
-        await PlayerProgress.unlockMap(_mapNumber + 1);
-
-        Future.delayed(const Duration(milliseconds: 250), () {
-          if (!mounted) return;
-          _switchToMap(_mapNumber + 1);
-        });
+      if (isMapFullyCompleted) {
+        await _handleMapCompletionSequence();
       }
+    }
+  }
+
+  Future<void> _handleMapCompletionSequence() async {
+    if (_mapFinishOverlayHandled) return;
+    _mapFinishOverlayHandled = true;
+
+    if (_mapNumber < _maxMapCount && _mapNumber < _playableMapCount) {
+      await PlayerProgress.unlockMap(_mapNumber + 1);
+      _pendingSwitchToMap = _mapNumber + 1;
+    } else {
+      _pendingSwitchToMap = null;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _showMapFinishOverlay = true;
+    });
+  }
+
+  Future<void> _handleMapFinishOverlayCompleted() async {
+    if (!mounted) return;
+
+    final targetMap = _pendingSwitchToMap;
+    setState(() {
+      _showMapFinishOverlay = false;
+    });
+
+    if (targetMap != null && targetMap != _mapNumber) {
+      Future.delayed(const Duration(milliseconds: 180), () {
+        if (!mounted) return;
+        _switchToMap(targetMap);
+      });
     }
   }
 
@@ -570,6 +600,13 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             const SizedBox(height: 10),
           ]),
         ),
+        if (_showMapFinishOverlay)
+          Positioned.fill(
+            child: MapFinishOverlay(
+              mapNumber: _mapNumber,
+              onCompleted: _handleMapFinishOverlayCompleted,
+            ),
+          ),
       ]),
     );
   }

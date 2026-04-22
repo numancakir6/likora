@@ -82,18 +82,50 @@ class DailyPuzzleGenerator {
     final rng = Random(seed);
 
     final mapStyle = _pickMapStyle(seed);
-    if (mapStyle == DailyPuzzleMapStyle.map3) {
-      return _buildMap3Daily(
-        dateKey: dateKey,
-        seed: seed,
-        rng: rng,
-      );
+
+    switch (mapStyle) {
+      case DailyPuzzleMapStyle.map1:
+        return _buildMap1Daily(
+          dateKey: dateKey,
+          seed: seed,
+          rng: rng,
+        );
+      case DailyPuzzleMapStyle.map2:
+        return _buildMap2Daily(
+          dateKey: dateKey,
+          seed: seed,
+          rng: rng,
+        );
+      case DailyPuzzleMapStyle.map3:
+        return _buildMap3Daily(
+          dateKey: dateKey,
+          seed: seed,
+          rng: rng,
+        );
     }
+  }
 
-    final mapNumber = mapStyle == DailyPuzzleMapStyle.map2 ? 2 : 1;
-    final difficulty = _pickDifficulty(seed, mapStyle);
+  static String dateKeyOf(DateTime date) => _dateKey(date.toLocal());
 
-    final colorCount = _pickColorCount(difficulty, mapStyle);
+  static DailyPuzzleMapStyle _pickMapStyle(int seed) {
+    if (seed % 5 == 0) return DailyPuzzleMapStyle.map3;
+    if (seed % 3 == 0) return DailyPuzzleMapStyle.map2;
+    return DailyPuzzleMapStyle.map1;
+  }
+
+  // ─────────────────────────────────────────────
+  // MAP 1
+  // Standart günlük bulmaca
+  // ─────────────────────────────────────────────
+
+  static DailyPuzzleData _buildMap1Daily({
+    required String dateKey,
+    required int seed,
+    required Random rng,
+  }) {
+    final difficulty = _pickMap1Difficulty(seed);
+    final colorCount = _pickMap1ColorCount(difficulty);
+
     final filledTubeCount = colorCount;
     final totalTubeCount =
         filledTubeCount + _emptyTubeCount + _lockedAdTubeCount;
@@ -108,11 +140,11 @@ class DailyPuzzleGenerator {
     List<List<int>> tubes = const [];
     int attempt = 0;
 
-    while (attempt < 2000) {
+    while (attempt < 2500) {
       attempt++;
 
-      final candidate = _buildCandidateTubes(
-        rng: Random(seed + attempt * 97),
+      final candidate = _buildCandidateTubesMap1(
+        rng: Random(seed + attempt * 101),
         palette: palette,
         filledTubeCount: filledTubeCount,
       );
@@ -121,7 +153,7 @@ class DailyPuzzleGenerator {
       candidate.add(<int>[]);
       candidate.add(<int>[]);
 
-      if (_isAcceptableStart(candidate, filledTubeCount: filledTubeCount)) {
+      if (_isAcceptableMap1Start(candidate, filledTubeCount: filledTubeCount)) {
         tubes = candidate;
         break;
       }
@@ -140,101 +172,296 @@ class DailyPuzzleGenerator {
     return DailyPuzzleData(
       dateKey: dateKey,
       seed: seed,
-      mapStyle: mapStyle,
-      mapNumber: mapNumber,
+      mapStyle: DailyPuzzleMapStyle.map1,
+      mapNumber: 1,
       difficulty: difficulty,
       tubes: tubes,
       lockedAdTubeIndex: lockedAdTubeIndex,
-      layout: _buildLayout(totalTubeCount),
+      layout: _buildMap1Layout(totalTubeCount),
     );
   }
 
-  static String dateKeyOf(DateTime date) => _dateKey(date.toLocal());
-
-  static DailyPuzzleMapStyle _pickMapStyle(int seed) {
-    if (seed % 5 == 0) return DailyPuzzleMapStyle.map3;
-    return (seed % 3 == 0)
-        ? DailyPuzzleMapStyle.map2
-        : DailyPuzzleMapStyle.map1;
-  }
-
-  static int _pickDifficulty(int seed, DailyPuzzleMapStyle style) {
-    if (style == DailyPuzzleMapStyle.map3) {
-      const options = [5, 5, 6];
-      return options[seed % options.length];
-    }
-
-    if (style == DailyPuzzleMapStyle.map2) {
-      const options = [3, 4, 4, 5];
-      return options[seed % options.length];
-    }
-
+  static int _pickMap1Difficulty(int seed) {
     const options = [2, 3, 3, 4, 4];
     return options[seed % options.length];
   }
 
-  static int _pickColorCount(int difficulty, DailyPuzzleMapStyle style) {
-    if (style == DailyPuzzleMapStyle.map3) {
-      switch (difficulty) {
-        case 5:
-          return 7;
-        case 6:
-          return 8;
-        default:
-          return 7;
-      }
-    }
-
-    if (style == DailyPuzzleMapStyle.map2) {
-      switch (difficulty) {
-        case 3:
-          return 10;
-        case 4:
-          return 11;
-        case 5:
-          return 12;
-        default:
-          return 11;
-      }
-    }
-
+  static int _pickMap1ColorCount(int difficulty) {
     switch (difficulty) {
       case 2:
-        return 9;
+        return 8;
       case 3:
-        return 10;
+        return 9;
       case 4:
-        return 11;
-      case 5:
-        return 12;
-      default:
         return 10;
+      default:
+        return 9;
     }
   }
 
-  static List<int> _pickColorPalette({
+  static List<List<int>> _buildCandidateTubesMap1({
     required Random rng,
-    required int colorCount,
-    required int maxExclusive,
+    required List<int> palette,
+    required int filledTubeCount,
   }) {
-    final all = List<int>.generate(maxExclusive, (i) => i)..shuffle(rng);
-    return all.take(colorCount).toList(growable: false);
+    return _buildCandidateTubesGeneric(
+      rng: rng,
+      palette: palette,
+      filledTubeCount: filledTubeCount,
+      sameColorAdjacencyLimit: 0,
+      favorSpread: true,
+    );
   }
 
-  static DailyPuzzleData _buildMap3Daily({
+  static bool _isAcceptableMap1Start(
+    List<List<int>> tubes, {
+    required int filledTubeCount,
+  }) {
+    if (!_validateBasicCountsAndFullness(
+      tubes,
+      filledTubeCount: filledTubeCount,
+    )) {
+      return false;
+    }
+
+    for (int i = 0; i < filledTubeCount; i++) {
+      final t = tubes[i];
+      for (int j = 0; j < t.length - 1; j++) {
+        if (t[j] == t[j + 1]) return false;
+      }
+    }
+
+    final legalMoveCount = _countLegalMoves(tubes);
+    if (legalMoveCount < 4) return false;
+
+    final doneTubes = _countSolvedTubes(tubes.take(filledTubeCount).toList());
+    if (doneTubes > 0) return false;
+
+    return true;
+  }
+
+  static StageLayout _buildMap1Layout(int totalTubeCount) {
+    final indices = List<int>.generate(totalTubeCount, (i) => i);
+
+    if (totalTubeCount <= 11) {
+      return StageLayout.rows(
+        rows: [
+          indices.take(4).toList(),
+          indices.skip(4).take(4).toList(),
+          indices.skip(8).toList(),
+        ],
+        rowTopPaddings: const [0, 0, 4],
+        rowGap: 10,
+        tubeGap: 6,
+      );
+    }
+
+    if (totalTubeCount <= 13) {
+      return StageLayout.rows(
+        rows: [
+          indices.take(4).toList(),
+          indices.skip(4).take(4).toList(),
+          indices.skip(8).take(3).toList(),
+          indices.skip(11).toList(),
+        ],
+        rowTopPaddings: const [0, 0, 4, 4],
+        rowGap: 10,
+        tubeGap: 6,
+      );
+    }
+
+    return StageLayout.standardForTubeCount(totalTubeCount);
+  }
+
+  // ─────────────────────────────────────────────
+  // MAP 2
+  // Kör mod günlük bulmaca
+  // ─────────────────────────────────────────────
+
+  static DailyPuzzleData _buildMap2Daily({
     required String dateKey,
     required int seed,
     required Random rng,
   }) {
-    final difficulty = _pickDifficulty(seed, DailyPuzzleMapStyle.map3);
-    final colorCount = _pickColorCount(difficulty, DailyPuzzleMapStyle.map3);
+    final difficulty = _pickMap2Difficulty(seed);
+    final colorCount = _pickMap2ColorCount(difficulty);
+
+    final filledTubeCount = colorCount;
+    final totalTubeCount =
+        filledTubeCount + _emptyTubeCount + _lockedAdTubeCount;
+    final lockedAdTubeIndex = totalTubeCount - 1;
+
     final palette = _pickColorPalette(
       rng: rng,
       colorCount: colorCount,
       maxExclusive: _maxNormalColorIndexExclusive,
     );
 
-    final mixedTubes = _buildCandidateTubes(
+    List<List<int>> tubes = const [];
+    int attempt = 0;
+
+    while (attempt < 3200) {
+      attempt++;
+
+      final candidate = _buildCandidateTubesMap2(
+        rng: Random(seed + attempt * 137),
+        palette: palette,
+        filledTubeCount: filledTubeCount,
+      );
+
+      candidate.add(<int>[]);
+      candidate.add(<int>[]);
+      candidate.add(<int>[]);
+
+      if (_isAcceptableMap2Start(candidate, filledTubeCount: filledTubeCount)) {
+        tubes = candidate;
+        break;
+      }
+    }
+
+    if (tubes.isEmpty) {
+      tubes = _buildFallbackTubes(
+        palette: palette,
+        filledTubeCount: filledTubeCount,
+      );
+      tubes.add(<int>[]);
+      tubes.add(<int>[]);
+      tubes.add(<int>[]);
+    }
+
+    return DailyPuzzleData(
+      dateKey: dateKey,
+      seed: seed,
+      mapStyle: DailyPuzzleMapStyle.map2,
+      mapNumber: 2,
+      difficulty: difficulty,
+      tubes: tubes,
+      lockedAdTubeIndex: lockedAdTubeIndex,
+      layout: _buildMap2Layout(totalTubeCount),
+    );
+  }
+
+  static int _pickMap2Difficulty(int seed) {
+    const options = [3, 4, 4, 5];
+    return options[seed % options.length];
+  }
+
+  static int _pickMap2ColorCount(int difficulty) {
+    switch (difficulty) {
+      case 3:
+        return 9;
+      case 4:
+        return 10;
+      case 5:
+        return 11;
+      default:
+        return 10;
+    }
+  }
+
+  static List<List<int>> _buildCandidateTubesMap2({
+    required Random rng,
+    required List<int> palette,
+    required int filledTubeCount,
+  }) {
+    return _buildCandidateTubesGeneric(
+      rng: rng,
+      palette: palette,
+      filledTubeCount: filledTubeCount,
+      sameColorAdjacencyLimit: 1,
+      favorSpread: false,
+    );
+  }
+
+  static bool _isAcceptableMap2Start(
+    List<List<int>> tubes, {
+    required int filledTubeCount,
+  }) {
+    if (!_validateBasicCountsAndFullness(
+      tubes,
+      filledTubeCount: filledTubeCount,
+    )) {
+      return false;
+    }
+
+    int repeatedAdjacencyCount = 0;
+    for (int i = 0; i < filledTubeCount; i++) {
+      final t = tubes[i];
+      for (int j = 0; j < t.length - 1; j++) {
+        if (t[j] == t[j + 1]) {
+          repeatedAdjacencyCount++;
+        }
+      }
+    }
+
+    if (repeatedAdjacencyCount > max(2, filledTubeCount ~/ 4)) {
+      return false;
+    }
+
+    final legalMoveCount = _countLegalMoves(tubes);
+    if (legalMoveCount < 3) return false;
+    if (legalMoveCount > 16) return false;
+
+    final doneTubes = _countSolvedTubes(tubes.take(filledTubeCount).toList());
+    if (doneTubes > 0) return false;
+
+    return true;
+  }
+
+  static StageLayout _buildMap2Layout(int totalTubeCount) {
+    final indices = List<int>.generate(totalTubeCount, (i) => i);
+
+    if (totalTubeCount <= 12) {
+      return StageLayout.rows(
+        rows: [
+          indices.take(3).toList(),
+          indices.skip(3).take(4).toList(),
+          indices.skip(7).take(3).toList(),
+          indices.skip(10).toList(),
+        ],
+        rowTopPaddings: const [0, 4, 0, 4],
+        rowGap: 12,
+        tubeGap: 8,
+      );
+    }
+
+    if (totalTubeCount <= 14) {
+      return StageLayout.rows(
+        rows: [
+          indices.take(3).toList(),
+          indices.skip(3).take(4).toList(),
+          indices.skip(7).take(4).toList(),
+          indices.skip(11).toList(),
+        ],
+        rowTopPaddings: const [0, 4, 0, 4],
+        rowGap: 12,
+        tubeGap: 8,
+      );
+    }
+
+    return StageLayout.standardForTubeCount(totalTubeCount);
+  }
+
+  // ─────────────────────────────────────────────
+  // MAP 3
+  // Volkan / lav günlük bulmaca
+  // ─────────────────────────────────────────────
+
+  static DailyPuzzleData _buildMap3Daily({
+    required String dateKey,
+    required int seed,
+    required Random rng,
+  }) {
+    final difficulty = _pickMap3Difficulty(seed);
+    final colorCount = _pickMap3ColorCount(difficulty);
+
+    final palette = _pickColorPalette(
+      rng: rng,
+      colorCount: colorCount,
+      maxExclusive: _maxNormalColorIndexExclusive,
+    );
+
+    final mixedTubes = _buildCandidateTubesMap3(
       rng: Random(seed * 13 + 7),
       palette: palette,
       filledTubeCount: colorCount,
@@ -253,14 +480,16 @@ class DailyPuzzleGenerator {
     ];
 
     final lockedAdTubeIndex = tubes.length - 1;
-    final mountainCapacity = 8;
+
+    final mountainCapacity = difficulty >= 6 ? 10 : 8;
+
     final refillQueues = <int, List<List<int>>>{
       sourceTubeA: <List<int>>[
         <int>[
           kLavaColorIndex,
           kLavaColorIndex,
           kLavaColorIndex,
-          kLavaColorIndex
+          kLavaColorIndex,
         ],
       ],
       sourceTubeB: <List<int>>[
@@ -268,7 +497,7 @@ class DailyPuzzleGenerator {
           kLavaColorIndex,
           kLavaColorIndex,
           kLavaColorIndex,
-          kLavaColorIndex
+          kLavaColorIndex,
         ],
       ],
     };
@@ -281,7 +510,7 @@ class DailyPuzzleGenerator {
       difficulty: difficulty,
       tubes: tubes,
       lockedAdTubeIndex: lockedAdTubeIndex,
-      layout: _buildLayout(tubes.length),
+      layout: _buildMap3Layout(tubes.length),
       mountainCapacity: mountainCapacity,
       refillTubeIndexes: <int>[sourceTubeA, sourceTubeB],
       refillQueues: refillQueues,
@@ -289,97 +518,154 @@ class DailyPuzzleGenerator {
     );
   }
 
-  static List<List<int>> _buildCandidateTubes({
+  static int _pickMap3Difficulty(int seed) {
+    const options = [5, 5, 6];
+    return options[seed % options.length];
+  }
+
+  static int _pickMap3ColorCount(int difficulty) {
+    switch (difficulty) {
+      case 5:
+        return 6;
+      case 6:
+        return 7;
+      default:
+        return 6;
+    }
+  }
+
+  static List<List<int>> _buildCandidateTubesMap3({
     required Random rng,
     required List<int> palette,
     required int filledTubeCount,
+  }) {
+    return _buildCandidateTubesGeneric(
+      rng: rng,
+      palette: palette,
+      filledTubeCount: filledTubeCount,
+      sameColorAdjacencyLimit: 1,
+      favorSpread: true,
+    );
+  }
+
+  static StageLayout _buildMap3Layout(int totalTubeCount) {
+    final indices = List<int>.generate(totalTubeCount, (i) => i);
+
+    if (totalTubeCount <= 12) {
+      return StageLayout.rows(
+        rows: [
+          indices.take(4).toList(),
+          indices.skip(4).take(4).toList(),
+          indices.skip(8).toList(),
+        ],
+        rowTopPaddings: const [0, 0, 18],
+        rowGap: 12,
+        tubeGap: 8,
+      );
+    }
+
+    return StageLayout.rows(
+      rows: [
+        indices.take(4).toList(),
+        indices.skip(4).take(4).toList(),
+        indices.skip(8).take(3).toList(),
+        indices.skip(11).toList(),
+      ],
+      rowTopPaddings: const [0, 0, 18, 4],
+      rowGap: 12,
+      tubeGap: 8,
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // ORTAK YARDIMCILAR
+  // ─────────────────────────────────────────────
+
+  static List<int> _pickColorPalette({
+    required Random rng,
+    required int colorCount,
+    required int maxExclusive,
+  }) {
+    final all = List<int>.generate(maxExclusive, (i) => i)..shuffle(rng);
+    return all.take(colorCount).toList(growable: false);
+  }
+
+  static List<List<int>> _buildCandidateTubesGeneric({
+    required Random rng,
+    required List<int> palette,
+    required int filledTubeCount,
+    required int sameColorAdjacencyLimit,
+    required bool favorSpread,
   }) {
     final pieces = <int>[];
     for (final color in palette) {
       pieces.addAll([color, color, color, color]);
     }
 
-    final tubes = List<List<int>>.generate(
-      filledTubeCount,
-      (_) => <int>[],
-      growable: true,
-    );
+    for (int attempt = 0; attempt < 300; attempt++) {
+      final shuffled = List<int>.from(pieces)
+        ..shuffle(Random(rng.nextInt(1 << 32)));
 
-    final shuffled = List<int>.from(pieces)..shuffle(rng);
+      final tubes = List<List<int>>.generate(
+        filledTubeCount,
+        (_) => <int>[],
+        growable: true,
+      );
 
-    bool placedAll = _fillGreedyNoAdjacent(
-      rng: rng,
-      shuffled: shuffled,
-      tubes: tubes,
-    );
+      var ok = true;
 
-    if (!placedAll) {
-      final counts = <int, int>{for (final c in palette) c: 4};
-      for (final t in tubes) {
-        t.clear();
-      }
+      for (final color in shuffled) {
+        final candidates = <int>[];
 
-      for (int layer = 0; layer < _tubeCapacity; layer++) {
-        for (int tubeIndex = 0; tubeIndex < filledTubeCount; tubeIndex++) {
-          final candidates = counts.entries
-              .where((e) => e.value > 0)
-              .map((e) => e.key)
-              .where((color) {
-            final tube = tubes[tubeIndex];
-            if (tube.isEmpty) return true;
-            return tube.last != color;
-          }).toList();
+        for (int i = 0; i < tubes.length; i++) {
+          final tube = tubes[i];
+          if (tube.length >= _tubeCapacity) continue;
 
-          if (candidates.isEmpty) {
-            return _buildSimpleMixedTubes(
-              rng: rng,
-              palette: palette,
-              filledTubeCount: filledTubeCount,
-            );
+          int adjacentCount = 0;
+          if (tube.isNotEmpty && tube.last == color) {
+            adjacentCount = 1;
+            if (adjacentCount > sameColorAdjacencyLimit) continue;
           }
 
-          candidates.shuffle(rng);
-          final chosen = candidates.first;
-          tubes[tubeIndex].add(chosen);
-          counts[chosen] = counts[chosen]! - 1;
+          candidates.add(i);
         }
+
+        if (candidates.isEmpty) {
+          ok = false;
+          break;
+        }
+
+        candidates.sort((a, b) {
+          final lenCompare = tubes[a].length.compareTo(tubes[b].length);
+          if (lenCompare != 0) {
+            return favorSpread ? lenCompare : -lenCompare;
+          }
+          return a.compareTo(b);
+        });
+
+        final bestLength = tubes[candidates.first].length;
+        final filtered = candidates.where((i) {
+          if (favorSpread) {
+            return tubes[i].length == bestLength;
+          }
+          return true;
+        }).toList(growable: false)
+          ..shuffle(rng);
+
+        tubes[filtered.first].add(color);
+      }
+
+      if (!ok) continue;
+      if (tubes.every((t) => t.length == _tubeCapacity)) {
+        return tubes;
       }
     }
 
-    return tubes;
-  }
-
-  static bool _fillGreedyNoAdjacent({
-    required Random rng,
-    required List<int> shuffled,
-    required List<List<int>> tubes,
-  }) {
-    for (final color in shuffled) {
-      final available = <int>[];
-
-      for (int i = 0; i < tubes.length; i++) {
-        final tube = tubes[i];
-        if (tube.length >= _tubeCapacity) continue;
-        if (tube.isNotEmpty && tube.last == color) continue;
-        available.add(i);
-      }
-
-      if (available.isEmpty) {
-        return false;
-      }
-
-      available.sort((a, b) => tubes[a].length.compareTo(tubes[b].length));
-
-      final shortestLen = tubes[available.first].length;
-      final shortest = available
-          .where((i) => tubes[i].length == shortestLen)
-          .toList(growable: false)
-        ..shuffle(rng);
-
-      tubes[shortest.first].add(color);
-    }
-
-    return tubes.every((t) => t.length == _tubeCapacity);
+    return _buildSimpleMixedTubes(
+      rng: rng,
+      palette: palette,
+      filledTubeCount: filledTubeCount,
+    );
   }
 
   static List<List<int>> _buildSimpleMixedTubes({
@@ -402,13 +688,14 @@ class DailyPuzzleGenerator {
 
       bool ok = true;
       for (final t in tubes) {
+        int adjacent = 0;
         for (int i = 0; i < t.length - 1; i++) {
-          if (t[i] == t[i + 1]) {
-            ok = false;
-            break;
-          }
+          if (t[i] == t[i + 1]) adjacent++;
         }
-        if (!ok) break;
+        if (adjacent > 1) {
+          ok = false;
+          break;
+        }
       }
 
       if (ok) return tubes;
@@ -440,28 +727,28 @@ class DailyPuzzleGenerator {
     return tubes;
   }
 
-  static bool _isAcceptableStart(
+  static bool _validateBasicCountsAndFullness(
     List<List<int>> tubes, {
     required int filledTubeCount,
   }) {
     for (int i = 0; i < filledTubeCount; i++) {
-      final t = tubes[i];
-      if (t.length != _tubeCapacity) return false;
-
-      for (int j = 0; j < t.length - 1; j++) {
-        if (t[j] == t[j + 1]) return false;
-      }
+      if (tubes[i].length != _tubeCapacity) return false;
     }
 
     final counts = <int, int>{};
     for (final t in tubes) {
       for (final c in t) {
+        if (c == kLavaColorIndex) continue;
         counts[c] = (counts[c] ?? 0) + 1;
       }
     }
 
     if (counts.values.any((v) => v != 4)) return false;
 
+    return true;
+  }
+
+  static int _countLegalMoves(List<List<int>> tubes) {
     int legalMoveCount = 0;
     for (int from = 0; from < tubes.length; from++) {
       for (int to = 0; to < tubes.length; to++) {
@@ -471,8 +758,17 @@ class DailyPuzzleGenerator {
         }
       }
     }
+    return legalMoveCount;
+  }
 
-    return legalMoveCount >= 3;
+  static int _countSolvedTubes(List<List<int>> tubes) {
+    int count = 0;
+    for (final t in tubes) {
+      if (t.length == _tubeCapacity && t.every((e) => e == t.first)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   static bool _canPour(List<List<int>> tubes, int from, int to) {
@@ -483,47 +779,6 @@ class DailyPuzzleGenerator {
     if (tubes[to].isNotEmpty && tubes[to].last != top) return false;
 
     return true;
-  }
-
-  static StageLayout _buildLayout(int totalTubeCount) {
-    final indices = List<int>.generate(totalTubeCount, (i) => i);
-
-    if (totalTubeCount <= 12) {
-      return StageLayout.rows(
-        rows: [
-          indices.take(4).toList(),
-          indices.skip(4).take(4).toList(),
-          indices.skip(8).toList(),
-        ],
-        rowTopPaddings: const [0, 0, 4],
-      );
-    }
-
-    if (totalTubeCount <= 15) {
-      return StageLayout.rows(
-        rows: [
-          indices.take(4).toList(),
-          indices.skip(4).take(5).toList(),
-          indices.skip(9).take(3).toList(),
-          indices.skip(12).toList(),
-        ],
-        rowTopPaddings: const [0, 0, 4, 4],
-      );
-    }
-
-    if (totalTubeCount <= 18) {
-      return StageLayout.rows(
-        rows: [
-          indices.take(4).toList(),
-          indices.skip(4).take(5).toList(),
-          indices.skip(9).take(4).toList(),
-          indices.skip(13).toList(),
-        ],
-        rowTopPaddings: const [0, 0, 4, 4],
-      );
-    }
-
-    return StageLayout.standardForTubeCount(totalTubeCount);
   }
 
   static String _dateKey(DateTime dt) {

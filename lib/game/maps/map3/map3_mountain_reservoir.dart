@@ -270,7 +270,7 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
     }
 
     if (_eruptionStarted) {
-      _eruptionTimer = (_eruptionTimer + 0.0018).clamp(0.0, 1.0);
+      _eruptionTimer = (_eruptionTimer + 0.0045).clamp(0.0, 1.0);
 
       if (_eruptionTimer < 0.35 &&
           _rng.nextDouble() < 0.22 &&
@@ -281,7 +281,7 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
         _projectiles.add(
           _LavaProjectile(
             phase: 0.0,
-            speed: 0.0032 + _rng.nextDouble() * 0.0020,
+            speed: 0.0060 + _rng.nextDouble() * 0.0030,
             angle: angle,
             power: 45 + _rng.nextDouble() * 100,
             size: isFlame
@@ -371,7 +371,7 @@ class _MountainTubeReservoirState extends State<MountainTubeReservoir>
                     pourGlow: _pourGlow,
                     fillPercent: widget.fillPercent,
                     time: _ctrl.value,
-                    mouthLocalY: widget.height * (0.10 + 0.12),
+                    mouthLocalY: widget.height * 0.12,
                     projectiles:
                         List<_LavaProjectile>.unmodifiable(_projectiles),
                     eruptionTimer: _eruptionTimer,

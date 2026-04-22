@@ -24,6 +24,7 @@ import 'game/core/game_refill.dart';
 import 'game/maps/map3/map3_mountain_reservoir.dart';
 import 'game/maps/map2/map2_visibility.dart';
 import 'game/maps/map2/map2_ui.dart';
+import 'game/map_finish_overlays.dart';
 
 // ─────────────────────────────────────────────
 // OYUN SABİTLERİ
@@ -367,6 +368,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   int _mountainFillUnits = 0;
   final List<VisualLayer> _mountainLayers = [];
   bool _loopCompletedVolcano = false;
+  bool _showMapFinishOverlay = false;
+  bool _mapFinishOverlayStarted = false;
+  bool _winDialogQueued = false;
   // Rewarded reklam
   RewardedAd? _extraTubeAd;
   bool _isExtraTubeAdReady = false;
@@ -616,11 +620,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return cloneRefillQueuesMap(source);
   }
 
-  Map<int, List<List<int>>> _decodeRuntimeRefillQueues(dynamic raw) {
+  Map<int, List<List<int>>> decodeRuntimeRefillQueues(dynamic raw) {
     return decodeRuntimeRefillQueues(raw);
   }
 
-  Map<String, dynamic> _encodeRuntimeRefillQueues(
+  Map<String, dynamic> encodeRuntimeRefillQueues(
     Map<int, List<List<int>>> queues,
   ) {
     return encodeRuntimeRefillQueues(queues);
@@ -1299,6 +1303,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _levelRewardGranted = false;
     _mountainFillUnits = 0;
     _mountainLayers.clear();
+    _resetPostWinOverlayFlags();
     setState(() {});
   }
 
@@ -1776,6 +1781,51 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _persistLevelState();
   }
 
+  void _resetPostWinOverlayFlags() {
+    _showMapFinishOverlay = false;
+    _mapFinishOverlayStarted = false;
+    _winDialogQueued = false;
+  }
+
+  void _startPostWinSequence() {
+    if (_winDialogQueued) return;
+    _winDialogQueued = true;
+
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final allDone = <int, int>{};
+      for (int i = 0; i < _tubes.length; i++) {
+        if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
+          allDone[i] = _tubes[i].first;
+        }
+      }
+      _triggerDoneCelebration(allDone, isWin: true);
+    });
+
+    if (widget.mapNumber == 3) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted || _mapFinishOverlayStarted) return;
+        setState(() {
+          _mapFinishOverlayStarted = true;
+          _showMapFinishOverlay = true;
+        });
+      });
+    } else {
+      Future.delayed(const Duration(milliseconds: 2100), () {
+        if (!mounted || _showMapFinishOverlay) return;
+        _showWinDialog();
+      });
+    }
+  }
+
+  void _handleMapFinishOverlayCompleted() {
+    if (!mounted) return;
+    setState(() {
+      _showMapFinishOverlay = false;
+    });
+    _showWinDialog();
+  }
+
   int get _levelReward =>
       widget.dailyRewardCoins ??
       PlayerProgress.rewardForDifficultyDots(widget.difficulty);
@@ -2121,7 +2171,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     ));
 
     setState(() {
-      // Yeni liste referansı — shouldRepaint(old.tube != tube) tetiklensin
       final updated = List<int>.from(_tubes[from]);
       for (int i = 0; i < count; i++) {
         updated.removeLast();
@@ -2132,10 +2181,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _activePlans.add(plan);
     });
 
-    // Volkan dolumu: akışın sıvıya değdiği anda başlasın (animasyonun %68'i = vHeadEnd)
-    // Tüp yola çıkar çıkmaz değil, döküm ortasında başlasın.
-    final mountainFillStartMs =
-        (kPourDuration.inMilliseconds * 0.68).round(); // vHeadEnd
+    final mountainFillStartMs = (kPourDuration.inMilliseconds * 0.68).round();
+
     Future.delayed(Duration(milliseconds: mountainFillStartMs), () {
       if (!mounted || !_activePlans.contains(plan)) return;
       setState(() {
@@ -2146,32 +2193,40 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             volume: _mountainLayers.last.volume + count.toDouble(),
           );
         } else {
-          _mountainLayers
-              .add(VisualLayer(colorIdx: colorIdx, volume: count.toDouble()));
+          _mountainLayers.add(
+            VisualLayer(colorIdx: colorIdx, volume: count.toDouble()),
+          );
         }
         _mountainFillUnits += count;
       });
     });
+
     _persistLevelState();
     unawaited(_persistUndoHistoryState());
 
-    final waterStartMs = (kPourDuration.inMilliseconds * 0.58).round();
-    final waterStopMs = (kPourDuration.inMilliseconds * 0.90).round();
+    final waterStartMs = (kPourDuration.inMilliseconds * 0.15).round();
+    final waterStopMs = (kPourDuration.inMilliseconds * 0.92).round();
     int? waterToken;
 
     Future.delayed(Duration(milliseconds: waterStartMs), () async {
-      if (!mounted || !_activePlans.contains(plan)) return;
+      if (!mounted) return;
       waterToken = await SfxService.startWater();
     });
 
     Future.delayed(Duration(milliseconds: waterStopMs), () async {
-      if (!mounted || !_activePlans.contains(plan)) return;
-      await SfxService.stopWater(waterToken);
-      waterToken = null;
+      if (waterToken != null) {
+        await SfxService.stopWater(waterToken);
+        waterToken = null;
+      }
     });
 
-    Future.delayed(kPourDuration, () {
+    Future.delayed(kPourDuration, () async {
       if (!mounted) return;
+
+      if (waterToken != null) {
+        await SfxService.stopWater(waterToken);
+        waterToken = null;
+      }
 
       _tryRefillSourceTube(from);
 
@@ -2189,20 +2244,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _persistLevelState();
 
       if (didWin && _activePlans.isEmpty) {
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (!mounted) return;
-          final allDone = <int, int>{};
-          for (int i = 0; i < _tubes.length; i++) {
-            if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
-              allDone[i] = _tubes[i].first;
-            }
-          }
-          _triggerDoneCelebration(allDone, isWin: true);
-        });
-        // Eruption animasyonunun (~3.5sn) bitmesini bekle
-        Future.delayed(const Duration(milliseconds: 4500), () {
-          if (mounted) _showWinDialog();
-        });
+        _startPostWinSequence();
       }
 
       _drainQueue();
@@ -2210,6 +2252,103 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _startPour(int from, int to) async {
+    if (!canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to))) {
+      _vibrateLight();
+      return;
+    }
+
+    final count =
+        pourCountBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to));
+    if (count <= 0) {
+      _vibrateLight();
+      return;
+    }
+
+    final plan = TransferPlan(
+      fromIdx: from,
+      toIdx: to,
+      fromSnapshot: List<int>.from(_tubes[from]),
+      toSnapshot: List<int>.from(_tubes[to]),
+      colorIdx: _tubes[from].last,
+      count: count,
+    );
+
+    _history.add((
+      tubes: _tubes.map((t) => List<int>.from(t)).toList(),
+      visibleLayerCounts: List<int>.from(_visibleLayerCounts),
+      fromIdx: from,
+      toIdx: to,
+      mountainFillUnits: _mountainFillUnits,
+      mountainLayers: _mountainLayers.map((l) => l.copyWith()).toList(),
+    ));
+
+    doPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to));
+
+    setState(() {
+      _selected = null;
+      _activePlans.add(plan);
+    });
+    _persistLevelState();
+    unawaited(_persistUndoHistoryState());
+
+    final waterStartMs = (kPourDuration.inMilliseconds * 0.15).round();
+    final waterStopMs = (kPourDuration.inMilliseconds * 0.92).round();
+    int? waterToken;
+
+    Future.delayed(Duration(milliseconds: waterStartMs), () async {
+      if (!mounted) return;
+      waterToken = await SfxService.startWater();
+    });
+
+    Future.delayed(Duration(milliseconds: waterStopMs), () async {
+      if (waterToken != null) {
+        await SfxService.stopWater(waterToken);
+        waterToken = null;
+      }
+    });
+
+    Future.delayed(kPourDuration, () async {
+      if (!mounted) return;
+
+      if (waterToken != null) {
+        await SfxService.stopWater(waterToken);
+        waterToken = null;
+      }
+
+      _tryRefillSourceTube(from);
+      _tryRefillSourceTube(to);
+
+      _updateBlindVisibilityAfterPour(from, to, count);
+
+      final newlyDone = <int, int>{};
+      for (final i in [from, to]) {
+        if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
+          newlyDone[i] = _tubes[i].first;
+        }
+      }
+      final didWin = _isGameDoneIn(_tubes);
+
+      setState(() {
+        _activePlans.remove(plan);
+        _gameWon = didWin;
+        if (didWin) {
+          _loopCompletedVolcano = widget.mapNumber == 3;
+        }
+      });
+      _persistLevelState();
+
+      if (didWin) {
+        if (_activePlans.isEmpty) {
+          _startPostWinSequence();
+        }
+      } else {
+        _triggerDoneCelebration(newlyDone);
+        _drainQueue();
+      }
+    });
+  }
+
+  Future<void> startPour(int from, int to) async {
     if (!canPourBoard(_tubes, from, to, cap: _tubeCapacityIn(_tubes, to))) {
       _vibrateLight();
       return;
@@ -2293,32 +2432,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _persistLevelState();
 
       if (didWin) {
-        // Tüm paralel akışlar bitene kadar kutlamayı ve win dialog'u bekle
         if (_activePlans.isEmpty) {
-          Future.delayed(const Duration(milliseconds: 300), () {
-            if (!mounted) return;
-            final allDone = <int, int>{};
-            for (int i = 0; i < _tubes.length; i++) {
-              if (!_isLockedAdTubeIndex(i) && _isTubeDoneIn(_tubes, i)) {
-                allDone[i] = _tubes[i].first;
-              }
-            }
-            _triggerDoneCelebration(allDone, isWin: true);
-          });
-          // Map 3'te eruption animasyonunu bekle, diğerlerinde kısa gecikme
-          final winDelay = widget.mapNumber == 3
-              ? const Duration(milliseconds: 4500)
-              : const Duration(milliseconds: 2100);
-          Future.delayed(winDelay, () {
-            if (mounted) _showWinDialog();
-          });
+          _startPostWinSequence();
         }
-        // Eğer başka aktif plan varsa, o planın kendi future'ı bitince
-        // _activePlans.isEmpty kontrolüne girecek ve oradan tetikleyecek.
       } else {
-        // Normal tamamlama — sadece yeni dolan şişeler
         _triggerDoneCelebration(newlyDone);
-        // Kuyruktaki komutları işle
         _drainQueue();
       }
     });
@@ -2901,6 +3019,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   child: _buildBottomBar(),
                 ),
               ),
+              if (_showMapFinishOverlay)
+                Positioned.fill(
+                  child: MapFinishOverlay(
+                    mapNumber: widget.mapNumber,
+                    onCompleted: _handleMapFinishOverlayCompleted,
+                  ),
+                ),
             ],
           ),
         ));

@@ -111,8 +111,33 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
   bool get _isBlindPuzzle => _dailyPuzzle.mapStyle == DailyPuzzleMapStyle.map2;
   bool get _isVolcanoPuzzle =>
       _dailyPuzzle.mapStyle == DailyPuzzleMapStyle.map3;
+  bool get isClassicPuzzle => _dailyPuzzle.mapStyle == DailyPuzzleMapStyle.map1;
 
   String _difficultyText(int difficulty) {
+    if (_isVolcanoPuzzle) {
+      switch (difficulty) {
+        case 5:
+          return 'VOLKANİK';
+        case 6:
+          return 'KRİTİK';
+        default:
+          return 'VOLKANİK';
+      }
+    }
+
+    if (_isBlindPuzzle) {
+      switch (difficulty) {
+        case 3:
+          return 'DİKKATLİ';
+        case 4:
+          return 'ZOR';
+        case 5:
+          return 'ÇOK ZOR';
+        default:
+          return 'DİKKATLİ';
+      }
+    }
+
     switch (difficulty) {
       case 2:
         return 'KOLAY';
@@ -121,9 +146,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
       case 4:
         return 'ZOR';
       case 5:
-        return 'DAHA ZOR';
-      case 6:
-        return 'EXTREME';
+        return 'ÇOK ZOR';
       default:
         return 'ORTA';
     }
@@ -162,6 +185,14 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
       ];
     }
 
+    if (_isBlindPuzzle) {
+      return const [
+        Color(0xFF140E23),
+        Color(0xFF22143A),
+        Color(0xFF342055),
+      ];
+    }
+
     final seed = int.tryParse(dateKey) ?? 1;
 
     const palettes = <List<Color>>[
@@ -179,13 +210,26 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
 
   Color _accentColor() {
     if (_isVolcanoPuzzle) return const Color(0xFFFF6F00);
-    return _isBlindPuzzle ? const Color(0xFF8E63D8) : const Color(0xFFFF8A3D);
+    if (_isBlindPuzzle) return const Color(0xFF8E63D8);
+    return const Color(0xFFFF8A3D);
   }
 
   IconData _dailyIcon() {
     if (_isVolcanoPuzzle) return Icons.local_fire_department_rounded;
     if (_isBlindPuzzle) return Icons.visibility_off_outlined;
     return Icons.extension_rounded;
+  }
+
+  String _modeLabel() {
+    if (_isVolcanoPuzzle) return 'MAP 3 · VOLKAN';
+    if (_isBlindPuzzle) return 'MAP 2 · GİZLİ TÜP';
+    return 'MAP 1 · KLASİK';
+  }
+
+  String _completedModeLabel() {
+    if (_isVolcanoPuzzle) return 'VOLKAN GÜNLÜK BULMACASI';
+    if (_isBlindPuzzle) return 'GİZLİ TÜP GÜNLÜK BULMACASI';
+    return 'KLASİK GÜNLÜK BULMACA';
   }
 
   Future<void> _openDailyGame() async {
@@ -252,7 +296,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
     if (result?.completed == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Günlük bulmacayı tamamladın. +$reward'),
+          content: Text('${_completedModeLabel()} tamamlandı. +$reward'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: Colors.green.shade600,
         ),
@@ -270,12 +314,22 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
 
   String _dailyDescription() {
     if (_isVolcanoPuzzle) {
-      return 'Bugün volkan modu açık. Dağı doldur ve yanardağı patlat.';
+      return 'Bugün volkan düzeni aktif. Lavı doğru yönet, dağı doldur ve patlamayı tetikle.';
     }
     if (_isBlindPuzzle) {
-      return 'Bugün kör mod bulmacasında üst katmanları okuyarak ilerle ve dikkatli hamle yap.';
+      return 'Bugün gizli tüp düzeni aktif. Üst katmanları dikkatle okuyup hamlelerini kontrollü yap.';
     }
-    return 'Bugün standart günlük bulmacayı tamamla.';
+    return 'Bugün klasik düzen seni bekliyor. Standart tüplerle temiz ve dengeli bir çözüm kur.';
+  }
+
+  String _modeHintText() {
+    if (_isVolcanoPuzzle) {
+      return 'Lav tüpleri, dağ haznesi ve volkan kuralları bu bulmacaya özeldir.';
+    }
+    if (_isBlindPuzzle) {
+      return 'Bu bulmaca tamamen gizli tüp düzenine göre hazırlanmıştır.';
+    }
+    return 'Bu bulmaca standart harita kurallarına göre hazırlanmıştır.';
   }
 
   @override
@@ -379,7 +433,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 14),
           Text(
-            'MOD : ${_isVolcanoPuzzle ? 'VOLKAN' : _isBlindPuzzle ? 'KÖR MOD' : 'KLASİK'}',
+            _modeLabel(),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: accent,
@@ -390,7 +444,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'ZORLUK : ${_difficultyText(_dailyPuzzle.difficulty)}',
+            'ZORLUK · ${_difficultyText(_dailyPuzzle.difficulty)}',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.88),
@@ -455,6 +509,17 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
               height: 1.45,
             ),
           ),
+          const SizedBox(height: 10),
+          Text(
+            _modeHintText(),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.44),
+              fontSize: 12,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 28),
           SizedBox(
             width: double.infinity,
@@ -469,12 +534,17 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
                   borderRadius: BorderRadius.circular(18),
                 ),
               ),
-              child: const Text(
-                'OYNA',
-                style: TextStyle(
-                  fontSize: 16,
+              child: Text(
+                _isVolcanoPuzzle
+                    ? 'VOLKAN BULMACASINI OYNA'
+                    : _isBlindPuzzle
+                        ? 'GİZLİ TÜP BULMACASINI OYNA'
+                        : 'KLASİK BULMACAYI OYNA',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
+                  letterSpacing: 1.0,
                 ),
               ),
             ),
@@ -530,6 +600,17 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
               height: 1.2,
               fontWeight: FontWeight.w800,
               letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _completedModeLabel(),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: accent,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.7,
             ),
           ),
           const SizedBox(height: 14),
