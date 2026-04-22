@@ -214,7 +214,7 @@ _ResolvedStageLayout resolveStageLayout({
   );
 }
 
-const Duration kPourDuration = Duration(milliseconds: 800);
+const Duration kPourDuration = Duration(milliseconds: 1100);
 
 // ─────────────────────────────────────────────
 // YARDIMCI MODELLER
@@ -2261,8 +2261,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _persistLevelState();
     unawaited(_persistUndoHistoryState());
 
-    final waterStartMs = (kPourDuration.inMilliseconds * 0.58).round();
-    final waterStopMs = (kPourDuration.inMilliseconds * 0.90).round();
+    final waterStartMs = (kPourDuration.inMilliseconds * 0.422).round();
+    final waterStopMs = (kPourDuration.inMilliseconds * 0.927).round();
     int? waterToken;
 
     Future.delayed(Duration(milliseconds: waterStartMs), () async {
@@ -4457,10 +4457,10 @@ class _FlyingTubeState extends State<_FlyingTube>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
-  static const double _pMoveEnd = 0.44;
-  static const double _pTiltEnd = 0.58;
-  static const double _pPourEnd = 0.90;
-  static const double _pUprightEnd = 0.97;
+  static const double _pMoveEnd = 0.320;
+  static const double _pTiltEnd = 0.422;
+  static const double _pPourEnd = 0.927;
+  static const double _pUprightEnd = 0.978;
 
   // Uçan şişeyi hedefin üstünde biraz daha yukarıda tut.
   // İstersen 28 → 36 → 44 diye deneyebilirsin.
