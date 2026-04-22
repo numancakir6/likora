@@ -326,6 +326,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         int toIdx,
         int mountainFillUnits,
         List<VisualLayer> mountainLayers,
+        Map<int, List<List<int>>> runtimeRefillQueues,
       })> _history = [];
 
   late List<int> _visibleLayerCounts;
@@ -1043,6 +1044,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         int toIdx,
         int mountainFillUnits,
         List<VisualLayer> mountainLayers,
+        Map<int, List<List<int>>> runtimeRefillQueues,
       })>[];
 
       for (final item in decoded) {
@@ -1083,6 +1085,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
         final mountainFillUnitsRaw = item['mountainFillUnits'];
         final mountainLayersRaw = item['mountainLayers'];
+        final runtimeRefillQueuesRaw = item['runtimeRefillQueues'];
         final mountainFillUnits = mountainFillUnitsRaw is int
             ? (_mountainCapacity > 0
                 ? mountainFillUnitsRaw.clamp(0, _mountainCapacity).toInt()
@@ -1113,6 +1116,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
           toIdx: toIdx.clamp(0, _tubes.length - 1).toInt(),
           mountainFillUnits: mountainFillUnits,
           mountainLayers: mountainLayers,
+          runtimeRefillQueues: runtimeRefillQueuesRaw == null
+              ? _initialRefillQueuesConfig()
+              : _decodeRuntimeRefillQueues(runtimeRefillQueuesRaw),
         ));
       }
 
@@ -1141,6 +1147,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
               'fromIdx': entry.fromIdx,
               'toIdx': entry.toIdx,
               'mountainFillUnits': entry.mountainFillUnits,
+              'runtimeRefillQueues':
+                  _encodeRuntimeRefillQueues(entry.runtimeRefillQueues),
               'mountainLayers': entry.mountainLayers
                   .map((layer) => {
                         'colorIdx': layer.colorIdx,
@@ -2215,6 +2223,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       toIdx: from,
       mountainFillUnits: _mountainFillUnits,
       mountainLayers: _mountainLayers.map((l) => l.copyWith()).toList(),
+      runtimeRefillQueues: _cloneRefillQueuesMap(_runtimeRefillQueues),
     ));
 
     setState(() {
@@ -2336,6 +2345,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       toIdx: to,
       mountainFillUnits: _mountainFillUnits,
       mountainLayers: _mountainLayers.map((l) => l.copyWith()).toList(),
+      runtimeRefillQueues: _cloneRefillQueuesMap(_runtimeRefillQueues),
     ));
 
     // Mantık durumunu hemen güncelle (animasyon gösterimi snapshot tabanlı)
@@ -2446,6 +2456,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _mountainLayers
         ..clear()
         ..addAll(last.mountainLayers.map((l) => l.copyWith()));
+      _runtimeRefillQueues = _cloneRefillQueuesMap(last.runtimeRefillQueues);
       _blindRevealFlashTicks.remove(last.fromIdx);
       _blindRevealFlashTicks.remove(last.toIdx);
       // Etkilenen tüplere slosh animasyonu ver
