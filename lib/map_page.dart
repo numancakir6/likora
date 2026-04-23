@@ -279,10 +279,10 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     return true;
   }
 
-  Future<void> _showMapCompletionRewardDialog() async {
-    if (!mounted) return;
+  Future<bool> _showMapCompletionRewardDialog() async {
+    if (!mounted) return false;
 
-    await showDialog<void>(
+    final shouldStartAnimation = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (context) {
@@ -407,9 +407,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                       await SfxService.playClick();
                       await SettingsPage.vibrateTap();
                       if (!context.mounted) return;
-                      Navigator.of(context).pop();
-                      if (!mounted) return;
-                      await _handleMapCompletionSceneActivation();
+                      Navigator.of(context).pop(true);
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -432,6 +430,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         );
       },
     );
+
+    return shouldStartAnimation ?? false;
   }
 
   Future<void> _loadProgress() async {
@@ -769,8 +769,14 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         if (!wasMapAlreadyComplete) {
           await _claimMapCompletionRewardIfNeeded();
           if (!mounted) return;
-          await _showMapCompletionRewardDialog();
+          final startAnimation = await _showMapCompletionRewardDialog();
           if (!mounted) return;
+          if (startAnimation) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove(_completionSceneSeenPrefsKey);
+            await _animateCompletionSceneTransition(markSeen: true);
+          }
+          return;
         }
         await _handleMapCompletionSceneActivation();
       }
