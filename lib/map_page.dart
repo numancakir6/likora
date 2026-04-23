@@ -282,10 +282,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   Future<bool> _showMapCompletionRewardDialog() async {
     if (!mounted) return false;
 
+    final outerContext = context;
+
     final shouldStartAnimation = await showDialog<bool>(
-      context: context,
+      context: outerContext,
       barrierDismissible: false,
-      builder: (context) {
+      builder: (_) {
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(horizontal: 28),
@@ -406,8 +408,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                     onTap: () async {
                       await SfxService.playClick();
                       await SettingsPage.vibrateTap();
-                      if (!context.mounted) return;
-                      Navigator.of(context).pop(true);
+                      if (!outerContext.mounted) return;
+                      Navigator.of(outerContext).pop(true);
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10),
