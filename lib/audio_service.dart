@@ -67,7 +67,7 @@ class SfxService {
 
     try {
       await player.setReleaseMode(ReleaseMode.loop);
-      await player.setVolume(0.78);
+      await player.setVolume(0.92);
       await player.play(AssetSource(_assetKey('assets/sfx/water.mp3')));
       return token;
     } catch (_) {

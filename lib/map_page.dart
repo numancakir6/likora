@@ -260,8 +260,177 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   String get _completionSceneSeenPrefsKey =>
       'likora_map_completion_scene_seen_$_mapNumber';
 
+  String get _mapRewardClaimedPrefsKey =>
+      'likora_map_completion_reward_claimed_$_mapNumber';
+
   bool _isMapFullyCompleted(Set<int> levels) =>
       levels.length >= _layout.totalLevels;
+
+  int get _mapCompletionReward => 200 + ((_mapNumber - 1) * 100);
+
+  Future<bool> _claimMapCompletionRewardIfNeeded() async {
+    final prefs = await SharedPreferences.getInstance();
+    final alreadyClaimed = prefs.getBool(_mapRewardClaimedPrefsKey) ?? false;
+    if (alreadyClaimed) return false;
+
+    final currentCoins = PlayerProgress.coins.value;
+    PlayerProgress.setCoins(currentCoins + _mapCompletionReward);
+    await prefs.setBool(_mapRewardClaimedPrefsKey, true);
+    return true;
+  }
+
+  Future<void> _showMapCompletionRewardDialog() async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+            decoration: BoxDecoration(
+              color: Color.lerp(_theme.bgMid, Colors.black, 0.18),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: _theme.primaryColor.withValues(alpha: 0.22),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 28,
+                  offset: const Offset(0, 14),
+                ),
+                BoxShadow(
+                  color: _theme.primaryColor.withValues(alpha: 0.10),
+                  blurRadius: 22,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Tebrikler',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.3,
+                    shadows: [
+                      Shadow(
+                        color: _theme.primaryColor.withValues(alpha: 0.30),
+                        blurRadius: 14,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '"${_theme.name}" u tamamladınız',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFFFFE082).withValues(alpha: 0.22),
+                        Colors.white.withValues(alpha: 0.06),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    border: Border.all(
+                      color: const Color(0xFFFFD54F).withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFFF176), Color(0xFFFFB300)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFFC107)
+                                  .withValues(alpha: 0.28),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.toll_rounded,
+                          color: Color(0xFF6A4300),
+                          size: 15,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '+$_mapCompletionReward',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: _GlassButton(
+                    accentColor: _theme.accentColor,
+                    onTap: () async {
+                      await SfxService.playClick();
+                      await SettingsPage.vibrateTap();
+                      if (!context.mounted) return;
+                      Navigator.of(context).pop();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Text(
+                        'Tamamla',
+                        style: TextStyle(
+                          color: _theme.accentColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.2,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Future<void> _loadProgress() async {
     await PlayerProgress.ensureLoaded();
@@ -584,6 +753,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
     if (result?.completed == true && mounted) {
       final updatedCompleted = {...completedLevels, levelId};
+      final wasMapAlreadyComplete = _isMapFullyCompleted(completedLevels);
 
       setState(() {
         completedLevels = updatedCompleted;
@@ -594,6 +764,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
       final isMapFullyCompleted = _isMapFullyCompleted(updatedCompleted);
       if (isMapFullyCompleted) {
+        if (!wasMapAlreadyComplete) {
+          await _claimMapCompletionRewardIfNeeded();
+          if (!mounted) return;
+          await _showMapCompletionRewardDialog();
+          if (!mounted) return;
+        }
         await _handleMapCompletionSceneActivation();
       }
     }
