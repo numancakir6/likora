@@ -408,6 +408,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                       await SettingsPage.vibrateTap();
                       if (!context.mounted) return;
                       Navigator.of(context).pop();
+                      if (!mounted) return;
+                      await _handleMapCompletionSceneActivation();
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10),
