@@ -862,25 +862,23 @@ class _Map2CompletionPainter extends CustomPainter {
     if (intense) {
       if (waterLevel > 0.55) {
         // Fish data: [yBase(0..1 of screen), speedMult, phase, goRight]
+        // [yBase, phaseOffset(0..1), goRight]  – speed sabit, t ile sürülür
         const fishData = [
-          [0.42, 1.00, 0.00, 1.0],
-          [0.52, 0.75, 1.80, 0.0],
-          [0.60, 1.20, 3.50, 1.0],
-          [0.37, 0.90, 5.10, 0.0],
+          [0.42, 0.00, 1.0],
+          [0.52, 0.25, 0.0],
+          [0.60, 0.55, 1.0],
+          [0.37, 0.80, 0.0],
         ];
         final fishAlpha = ((waterLevel - 0.55) / 0.15).clamp(0.0, 1.0);
-        final travelWidth = size.width + 72.0;
         for (final fd in fishData) {
           final yBase = fd[0] as double;
-          final speed = fd[1] as double;
-          final phase = fd[2] as double;
-          final goRight = (fd[3] as double) > 0.5;
-          final progress = (t * speed + phase / (pi * 2)) % 1.0;
+          final phaseOffset = fd[1] as double;
+          final goRight = (fd[2] as double) > 0.5;
+          final progress = (t + phaseOffset) % 1.0;
           final fx = goRight
               ? lerpDouble(-36.0, size.width + 36.0, progress)!
               : lerpDouble(size.width + 36.0, -36.0, progress)!;
-          final fy =
-              size.height * yBase + sin(progress * pi * 2 + phase + 1.1) * 10;
+          final fy = size.height * yBase;
 
           final surfY = _surfaceY(fx.clamp(0.0, size.width), size.width, topY,
               sloshAmp, sloshPhase, waveAmp);
@@ -893,24 +891,23 @@ class _Map2CompletionPainter extends CustomPainter {
       // Normal (sabit) modda da sürekli bir taraftan girip diğer taraftan çıkarlar
       if (waterLevel > 0.50) {
         final fishAlpha = ((waterLevel - 0.50) / 0.25).clamp(0.0, 1.0);
+        // [yBase, phaseOffset(0..1), goRight]  – speed sabit, t ile sürülür
         const normalFishData = [
-          [0.30, 1.00, 0.00, 1.0],
-          [0.45, 0.80, 1.80, 0.0],
-          [0.60, 1.10, 3.20, 1.0],
-          [0.25, 0.90, 4.70, 0.0],
-          [0.75, 0.70, 2.50, 1.0],
+          [0.30, 0.00, 1.0],
+          [0.45, 0.20, 0.0],
+          [0.60, 0.42, 1.0],
+          [0.25, 0.63, 0.0],
+          [0.75, 0.82, 1.0],
         ];
         for (final fd in normalFishData) {
           final yBase = fd[0] as double;
-          final speed = fd[1] as double;
-          final phase = fd[2] as double;
-          final goRight = (fd[3] as double) > 0.5;
-          final progress = (t * speed + phase / (pi * 2)) % 1.0;
+          final phaseOffset = fd[1] as double;
+          final goRight = (fd[2] as double) > 0.5;
+          final progress = (t + phaseOffset) % 1.0;
           final fx = goRight
               ? lerpDouble(-36.0, size.width + 36.0, progress)!
               : lerpDouble(size.width + 36.0, -36.0, progress)!;
-          final fy =
-              size.height * yBase + sin(progress * pi * 2 + phase + 1.1) * 8;
+          final fy = size.height * yBase;
           final surfY = _surfaceY(fx.clamp(0.0, size.width), size.width, topY,
               sloshAmp, sloshPhase, waveAmp);
           if (fy > surfY + 8) {
@@ -974,6 +971,16 @@ class _Map2CompletionPainter extends CustomPainter {
   bool shouldRepaint(covariant _Map2CompletionPainter oldDelegate) => true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MAP 3  –  Volcano eruption completion scene
+// Features:
+//   • Dağ PNG (volkan_hazne.png) ekranın altından titreşerek yerleşir
+//   • İçi lav rengiyle kaynayan sıvı olarak dolar
+//   • Kraterden abartılı lav fonteni + lav topları fırlar
+//   • Zemin lavı: ekranın altına akan lav nehirleri
+//   • Duman bulutları ve kızıl ışık parlaması
+// ─────────────────────────────────────────────────────────────────────────────
+
 class Map3CompletionScene extends StatefulWidget {
   final bool intense;
 
@@ -986,159 +993,648 @@ class Map3CompletionScene extends StatefulWidget {
 class _Map3CompletionSceneState extends State<Map3CompletionScene>
     with TickerProviderStateMixin {
   late final AnimationController _loopCtrl;
-  AnimationController? _introCtrl;
+  late final AnimationController _introCtrl;
+  late final AnimationController _fillCtrl;
 
   @override
   void initState() {
     super.initState();
+
     _loopCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 6),
+      duration: const Duration(seconds: 60),
     )..repeat();
-    if (widget.intense) {
-      _introCtrl = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 3200),
-      )..forward();
-    }
+
+    _introCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2800),
+    )..forward();
+
+    _fillCtrl = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: widget.intense ? 4400 : 3600),
+    );
+
+    Future.delayed(const Duration(milliseconds: 850), () {
+      if (mounted) _fillCtrl.forward();
+    });
   }
 
   @override
   void dispose() {
     _loopCtrl.dispose();
-    _introCtrl?.dispose();
+    _introCtrl.dispose();
+    _fillCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation:
-          Listenable.merge([_loopCtrl, if (_introCtrl != null) _introCtrl!]),
-      builder: (_, __) => CustomPaint(
-        painter: _Map3CompletionPainter(
-          t: _loopCtrl.value,
-          intense: widget.intense,
-          intro: widget.intense ? (_introCtrl?.value ?? 0.0) : 1.0,
-        ),
-        child: const SizedBox.expand(),
+      animation: Listenable.merge([_loopCtrl, _introCtrl, _fillCtrl]),
+      builder: (_, __) => Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(
+            painter: _Map3BackgroundPainter(
+              t: _loopCtrl.value,
+              intro: _introCtrl.value,
+              fill: _fillCtrl.value,
+              intense: widget.intense,
+            ),
+            child: const SizedBox.expand(),
+          ),
+          _Map3MountainWidget(
+            t: _loopCtrl.value,
+            intro: _introCtrl.value,
+            fill: _fillCtrl.value,
+            intense: widget.intense,
+          ),
+          CustomPaint(
+            painter: _Map3EruptionPainter(
+              t: _loopCtrl.value,
+              intro: _introCtrl.value,
+              fill: _fillCtrl.value,
+              intense: widget.intense,
+            ),
+            child: const SizedBox.expand(),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _Map3CompletionPainter extends CustomPainter {
-  final double t;
+class _Map3BackgroundPainter extends CustomPainter {
+  final double t, intro, fill;
   final bool intense;
-  final double intro;
 
-  const _Map3CompletionPainter(
-      {required this.t, required this.intense, required this.intro});
+  const _Map3BackgroundPainter({
+    required this.t,
+    required this.intro,
+    required this.fill,
+    required this.intense,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final introCurve = Curves.easeOutBack.transform(intro.clamp(0.0, 1.0));
-    final rise = intense ? lerpDouble(size.height * 0.34, 0, introCurve)! : 0.0;
-    final shake = intense ? sin(t * pi * 20) * (1 - introCurve) * 6 : 0.0;
+    final fillEased = Curves.easeInOutSine.transform(fill.clamp(0.0, 1.0));
+    if (fillEased <= 0.01) return;
 
-    final mountainRect = Rect.fromLTWH(
-      size.width * 0.26 + shake,
-      size.height * 0.50 + rise,
-      size.width * 0.48,
+    final glowRect = Rect.fromLTWH(
+      0,
+      size.height * 0.62,
+      size.width,
       size.height * 0.38,
     );
+    canvas.drawRect(
+      glowRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [
+            const Color(0xFFFF3D00).withValues(alpha: 0.10 * fillEased),
+            const Color(0xFFFF8C00).withValues(alpha: 0.05 * fillEased),
+            Colors.transparent,
+          ],
+        ).createShader(glowRect),
+    );
+  }
 
-    final mountainPath = Path()
-      ..moveTo(mountainRect.left, mountainRect.bottom)
-      ..quadraticBezierTo(
-        mountainRect.left + mountainRect.width * 0.18,
-        mountainRect.top + mountainRect.height * 0.42,
-        mountainRect.left + mountainRect.width * 0.34,
-        mountainRect.top + mountainRect.height * 0.10,
-      )
-      ..lineTo(mountainRect.left + mountainRect.width * 0.44,
-          mountainRect.top + mountainRect.height * 0.18)
-      ..lineTo(mountainRect.left + mountainRect.width * 0.56,
-          mountainRect.top + mountainRect.height * 0.18)
-      ..quadraticBezierTo(
-        mountainRect.left + mountainRect.width * 0.72,
-        mountainRect.top + mountainRect.height * 0.10,
-        mountainRect.right,
-        mountainRect.bottom,
-      )
+  @override
+  bool shouldRepaint(covariant _Map3BackgroundPainter old) =>
+      old.t != t ||
+      old.intro != intro ||
+      old.fill != fill ||
+      old.intense != intense;
+}
+
+class _Map3MountainWidget extends StatelessWidget {
+  final double t, intro, fill;
+  final bool intense;
+
+  const _Map3MountainWidget({
+    required this.t,
+    required this.intro,
+    required this.fill,
+    required this.intense,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final sw = constraints.maxWidth;
+        final sh = constraints.maxHeight;
+
+        final mW = sw;
+        final mH = sw / 1.776;
+
+        final introEased = Curves.easeOutCubic.transform(intro.clamp(0.0, 1.0));
+        final shakeStrength = (1.0 - introEased) * (intense ? 10.0 : 6.0);
+        final shakeX = sin(t * pi * 28) * shakeStrength;
+        final slideY = (1.0 - introEased) * sh * 0.5;
+
+        final fillEased = Curves.easeInOutSine.transform(fill.clamp(0.0, 1.0));
+        final surfaceFrac = lerpDouble(0.96, 0.028, fillEased)!;
+
+        final targetBottom = sh;
+        final mTop = targetBottom - mH + slideY;
+        final surfaceGlobalY = mTop + mH * surfaceFrac;
+        final surfaceLocalY = surfaceGlobalY - mTop;
+
+        return Stack(
+          children: [
+            Positioned(
+              left: shakeX,
+              top: mTop,
+              width: mW,
+              height: mH,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipPath(
+                    clipper: _VolcanoBodyClipper(mountW: mW, mountH: mH),
+                    child: CustomPaint(
+                      painter: _LavaFillPainter(
+                        t: t,
+                        lavSurfaceY: surfaceLocalY,
+                        fillEased: fillEased,
+                        totalH: mH,
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                  Image.asset(
+                    'assets/likora/volkan_hazne.png',
+                    fit: BoxFit.fill,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _VolcanoBodyClipper extends CustomClipper<Path> {
+  final double mountW, mountH;
+
+  const _VolcanoBodyClipper({required this.mountW, required this.mountH});
+
+  @override
+  Path getClip(Size size) {
+    final w = mountW;
+    final h = mountH;
+
+    double x(double f) => f * w;
+    double y(double f) => f * h;
+
+    return Path()
+      ..moveTo(x(0.22), y(1.00))
+      ..quadraticBezierTo(x(0.24), y(0.86), x(0.28), y(0.68))
+      ..quadraticBezierTo(x(0.31), y(0.52), x(0.36), y(0.30))
+      ..quadraticBezierTo(x(0.385), y(0.16), x(0.435), y(0.06))
+      ..lineTo(x(0.445), y(0.028))
+      ..lineTo(x(0.555), y(0.028))
+      ..lineTo(x(0.565), y(0.06))
+      ..quadraticBezierTo(x(0.615), y(0.16), x(0.64), y(0.30))
+      ..quadraticBezierTo(x(0.69), y(0.52), x(0.72), y(0.68))
+      ..quadraticBezierTo(x(0.76), y(0.86), x(0.78), y(1.00))
       ..close();
+  }
 
-    canvas.drawPath(
-      mountainPath,
+  @override
+  bool shouldReclip(_VolcanoBodyClipper old) =>
+      old.mountW != mountW || old.mountH != mountH;
+}
+
+class _LavaFillPainter extends CustomPainter {
+  final double t;
+  final double lavSurfaceY;
+  final double fillEased;
+  final double totalH;
+
+  const _LavaFillPainter({
+    required this.t,
+    required this.lavSurfaceY,
+    required this.fillEased,
+    required this.totalH,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (fillEased < 0.001) return;
+
+    final fillRect = Rect.fromLTWH(
+      0,
+      lavSurfaceY.clamp(0.0, totalH),
+      size.width,
+      totalH - lavSurfaceY.clamp(0.0, totalH),
+    );
+
+    canvas.drawRect(
+      fillRect,
       Paint()
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF5A2317).withValues(alpha: 0.76),
-            const Color(0xFF3C150E).withValues(alpha: 0.92),
-            const Color(0xFF1A0906).withValues(alpha: 0.98),
+          colors: const [
+            Color(0xFFFF5A00),
+            Color(0xFFFF3D00),
+            Color(0xFFCC2200),
+            Color(0xFF7F1400),
           ],
-        ).createShader(mountainRect),
+          stops: [0.0, 0.22, 0.58, 1.0],
+        ).createShader(fillRect),
     );
 
-    final craterCenter = Offset(
-        mountainRect.center.dx, mountainRect.top + mountainRect.height * 0.18);
-    canvas.drawCircle(
-      craterCenter,
-      intense ? 20 : 14,
+    final waveBase = lavSurfaceY;
+    final wavePath = Path()..moveTo(0, waveBase);
+    const steps = 48;
+    for (int i = 0; i <= steps; i++) {
+      final x = size.width * i / steps;
+      final y = waveBase +
+          sin(x / size.width * pi * 4 + t * pi * 6) * 3.0 +
+          sin(x / size.width * pi * 8 - t * pi * 4) * 1.4;
+      wavePath.lineTo(x, y);
+    }
+    wavePath.lineTo(size.width, totalH);
+    wavePath.lineTo(0, totalH);
+    wavePath.close();
+
+    canvas.drawPath(
+      wavePath,
+      Paint()..color = const Color(0xFFFF7A00).withValues(alpha: 0.86),
+    );
+
+    final shinePath = Path()..moveTo(0, waveBase);
+    for (int i = 0; i <= steps; i++) {
+      final x = size.width * i / steps;
+      final y = waveBase +
+          sin(x / size.width * pi * 4 + t * pi * 6) * 3.0 +
+          sin(x / size.width * pi * 8 - t * pi * 4) * 1.4;
+      shinePath.lineTo(x, y);
+    }
+
+    canvas.drawPath(
+      shinePath,
       Paint()
-        ..color =
-            const Color(0xFFFF6A00).withValues(alpha: intense ? 0.18 : 0.10)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..color = const Color(0xFFFFF0A6).withValues(alpha: 0.76)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
     );
 
-    if (intense) {
-      final burst = max(0.0, sin(t * pi * 6));
-      for (int i = 0; i < 10; i++) {
-        final x = craterCenter.dx + (i - 4.5) * 8;
-        final h = 28 + (i % 3) * 10 + burst * 28;
-        final path = Path()
-          ..moveTo(x - 3, craterCenter.dy)
-          ..quadraticBezierTo(
-              x - 8, craterCenter.dy - h * 0.45, x, craterCenter.dy - h)
-          ..quadraticBezierTo(
-              x + 8, craterCenter.dy - h * 0.45, x + 3, craterCenter.dy)
-          ..close();
-        final r = Rect.fromLTRB(
-            x - 10, craterCenter.dy - h, x + 10, craterCenter.dy + 4);
-        canvas.drawPath(
-          path,
-          Paint()
-            ..shader = LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                const Color(0xFFFFF0A6).withValues(alpha: 0.72),
-                const Color(0xFFFFB300).withValues(alpha: 0.62),
-                const Color(0xFFFF5B00).withValues(alpha: 0.28),
-              ],
-            ).createShader(r)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-        );
-      }
-    } else {
-      final puff = max(0.0, sin(t * pi * 2));
-      for (int i = 0; i < 3; i++) {
-        final c = Offset(craterCenter.dx + (i - 1) * 12,
-            craterCenter.dy - 12 - puff * 10 - i * 8);
-        final r = 12 + i * 5 + puff * 3;
-        canvas.drawCircle(
-          c,
-          r,
-          Paint()
-            ..color = const Color(0xFF392726).withValues(alpha: 0.12 - i * 0.02)
-            ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.45),
-        );
-      }
+    final pulse = max(0.0, sin(t * pi * 5));
+    final veinPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..color = const Color(0xFFFFF0A6).withValues(alpha: 0.24 * pulse)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+
+    for (int i = 0; i < 5; i++) {
+      final vx = size.width * (0.24 + i * 0.11);
+      final vy1 = lavSurfaceY + 12 + i * 8;
+      final vy2 = min(totalH, vy1 + 26 + i * 5);
+      canvas.drawLine(Offset(vx, vy1), Offset(vx + 4, vy2), veinPaint);
+    }
+
+    if (fillEased < 0.995) {
+      final mouthX = size.width * 0.5;
+      final pourWidth = lerpDouble(16.0, 8.0, fillEased)!;
+      final pourTop = 0.0;
+      final pourBottom = max(0.0, lavSurfaceY + 6);
+      final pourRect = Rect.fromCenter(
+        center: Offset(mouthX, (pourTop + pourBottom) * 0.5),
+        width: pourWidth,
+        height: max(1.0, pourBottom - pourTop),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(pourRect, Radius.circular(pourWidth * 0.45)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFFFFE08A).withValues(alpha: 0.94),
+              const Color(0xFFFF8C00).withValues(alpha: 0.88),
+              const Color(0xFFFF4500).withValues(alpha: 0.78),
+            ],
+          ).createShader(pourRect)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5),
+      );
+
+      canvas.drawCircle(
+        Offset(mouthX, lavSurfaceY + 4),
+        7 + (1 - fillEased) * 5,
+        Paint()
+          ..color = const Color(0xFFFFB300).withValues(alpha: 0.55)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+      );
     }
   }
 
   @override
-  bool shouldRepaint(covariant _Map3CompletionPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _LavaFillPainter old) =>
+      old.t != t ||
+      old.lavSurfaceY != lavSurfaceY ||
+      old.fillEased != fillEased;
+}
+
+class _Map3EruptionPainter extends CustomPainter {
+  final double t;
+  final double intro;
+  final double fill;
+  final bool intense;
+
+  const _Map3EruptionPainter({
+    required this.t,
+    required this.intro,
+    required this.fill,
+    required this.intense,
+  });
+
+  double _h(double a, double b) {
+    final v = sin(a * 127.1 + b * 311.7) * 43758.5453123;
+    return v - v.floor();
+  }
+
+  // ── Lav parçası çiz ─────────────────────────────────────────────────────────
+  // shapeSeed: 0.0–0.33 = yuvarlak top, 0.33–0.66 = düzensiz blob, 0.66–1.0 = uzun parça
+  void _drawBlob(Canvas canvas, Offset c, double r, double rot, double shape,
+      double alpha) {
+    if (alpha < 0.01 || r < 0.8) return;
+
+    final type = shape < 0.45 ? 0 : 1;
+
+    // Ortak dış parıltı
+    canvas.drawCircle(
+      c,
+      r * 2.2,
+      Paint()
+        ..color = const Color(0xFFFF4400).withValues(alpha: alpha * 0.22)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 1.4),
+    );
+
+    if (type == 0) {
+      // Düzgün yuvarlak top — radial gradient
+      final rect = Rect.fromCircle(center: c, radius: r);
+      canvas.drawCircle(
+          c,
+          r,
+          Paint()
+            ..shader = RadialGradient(colors: [
+              const Color(0xFFFFF0A6).withValues(alpha: alpha),
+              const Color(0xFFFF8C00).withValues(alpha: alpha * 0.95),
+              const Color(0xFFCC2200).withValues(alpha: alpha * 0.70),
+            ], stops: const [
+              0.0,
+              0.40,
+              1.0
+            ]).createShader(rect));
+    } else {
+      // Düzensiz blob — köşeli path
+      final n = 8 + (shape * 4).floor();
+      final path = Path();
+      for (int k = 0; k < n; k++) {
+        final a = (k / n) * pi * 2 + rot * pi;
+        final rk = r * (0.60 + _h(shape + k * 0.31, rot * 3.1) * 0.60);
+        final pt = Offset(c.dx + cos(a) * rk, c.dy + sin(a) * rk);
+        k == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
+      }
+      path.close();
+      final rect = Rect.fromCircle(center: c, radius: r * 1.1);
+      canvas.drawPath(
+          path,
+          Paint()
+            ..shader = RadialGradient(colors: [
+              const Color(0xFFFFD060).withValues(alpha: alpha * 0.92),
+              const Color(0xFFFF6600).withValues(alpha: alpha * 0.95),
+              const Color(0xFFBB1800).withValues(alpha: alpha * 0.68),
+            ], stops: const [
+              0.0,
+              0.45,
+              1.0
+            ]).createShader(rect));
+      // Parlama noktası
+      canvas.drawCircle(
+          Offset(c.dx - r * 0.28, c.dy - r * 0.30),
+          r * 0.26,
+          Paint()
+            ..color = const Color(0xFFFFF8E0).withValues(alpha: alpha * 0.55));
+    }
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final introEased = Curves.easeOutCubic.transform(intro.clamp(0.0, 1.0));
+    final fillEased = Curves.easeInOutSine.transform(fill.clamp(0.0, 1.0));
+    if (fillEased < 0.80 || introEased < 0.95) return;
+
+    final eruptionPower = ((fillEased - 0.80) / 0.20).clamp(0.0, 1.0);
+
+    final mH = size.width / 1.776;
+    final mTop = size.height - mH;
+    final craterX = size.width * 0.5;
+    final craterY = mTop + mH * 0.04;
+
+    // ── Krater ağzı ──────────────────────────────────────────────────────────
+    final mouthPulse = 0.5 + 0.5 * sin(t * pi * 1.6);
+    final mouthRect = Rect.fromCenter(
+      center: Offset(craterX, craterY + 2),
+      width: lerpDouble(34.0, 52.0, mouthPulse)!,
+      height: lerpDouble(8.0, 15.0, mouthPulse)!,
+    );
+    canvas.drawOval(
+        mouthRect,
+        Paint()
+          ..shader = RadialGradient(colors: [
+            const Color(0xFFFFF0A6).withValues(alpha: 0.95),
+            const Color(0xFFFF8C00).withValues(alpha: 0.88),
+            const Color(0xFFFF3D00).withValues(alpha: 0.62),
+          ], stops: const [
+            0.0,
+            0.36,
+            1.0
+          ]).createShader(mouthRect)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+    canvas.drawOval(
+        mouthRect.inflate(18),
+        Paint()
+          ..color = const Color(0xFFFF6A00)
+              .withValues(alpha: 0.18 + mouthPulse * 0.10)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16));
+
+    // ── Kraterden fışkıran lav jetleri ───────────────────────────────────────
+    final jetCount = intense ? 14 : 7;
+    for (int i = 0; i < jetCount; i++) {
+      final x = craterX + (i - (jetCount - 1) / 2) * (intense ? 6.0 : 4.5);
+      final h = (intense ? 48.0 : 20.0) +
+          (i % 3) * (intense ? 16.0 : 8.0) +
+          mouthPulse * (intense ? 26.0 : 12.0);
+      final path = Path()
+        ..moveTo(x - 3, craterY + 1)
+        ..quadraticBezierTo(x - 7, craterY - h * 0.45, x, craterY - h)
+        ..quadraticBezierTo(x + 7, craterY - h * 0.45, x + 3, craterY + 1)
+        ..close();
+      canvas.drawPath(
+          path,
+          Paint()
+            ..shader = LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [
+                  const Color(0xFFFFF0A6).withValues(alpha: 0.88),
+                  const Color(0xFFFFB300).withValues(alpha: 0.78),
+                  const Color(0xFFFF5B00).withValues(alpha: 0.38),
+                ]).createShader(
+                Rect.fromLTRB(x - 12, craterY - h, x + 12, craterY + 3))
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // LAV PARÇACIKLARI
+    //
+    // Süreklilik için:
+    //   - Her parçanın sabit bir "döngü süresi" (cycleDur) var, saniye cinsinden.
+    //   - t * loopHz ile kaç döngü geçtiği hesaplanır.
+    //   - localT = döngü içindeki zaman 0..cycleDur (saniye)
+    //   - Parabolik fizik localT üzerinden çalışır (gerçek zaman birimi).
+    //   - Fade: localT 0→fadeIn görünür, localT>fadeOut solar.
+    //   - % operatörü SADECE döngü sayısını kesmek için kullanılır,
+    //     localT hiçbir zaman aniden sıfırlanmaz — her frame smooth geçer.
+    //
+    // intense=true  : 60 parça, ekranın tepesine ulaşan büyük güçlü patlamalar
+    // intense=false : 22 parça, minimal sürekli döngü
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Çok uzun döngü kullanıyoruz; böylece akış başa sarmış gibi görünmez.
+    final tSec = t * 60.0;
+
+    final introBoost = intense ? 1.35 : 1.0;
+    final pCount = intense ? 96 : 30;
+    final gravity = intense ? 250.0 : 160.0; // px/s²
+
+    for (int i = 0; i < pCount; i++) {
+      final s0 = _h(i * 1.37, 42.0);
+      final s1 = _h(i * 2.71, 7.0);
+      final s2 = _h(i * 3.14, 19.0);
+      final s3 = _h(i * 4.88, 33.0);
+      final s4 = _h(i * 0.99, 61.0);
+      final s5 = _h(i * 5.55, 17.0);
+
+      // Her parçanın döngü süresi (saniye) — çeşitlilik için farklı
+      final cycleDur =
+          intense ? lerpDouble(2.6, 5.2, s0)! : lerpDouble(3.0, 5.8, s0)!;
+
+      // Başlangıç ofseti: parça döngüsüne göre tSec içindeki konumu
+      final startOffset = s1 * cycleDur;
+      // localT: bu döngüde kaç saniye geçti (0..cycleDur), smooth
+      final localT = ((tSec + startOffset) % cycleDur);
+
+      // Uçuş açısı
+      // intense: tüm yönler, bazıları neredeyse yatay
+      // normal: dar koni yukarı
+      final spreadRad = intense ? pi * 1.65 : pi * 0.78;
+      final angle = -pi / 2 + (s2 - 0.5) * spreadRad;
+
+      // Başlangıç hızı — intense'de ekranın tepesine ulaşacak kadar büyük
+      // Ekran yüksekliği ~800px, en yükseğe ulaşmak için: v²/(2g) = 800 → v=√(2*420*800)≈820
+      final vMin = intense ? 520.0 * introBoost : 120.0;
+      final vMax = intense ? 980.0 * introBoost : 240.0;
+      final speed = lerpDouble(vMin, vMax, s3)!;
+      final vx = cos(angle) * speed;
+      final vy = sin(angle) * speed; // negatif = yukarı
+
+      // Parabolik konum
+      final px = craterX + vx * localT;
+      final py = craterY + vy * localT + 0.5 * gravity * localT * localT;
+
+      // Ekranın çok dışına çıkmışsa atla
+      if (px < -80 || px > size.width + 80) continue;
+      if (py > size.height + 60) continue;
+
+      // Opaklık: başta hızlı açılır, sonda yavaş solar
+      // Fade süresi sabit (saniye cinsinden)
+      const fadeInSec = 0.18;
+      final fadeOutStart = cycleDur * 0.74;
+      final fadeOutEnd = cycleDur;
+
+      final double alpha;
+      if (localT < fadeInSec) {
+        alpha = localT / fadeInSec;
+      } else if (localT < fadeOutStart) {
+        alpha = 1.0;
+      } else {
+        alpha = 1.0 - ((localT - fadeOutStart) / (fadeOutEnd - fadeOutStart));
+      }
+      if (alpha < 0.02) continue;
+
+      // Boyut: intense'de çok daha büyük
+      final baseR =
+          intense ? lerpDouble(10.0, 40.0, s4)! : lerpDouble(3.5, 10.0, s4)!;
+      // Uçarken biraz büyür, düşerken küçülür
+      final lifeT = localT / cycleDur;
+      final rNow = baseR * (0.65 + 0.45 * sin(lifeT * pi)) * eruptionPower;
+
+      _drawBlob(canvas, Offset(px, py), rNow, s5, s2,
+          (alpha * eruptionPower).clamp(0.0, 1.0));
+    }
+
+    // ── Kıvılcımlar ──────────────────────────────────────────────────────────
+    final spCount = intense ? 40 : 12;
+    for (int i = 0; i < spCount; i++) {
+      final s0 = _h(i * 7.13, 88.0);
+      final cycleDur = lerpDouble(1.4, 2.8, s0)!;
+      final startOff = _h(i * 2.33, 55.0) * cycleDur;
+      final localT = (tSec + startOff) % cycleDur;
+      final lifeT = localT / cycleDur;
+
+      final double alpha;
+      if (lifeT < 0.10) {
+        alpha = lifeT / 0.10;
+      } else if (lifeT < 0.60) {
+        alpha = 1.0;
+      } else {
+        alpha = 1.0 - ((lifeT - 0.60) / 0.40);
+      }
+      if (alpha < 0.04) continue;
+
+      final spreadRad = intense ? pi * 1.3 : pi * 0.7;
+      final angle = -pi / 2 + (_h(i * 3.77, 22.0) - 0.5) * spreadRad;
+      final spd = lerpDouble(
+          intense ? 220.0 : 90.0, intense ? 520.0 : 180.0, _h(i * 1.99, 44.0))!;
+      final spx = craterX + cos(angle) * spd * localT;
+      final spy =
+          craterY + sin(angle) * spd * localT + 0.5 * gravity * localT * localT;
+      if (spy > size.height + 30) continue;
+
+      final sr = lerpDouble(intense ? 2.0 : 1.0, intense ? 5.5 : 2.5,
+          lifeT < 0.5 ? lifeT * 2 : 1.0 - (lifeT - 0.5) * 2)!;
+      canvas.drawCircle(
+          Offset(spx, spy),
+          sr * 2.5,
+          Paint()
+            ..color = const Color(0xFFFF5500)
+                .withValues(alpha: 0.18 * alpha * eruptionPower)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, sr * 1.2));
+      canvas.drawCircle(
+          Offset(spx, spy),
+          sr,
+          Paint()
+            ..color = const Color(0xFFFFF0A6)
+                .withValues(alpha: 0.92 * alpha * eruptionPower));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _Map3EruptionPainter old) =>
+      old.t != t ||
+      old.intro != intro ||
+      old.fill != fill ||
+      old.intense != intense;
 }

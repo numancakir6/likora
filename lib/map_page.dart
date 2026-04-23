@@ -229,6 +229,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   bool _showFirstCompletionScene = false;
   bool _showPersistentCompletionScene = false;
   bool _completionSceneIntroSeen = false;
+  double _firstSceneOpacity = 0.0;
+  double _persistentSceneOpacity = 0.0;
 
   @override
   void initState() {
@@ -311,34 +313,79 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   Duration _sceneRevealDurationForMap(int mapNumber) {
     switch (mapNumber) {
       case 1:
-        return const Duration(milliseconds: 2600);
+        return const Duration(milliseconds: 2800);
       case 2:
-        return const Duration(milliseconds: 3000);
+        return const Duration(milliseconds: 3200);
       case 3:
-        return const Duration(milliseconds: 3600);
+        return const Duration(milliseconds: 4200);
       default:
-        return const Duration(milliseconds: 2600);
+        return const Duration(milliseconds: 2800);
     }
   }
 
-  Future<void> _runCompletionSceneTest() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_completionSceneSeenPrefsKey, true);
+  Duration _sceneCrossfadeDurationForMap(int mapNumber) {
+    switch (mapNumber) {
+      case 1:
+        return const Duration(milliseconds: 700);
+      case 2:
+        return const Duration(milliseconds: 850);
+      case 3:
+        return const Duration(milliseconds: 1200);
+      default:
+        return const Duration(milliseconds: 800);
+    }
+  }
+
+  Future<void> _animateCompletionSceneTransition({
+    required bool markSeen,
+  }) async {
+    final revealDuration = _sceneRevealDurationForMap(_mapNumber);
+    final fadeDuration = _sceneCrossfadeDurationForMap(_mapNumber);
+    final steadyDuration = revealDuration > fadeDuration
+        ? revealDuration - fadeDuration
+        : Duration.zero;
 
     if (!mounted) return;
     setState(() {
       _completionSceneIntroSeen = true;
-      _showPersistentCompletionScene = false;
       _showFirstCompletionScene = true;
+      _showPersistentCompletionScene = false;
+      _firstSceneOpacity = 1.0;
+      _persistentSceneOpacity = 0.0;
     });
 
-    await Future.delayed(_sceneRevealDurationForMap(_mapNumber));
+    if (steadyDuration > Duration.zero) {
+      await Future.delayed(steadyDuration);
+      if (!mounted) return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _showPersistentCompletionScene = true;
+      _persistentSceneOpacity = 1.0;
+      _firstSceneOpacity = 0.0;
+    });
+
+    await Future.delayed(fadeDuration);
     if (!mounted) return;
 
     setState(() {
       _showFirstCompletionScene = false;
       _showPersistentCompletionScene = true;
+      _firstSceneOpacity = 0.0;
+      _persistentSceneOpacity = 1.0;
     });
+
+    if (markSeen) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_completionSceneSeenPrefsKey, true);
+    }
+  }
+
+  Future<void> _runCompletionSceneTest() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_completionSceneSeenPrefsKey);
+    await _animateCompletionSceneTransition(markSeen: true);
   }
 
   Future<void> _resetCompletionSceneTest() async {
@@ -350,6 +397,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       _completionSceneIntroSeen = false;
       _showFirstCompletionScene = false;
       _showPersistentCompletionScene = false;
+      _firstSceneOpacity = 0.0;
+      _persistentSceneOpacity = 0.0;
     });
   }
 
@@ -562,20 +611,18 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
     if (!mounted) return;
 
-    setState(() {
-      _showPersistentCompletionScene = seen;
-      _showFirstCompletionScene = !seen;
-      _completionSceneIntroSeen = true;
-    });
-
-    if (!seen) {
-      await prefs.setBool(_completionSceneSeenPrefsKey, true);
-      await Future.delayed(_sceneRevealDurationForMap(_mapNumber));
-      if (!mounted) return;
+    if (seen) {
       setState(() {
+        _showPersistentCompletionScene = true;
         _showFirstCompletionScene = false;
+        _completionSceneIntroSeen = true;
+        _firstSceneOpacity = 0.0;
+        _persistentSceneOpacity = 1.0;
       });
+      return;
     }
+
+    await _animateCompletionSceneTransition(markSeen: true);
   }
 
   Duration sceneRevealDurationForMap(int mapNumber) {
@@ -899,18 +946,28 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 if (!isComingSoon && _showPersistentCompletionScene)
                   Positioned.fill(
                     child: IgnorePointer(
-                      child: MapCompletionAmbientScene(
-                        mapNumber: _mapNumber,
-                        intense: false,
+                      child: AnimatedOpacity(
+                        opacity: _persistentSceneOpacity,
+                        duration: _sceneCrossfadeDurationForMap(_mapNumber),
+                        curve: Curves.easeOutCubic,
+                        child: MapCompletionAmbientScene(
+                          mapNumber: _mapNumber,
+                          intense: false,
+                        ),
                       ),
                     ),
                   ),
                 if (!isComingSoon && _showFirstCompletionScene)
                   Positioned.fill(
                     child: IgnorePointer(
-                      child: MapCompletionAmbientScene(
-                        mapNumber: _mapNumber,
-                        intense: true,
+                      child: AnimatedOpacity(
+                        opacity: _firstSceneOpacity,
+                        duration: _sceneCrossfadeDurationForMap(_mapNumber),
+                        curve: Curves.easeOutCubic,
+                        child: MapCompletionAmbientScene(
+                          mapNumber: _mapNumber,
+                          intense: true,
+                        ),
                       ),
                     ),
                   ),

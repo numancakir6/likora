@@ -4666,11 +4666,11 @@ class _FlyingTubeState extends State<_FlyingTube>
         const vStreamStart = _pTiltEnd;
         // Akış aşamaları:
         // 1) vStreamStart → vHeadEnd : head düz hızda iner (linear)
-        // 2) vHeadEnd → vTailStart   : kısa temas
-        // 3) vTailStart → vTailEnd   : tail yukarıdan kesilir
+        // 2) vHeadEnd → vTailStart   : döküm boyunca sürekli akış
+        // 3) vTailStart → vTailEnd   : tail yukarıdan kesilir (döküm biter bitmez)
         const vHeadEnd = vStreamStart + 0.10; // hızlı iniş
-        const vTailStart = vHeadEnd + 0.04; // kısa temas sonrası kesim
-        const vTailEnd = vTailStart + 0.06; // kesim tamamlanır
+        const vTailStart = _pPourEnd; // döküm bitene kadar akış sürer
+        const vTailEnd = vTailStart + 0.04; // hızlı kesim
 
         // Anlık hedef sıvı yüzeyi: döküm ilerledikçe yukarı çıkar
         final currentToVolume =
