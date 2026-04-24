@@ -212,6 +212,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const double _nodeWidgetSize = 72;
   static const double _nodeHalfSize = _nodeWidgetSize / 2;
   static const double _nodeMinCenterDistance = 80;
+  static const bool _showDebugButtons = false;
 
   static final Map<int, Set<int>> _mapCompletedLevels = {
     for (var i = 1; i <= _maxMapCount; i++) i: <int>{},
@@ -227,11 +228,13 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   late Set<int> completedLevels;
   late Set<int> _unlocked;
   late List<LevelNodeData> _levels;
+
   bool _showFirstCompletionScene = false;
   bool _showPersistentCompletionScene = false;
   bool _completionSceneIntroSeen = false;
   double _firstSceneOpacity = 0.0;
   double _persistentSceneOpacity = 0.0;
+  bool _showCompletionCongratsCard = false;
 
   @override
   void initState() {
@@ -269,7 +272,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   int get _mapCompletionReward => 200 + ((_mapNumber - 1) * 100);
 
-  void _showPersistentCompletionOverlay() {
+  void _showPersistentCompletionOverlay({bool showCard = true}) {
     if (!mounted) return;
     setState(() {
       _showPersistentCompletionScene = true;
@@ -277,6 +280,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       _completionSceneIntroSeen = true;
       _firstSceneOpacity = 0.0;
       _persistentSceneOpacity = 1.0;
+      _showCompletionCongratsCard = showCard;
     });
   }
 
@@ -466,10 +470,14 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     setState(() {
       completedLevels = Set<int>.from(savedCompleted);
       _completionSceneIntroSeen = seen;
-      _showPersistentCompletionScene = fullyCompleted;
+
+      // intro görülmeden direkt persistent sahne açılmasın
+      _showPersistentCompletionScene = fullyCompleted && seen;
       _showFirstCompletionScene = false;
       _firstSceneOpacity = 0.0;
-      _persistentSceneOpacity = fullyCompleted ? 1.0 : 0.0;
+      _persistentSceneOpacity = (fullyCompleted && seen) ? 1.0 : 0.0;
+      _showCompletionCongratsCard = fullyCompleted && seen;
+
       _rebuildLevels();
     });
   }
@@ -479,7 +487,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     await PlayerProgress.setCompletedLevels(_mapNumber, completedLevels);
   }
 
-  /// Haritadaki tüm bölümleri tamamlar, coinleri kazandırır ve tamamlanma sahnesini gösterir.
   Future<void> _completeAllLevels() async {
     await SfxService.playClick();
     await SettingsPage.vibrateTap();
@@ -515,7 +522,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       }
     }
 
-    _showPersistentCompletionOverlay();
+    _showPersistentCompletionOverlay(showCard: true);
   }
 
   Duration _sceneRevealDurationForMap(int mapNumber) {
@@ -560,6 +567,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       _showPersistentCompletionScene = false;
       _firstSceneOpacity = 1.0;
       _persistentSceneOpacity = 0.0;
+      _showCompletionCongratsCard = false;
     });
 
     if (steadyDuration > Duration.zero) {
@@ -572,6 +580,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       _showPersistentCompletionScene = true;
       _persistentSceneOpacity = 1.0;
       _firstSceneOpacity = 0.0;
+      _showCompletionCongratsCard = true;
     });
 
     await Future.delayed(fadeDuration);
@@ -582,12 +591,34 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       _showPersistentCompletionScene = true;
       _firstSceneOpacity = 0.0;
       _persistentSceneOpacity = 1.0;
+      _showCompletionCongratsCard = true;
     });
 
     if (markSeen) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_completionSceneSeenPrefsKey, true);
     }
+  }
+
+  Future<void> _runCompletionSceneTest() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_completionSceneSeenPrefsKey);
+    await _animateCompletionSceneTransition(markSeen: true);
+  }
+
+  Future<void> _resetCompletionSceneTest() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_completionSceneSeenPrefsKey);
+
+    if (!mounted) return;
+    setState(() {
+      _completionSceneIntroSeen = false;
+      _showFirstCompletionScene = false;
+      _showPersistentCompletionScene = false;
+      _firstSceneOpacity = 0.0;
+      _persistentSceneOpacity = 0.0;
+      _showCompletionCongratsCard = false;
+    });
   }
 
   @override
@@ -812,7 +843,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     if (!mounted) return;
 
     if (seen) {
-      _showPersistentCompletionOverlay();
+      _showPersistentCompletionOverlay(showCard: true);
       return;
     }
 
@@ -943,7 +974,15 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           ),
         ),
         const Spacer(),
-        const SizedBox(width: 36),
+        _GlassButton(
+          accentColor: _theme.primaryColor,
+          onTap: _completeAllLevels,
+          child: Icon(
+            Icons.done_all_rounded,
+            color: _theme.primaryColor,
+            size: 20,
+          ),
+        ),
       ]),
     );
   }
@@ -1122,95 +1161,96 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                               ),
                             ),
                           ),
-                          Center(
-                            child: GestureDetector(
-                              onTap: () async {
-                                await SfxService.playClick();
-                                await SettingsPage.vibrateTap();
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 28, vertical: 18),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(24),
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.black.withValues(alpha: 0.52),
-                                      Colors.black.withValues(alpha: 0.30),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  border: Border.all(
-                                    color: _theme.primaryColor
-                                        .withValues(alpha: 0.40),
-                                    width: 1.5,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _theme.primaryColor
-                                          .withValues(alpha: 0.22),
-                                      blurRadius: 28,
-                                      spreadRadius: 2,
-                                    ),
-                                    BoxShadow(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.30),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.auto_awesome_rounded,
-                                      color: _theme.primaryColor,
-                                      size: 32,
-                                      shadows: [
-                                        Shadow(
-                                          color: _theme.primaryColor
-                                              .withValues(alpha: 0.7),
-                                          blurRadius: 16,
-                                        )
+                          if (_showCompletionCongratsCard)
+                            Center(
+                              child: GestureDetector(
+                                onTap: () async {
+                                  await SfxService.playClick();
+                                  await SettingsPage.vibrateTap();
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 28, vertical: 18),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(24),
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.black.withValues(alpha: 0.52),
+                                        Colors.black.withValues(alpha: 0.30),
                                       ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
                                     ),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      'Tebrikler!',
-                                      style: TextStyle(
+                                    border: Border.all(
+                                      color: _theme.primaryColor
+                                          .withValues(alpha: 0.40),
+                                      width: 1.5,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: _theme.primaryColor
+                                            .withValues(alpha: 0.22),
+                                        blurRadius: 28,
+                                        spreadRadius: 2,
+                                      ),
+                                      BoxShadow(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.30),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.auto_awesome_rounded,
                                         color: _theme.primaryColor,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.2,
+                                        size: 32,
                                         shadows: [
                                           Shadow(
                                             color: _theme.primaryColor
-                                                .withValues(alpha: 0.6),
-                                            blurRadius: 14,
+                                                .withValues(alpha: 0.7),
+                                            blurRadius: 16,
                                           )
                                         ],
                                       ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      '"${_theme.name}"ı Tamamladınız',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.92),
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.4,
-                                        height: 1.3,
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        'Tebrikler!',
+                                        style: TextStyle(
+                                          color: _theme.primaryColor,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 1.2,
+                                          shadows: [
+                                            Shadow(
+                                              color: _theme.primaryColor
+                                                  .withValues(alpha: 0.6),
+                                              blurRadius: 14,
+                                            )
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        '"${_theme.name}"ı Tamamladınız',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.92),
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.4,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     ),
