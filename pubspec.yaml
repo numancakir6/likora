@@ -3,7 +3,7 @@ description: Likora App
 
 publish_to: 'none'
 
-version: 1.0.2+89
+version: 1.0.2+90
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -31,17 +31,7 @@ flutter:
   assets:
     - assets/likora/
     - assets/lexion/
-    - assets/sfx/click.mp3
-    - assets/sfx/complete.mp3
-    - assets/sfx/small.mp3
-    - assets/sfx/water.mp3
-    - assets/sfx/music_1.mp3
-    - assets/sfx/music_2.mp3
-    - assets/sfx/music_3.mp3
-    - assets/sfx/music_4.mp3
-    - assets/sfx/music_5.mp3
-    - assets/sfx/music_6.mp3
-    - assets/sfx/music_7.mp3
+    - assets/sfx/
 
 flutter_launcher_icons:
   ios: true

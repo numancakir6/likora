@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'game_page.dart';
@@ -234,6 +235,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   double _firstSceneOpacity = 0.0;
   double _persistentSceneOpacity = 0.0;
   bool _showCompletionCongratsCard = false;
+  final List<Timer> _completionSoundTimers = <Timer>[];
 
   @override
   void initState() {
@@ -271,8 +273,34 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   int get _mapCompletionReward => 200 + ((_mapNumber - 1) * 100);
 
+  void _clearCompletionSoundTimers() {
+    for (final timer in _completionSoundTimers) {
+      timer.cancel();
+    }
+    _completionSoundTimers.clear();
+  }
+
+  void _scheduleCompletionSoundTimer(
+      Duration delay, Future<void> Function() job) {
+    if (delay <= Duration.zero) {
+      unawaited(job());
+      return;
+    }
+
+    final timer = Timer(delay, () {
+      unawaited(job());
+    });
+    _completionSoundTimers.add(timer);
+  }
+
+  void _startPersistentCompletionSound() {
+    unawaited(SfxService.startMapCompletionLoop(_mapNumber));
+  }
+
   void _showPersistentCompletionOverlay({bool showCard = true}) {
     if (!mounted) return;
+    _clearCompletionSoundTimers();
+    _startPersistentCompletionSound();
     setState(() {
       _showPersistentCompletionScene = true;
       _showFirstCompletionScene = false;
@@ -329,7 +357,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Tebrikler',
+                  'TEBRİKLER',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,
@@ -342,17 +370,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                         blurRadius: 14,
                       ),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '"${_theme.name}" u tamamladınız',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    height: 1.25,
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -434,7 +451,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                       ),
                     ),
                     child: Text(
-                      'Tamamla',
+                      'TAMAM',
                       style: TextStyle(
                         color: _theme.accentColor,
                         fontSize: 16,
@@ -479,11 +496,88 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
       _rebuildLevels();
     });
+
+    if (fullyCompleted && seen) {
+      _startPersistentCompletionSound();
+    } else {
+      _clearCompletionSoundTimers();
+      unawaited(SfxService.stopAllMapCompletionSounds());
+    }
   }
 
   Future<void> _saveProgress() async {
     _mapCompletedLevels[_mapNumber] = Set<int>.from(completedLevels);
     await PlayerProgress.setCompletedLevels(_mapNumber, completedLevels);
+  }
+
+  Future<void> testCompleteAllLevelsWithRealPopup() async {
+    await SfxService.playClick();
+    await SettingsPage.vibrateTap();
+
+    _clearCompletionSoundTimers();
+    await SfxService.stopAllMapCompletionSounds();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_completionSceneSeenPrefsKey);
+    await prefs.remove(_mapRewardClaimedPrefsKey);
+
+    for (var map = 1; map <= _playableMapCount; map++) {
+      await PlayerProgress.unlockMap(map);
+    }
+
+    final allLevelIds =
+        List<int>.generate(_layout.totalLevels, (i) => i + 1).toSet();
+
+    _mapCompletedLevels[_mapNumber] = Set<int>.from(allLevelIds);
+    await PlayerProgress.setCompletedLevels(_mapNumber, allLevelIds);
+
+    if (!mounted) return;
+    setState(() {
+      completedLevels = Set<int>.from(allLevelIds);
+      _completionSceneIntroSeen = false;
+      _showFirstCompletionScene = false;
+      _showPersistentCompletionScene = false;
+      _firstSceneOpacity = 0.0;
+      _persistentSceneOpacity = 0.0;
+      _showCompletionCongratsCard = false;
+      _rebuildLevels();
+    });
+
+    await _claimMapCompletionRewardIfNeeded();
+    if (!mounted) return;
+
+    final startAnimation = await _showMapCompletionRewardDialog();
+    if (startAnimation && mounted) {
+      await prefs.remove(_completionSceneSeenPrefsKey);
+      await _animateCompletionSceneTransition(markSeen: true);
+    }
+  }
+
+  Future<void> testResetAllLevelsForThisMap() async {
+    await SfxService.playClick();
+    await SettingsPage.vibrateTap();
+
+    _clearCompletionSoundTimers();
+    await SfxService.stopAllMapCompletionSounds();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_completionSceneSeenPrefsKey);
+    await prefs.remove(_mapRewardClaimedPrefsKey);
+
+    _mapCompletedLevels[_mapNumber] = <int>{};
+    await PlayerProgress.setCompletedLevels(_mapNumber, <int>{});
+
+    if (!mounted) return;
+    setState(() {
+      completedLevels = <int>{};
+      _completionSceneIntroSeen = false;
+      _showFirstCompletionScene = false;
+      _showPersistentCompletionScene = false;
+      _firstSceneOpacity = 0.0;
+      _persistentSceneOpacity = 0.0;
+      _showCompletionCongratsCard = false;
+      _rebuildLevels();
+    });
   }
 
   Duration _sceneRevealDurationForMap(int mapNumber) {
@@ -527,6 +621,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         ? revealDuration - fadeDuration
         : Duration.zero;
 
+    _clearCompletionSoundTimers();
+    await SfxService.stopAllMapCompletionSounds();
+
     if (!mounted) return;
     setState(() {
       _completionSceneIntroSeen = true;
@@ -537,10 +634,31 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       _showCompletionCongratsCard = false;
     });
 
+    unawaited(SfxService.startMapCompletionAction(_mapNumber));
+
+    if (_mapNumber == 3) {
+      final preStartDelay = revealDuration - const Duration(seconds: 2);
+      _scheduleCompletionSoundTimer(preStartDelay, () async {
+        await SfxService.startMapCompletionLoop(_mapNumber);
+      });
+    }
+
     if (steadyDuration > Duration.zero) {
       await Future.delayed(steadyDuration);
       if (!mounted) return;
     }
+
+    if (_mapNumber != 3) {
+      _startPersistentCompletionSound();
+    } else {
+      // Map 3'te sabit ses son 2 saniyede başlamış olmalı.
+      // Timer çalışmadıysa burada başlat; zaten başladıysa servis no-op yapar.
+      _startPersistentCompletionSound();
+    }
+
+    unawaited(
+      SfxService.fadeOutMapCompletionAction(duration: fadeDuration),
+    );
 
     if (!mounted) return;
     setState(() {
@@ -569,6 +687,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _clearCompletionSoundTimers();
+    unawaited(SfxService.stopAllMapCompletionSounds());
     _bgController.dispose();
     _entryController.dispose();
     super.dispose();
@@ -1169,19 +1289,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                                               blurRadius: 14,
                                             )
                                           ],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        '"${_theme.name}"ı Tamamladınız',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.92),
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.4,
-                                          height: 1.3,
                                         ),
                                       ),
                                     ],

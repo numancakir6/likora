@@ -10,6 +10,10 @@ class SfxService {
   static int _waterSeq = 0;
   static final Map<int, AudioPlayer> _waterPlayers = {};
 
+  static AudioPlayer? _mapCompletionActionPlayer;
+  static AudioPlayer? _mapCompletionLoopPlayer;
+  static int? _mapCompletionLoopMapNumber;
+
   static Future<bool> _isSoundOn() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_soundKey) ?? true;
@@ -110,8 +114,174 @@ class SfxService {
     }
   }
 
+  static String _mapCompletionActionAsset(int mapNumber) {
+    switch (mapNumber) {
+      case 1:
+        return 'assets/sfx/map1_completion_action.mp3';
+      case 2:
+        return 'assets/sfx/map2_completion_action.mp3';
+      case 3:
+        return 'assets/sfx/map3_completion_action.mp3';
+      default:
+        return 'assets/sfx/map1_completion_action.mp3';
+    }
+  }
+
+  static String _mapCompletionLoopAsset(int mapNumber) {
+    switch (mapNumber) {
+      case 1:
+        return 'assets/sfx/map1_completion_loop.mp3';
+      case 2:
+        return 'assets/sfx/map2_completion_loop.mp3';
+      case 3:
+        return 'assets/sfx/map3_completion_loop.mp3';
+      default:
+        return 'assets/sfx/map1_completion_loop.mp3';
+    }
+  }
+
+  static Future<void> startMapCompletionAction(int mapNumber) async {
+    if (!await _isSoundOn()) return;
+
+    final player = AudioPlayer(playerId: 'likora_map_completion_action');
+
+    final oldPlayer = _mapCompletionActionPlayer;
+    _mapCompletionActionPlayer = player;
+
+    try {
+      await oldPlayer?.stop();
+      await oldPlayer?.dispose();
+    } catch (_) {}
+
+    try {
+      await player.setReleaseMode(ReleaseMode.stop);
+      await player.setVolume(0.92);
+      await player
+          .play(AssetSource(_assetKey(_mapCompletionActionAsset(mapNumber))));
+    } catch (_) {
+      if (_mapCompletionActionPlayer == player) {
+        _mapCompletionActionPlayer = null;
+      }
+      try {
+        await player.dispose();
+      } catch (_) {}
+    }
+  }
+
+  static Future<void> fadeOutMapCompletionAction({
+    Duration duration = const Duration(milliseconds: 700),
+  }) async {
+    final player = _mapCompletionActionPlayer;
+    if (player == null) return;
+
+    _mapCompletionActionPlayer = null;
+    await _fadeOutAndDispose(player, duration: duration, fromVolume: 0.92);
+  }
+
+  static Future<void> startMapCompletionLoop(
+    int mapNumber, {
+    double volume = 0.46,
+    Duration fadeIn = const Duration(milliseconds: 700),
+  }) async {
+    if (!await _isSoundOn()) return;
+
+    if (_mapCompletionLoopPlayer != null &&
+        _mapCompletionLoopMapNumber == mapNumber) {
+      return;
+    }
+
+    await stopMapCompletionLoop(duration: const Duration(milliseconds: 250));
+
+    final player = AudioPlayer(playerId: 'likora_map_completion_loop');
+    _mapCompletionLoopPlayer = player;
+    _mapCompletionLoopMapNumber = mapNumber;
+
+    try {
+      await player.setReleaseMode(ReleaseMode.loop);
+      await player.setVolume(0.0);
+      await player
+          .play(AssetSource(_assetKey(_mapCompletionLoopAsset(mapNumber))));
+      await _fadeVolume(player, from: 0.0, to: volume, duration: fadeIn);
+    } catch (_) {
+      if (_mapCompletionLoopPlayer == player) {
+        _mapCompletionLoopPlayer = null;
+        _mapCompletionLoopMapNumber = null;
+      }
+      try {
+        await player.dispose();
+      } catch (_) {}
+    }
+  }
+
+  static Future<void> stopMapCompletionLoop({
+    Duration duration = const Duration(milliseconds: 600),
+  }) async {
+    final player = _mapCompletionLoopPlayer;
+    if (player == null) return;
+
+    _mapCompletionLoopPlayer = null;
+    _mapCompletionLoopMapNumber = null;
+    await _fadeOutAndDispose(player, duration: duration, fromVolume: 0.46);
+  }
+
+  static Future<void> stopAllMapCompletionSounds() async {
+    final actionPlayer = _mapCompletionActionPlayer;
+    final loopPlayer = _mapCompletionLoopPlayer;
+
+    _mapCompletionActionPlayer = null;
+    _mapCompletionLoopPlayer = null;
+    _mapCompletionLoopMapNumber = null;
+
+    for (final player in [actionPlayer, loopPlayer]) {
+      if (player == null) continue;
+      try {
+        await player.stop();
+      } catch (_) {}
+      try {
+        await player.dispose();
+      } catch (_) {}
+    }
+  }
+
+  static Future<void> _fadeOutAndDispose(
+    AudioPlayer player, {
+    required Duration duration,
+    required double fromVolume,
+  }) async {
+    await _fadeVolume(player, from: fromVolume, to: 0.0, duration: duration);
+    try {
+      await player.stop();
+    } catch (_) {}
+    try {
+      await player.dispose();
+    } catch (_) {}
+  }
+
+  static Future<void> _fadeVolume(
+    AudioPlayer player, {
+    required double? from,
+    required double to,
+    required Duration duration,
+  }) async {
+    const steps = 12;
+    final start = from ?? 1.0;
+    final stepMs = max(16, duration.inMilliseconds ~/ steps);
+
+    for (int i = 1; i <= steps; i++) {
+      final t = i / steps;
+      final volume = start + (to - start) * t;
+      try {
+        await player.setVolume(volume.clamp(0.0, 1.0));
+      } catch (_) {
+        return;
+      }
+      await Future.delayed(Duration(milliseconds: stepMs));
+    }
+  }
+
   static Future<void> dispose() async {
     await stopAllWater();
+    await stopAllMapCompletionSounds();
   }
 }
 
