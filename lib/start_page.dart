@@ -17,8 +17,9 @@ class StartPage extends StatefulWidget {
 
 class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
   late AnimationController _controller;
-  final List<Animation<double>> _buttonAnimations = [];
   late AnimationController _btnController;
+  final List<Animation<double>> _buttonAnimations = [];
+  final Stopwatch _stopwatch = Stopwatch();
 
   late final List<_Bubble> _bubbles =
       List.generate(20, (i) => _Bubble.random(i));
@@ -29,10 +30,13 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
     _loadProgress();
     MusicService.ensureStarted();
 
+    _stopwatch.start();
+
+    // Çok uzun süreli controller — repeat() yok, sadece ilerler
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 40),
-    )..repeat();
+      duration: const Duration(days: 365),
+    )..forward();
 
     _btnController = AnimationController(
       vsync: this,
@@ -81,20 +85,20 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
         children: [
           AnimatedBuilder(
             animation: _controller,
-            builder: (_, __) => CustomPaint(
-              painter: OrbPainter(_controller.value),
-              size: Size.infinite,
-            ),
+            builder: (_, __) {
+              final t = _stopwatch.elapsedMilliseconds / 1000.0;
+              return CustomPaint(
+                painter: OrbPainter(t),
+                size: Size.infinite,
+              );
+            },
           ),
           AnimatedBuilder(
             animation: _controller,
             builder: (_, __) {
-              final elapsed =
-                  _controller.lastElapsedDuration?.inMilliseconds ?? 0;
-              final timeSeconds = elapsed / 1000.0;
-
+              final t = _stopwatch.elapsedMilliseconds / 1000.0;
               return CustomPaint(
-                painter: BubblePainter(timeSeconds, _bubbles),
+                painter: BubblePainter(t, _bubbles),
                 size: Size.infinite,
               );
             },
@@ -365,12 +369,9 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, __) {
-        final elapsed = _controller.lastElapsedDuration?.inMilliseconds ?? 0;
-        final time = elapsed / 1000.0;
-
-        final phase = (time * 4.0) + (index * pi / 3);
+        final t = _stopwatch.elapsedMilliseconds / 1000.0;
+        final phase = (t * 4.0) + (index * pi / 3);
         final scale = 0.7 + 0.3 * sin(phase);
-
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 4),
           width: 6 * scale,
@@ -389,8 +390,8 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
 }
 
 class OrbPainter extends CustomPainter {
-  final double progress;
-  OrbPainter(this.progress);
+  final double elapsedSeconds;
+  OrbPainter(this.elapsedSeconds);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -405,7 +406,8 @@ class OrbPainter extends CustomPainter {
 
     for (int i = 0; i < orbs.length; i++) {
       final o = orbs[i];
-      final phase = progress * 2 * pi + i * 1.3;
+      // Her orb farklı hızda hareket eder — sürekli artan elapsedSeconds ile
+      final phase = elapsedSeconds * (0.18 + i * 0.04) + i * 1.3;
       final dx = sin(phase) * 60;
       final dy = cos(phase * 0.7) * 60;
       final cx = o.dx * size.width + dx;

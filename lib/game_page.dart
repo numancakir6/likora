@@ -2570,7 +2570,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   children: [
                     const Expanded(
                       child: Text(
-                        'Tebrikler',
+                        'SEVİYE TAMAMLANDI',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 22,
@@ -2656,7 +2656,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 SizedBox(
                   width: double.infinity,
                   child: _BottomActionBtn(
-                    label: 'Harika',
+                    label: 'HARİKA',
                     color: _theme.accentColor.withValues(alpha: 0.18),
                     borderColor: _theme.accentColor.withValues(alpha: 0.45),
                     textColor: _theme.accentColor,

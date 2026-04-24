@@ -220,16 +220,14 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
     return Icons.extension_rounded;
   }
 
-  String _modeLabel() {
-    if (_isVolcanoPuzzle) return 'MAP 3 · VOLKAN';
-    if (_isBlindPuzzle) return 'MAP 2 · GİZLİ TÜP';
-    return 'MAP 1 · KLASİK';
+  String _mapNameLabel() {
+    if (_isVolcanoPuzzle) return 'LAV DAĞI';
+    if (_isBlindPuzzle) return 'DERİN SULAR';
+    return 'KOZMİK BULUT';
   }
 
   String _completedModeLabel() {
-    if (_isVolcanoPuzzle) return 'VOLKAN GÜNLÜK BULMACASI';
-    if (_isBlindPuzzle) return 'GİZLİ TÜP GÜNLÜK BULMACASI';
-    return 'KLASİK GÜNLÜK BULMACA';
+    return _mapNameLabel();
   }
 
   Future<void> _openDailyGame() async {
@@ -312,7 +310,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
     );
   }
 
-  String _dailyDescription() {
+  String dailyDescription() {
     if (_isVolcanoPuzzle) {
       return 'Bugün volkan düzeni aktif. Lavı doğru yönet, dağı doldur ve patlamayı tetikle.';
     }
@@ -322,7 +320,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
     return 'Bugün klasik düzen seni bekliyor. Standart tüplerle temiz ve dengeli bir çözüm kur.';
   }
 
-  String _modeHintText() {
+  String modeHintText() {
     if (_isVolcanoPuzzle) {
       return 'Lav tüpleri, dağ haznesi ve volkan kuralları bu bulmacaya özeldir.';
     }
@@ -421,7 +419,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 22),
           const Text(
-            'BUGÜNÜN BULMACASI HAZIR',
+            'GÜNLÜK BULMACA',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
@@ -433,7 +431,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 14),
           Text(
-            _modeLabel(),
+            _mapNameLabel(),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: accent,
@@ -444,7 +442,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'ZORLUK · ${_difficultyText(_dailyPuzzle.difficulty)}',
+            _difficultyText(_dailyPuzzle.difficulty),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.88),
@@ -499,27 +497,6 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
               ),
             ),
           ),
-          const SizedBox(height: 18),
-          Text(
-            _dailyDescription(),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
-              fontSize: 14,
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            _modeHintText(),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.44),
-              fontSize: 12,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
           const SizedBox(height: 28),
           SizedBox(
             width: double.infinity,
@@ -534,14 +511,10 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
                   borderRadius: BorderRadius.circular(18),
                 ),
               ),
-              child: Text(
-                _isVolcanoPuzzle
-                    ? 'VOLKAN BULMACASINI OYNA'
-                    : _isBlindPuzzle
-                        ? 'GİZLİ TÜP BULMACASINI OYNA'
-                        : 'KLASİK BULMACAYI OYNA',
+              child: const Text(
+                'OYNA',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.0,
@@ -592,7 +565,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
           ),
           const SizedBox(height: 22),
           const Text(
-            'BUGÜNÜN BULMACASINI TAMAMLADIN',
+            'GÜNLÜK BULMACA',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
