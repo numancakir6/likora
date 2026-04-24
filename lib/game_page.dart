@@ -5,7 +5,6 @@ import 'dart:math';
 import 'dart:ui' show ImageFilter, lerpDouble;
 import 'package:flutter/material.dart';
 import 'map_theme.dart';
-import 'map_page.dart';
 import 'puzzle_presets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'player_progress.dart';
@@ -698,9 +697,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       return;
     }
 
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => MapPage(mapNumber: widget.mapNumber),
+    Navigator.of(context).pop(
+      GamePageResult(
+        completed: _gameWon,
+        coinsAfterLevel: _coins,
+        earnedCoins: _gameWon ? _levelReward : 0,
       ),
     );
   }
