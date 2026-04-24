@@ -374,7 +374,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   RewardedAd? _jokerRewardAd;
   bool _isJokerRewardAdReady = false;
   bool _jokerBusy = false;
-  static const int _jokerCost = 50;
+  static const int _jokerCost = 100;
   List<int> _jokerSearchLimitsForCurrentState() {
     final activeTubeCount = _jokerActiveTubeIndexesFor(_tubes).length;
     final freshStart = _history.isEmpty;

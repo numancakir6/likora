@@ -235,6 +235,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   double _firstSceneOpacity = 0.0;
   double _persistentSceneOpacity = 0.0;
   bool _showCompletionCongratsCard = false;
+  bool _isSwitchingMapPage = false;
   final List<Timer> _completionSoundTimers = <Timer>[];
 
   @override
@@ -618,7 +619,15 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   @override
   void dispose() {
     _clearCompletionSoundTimers();
-    unawaited(SfxService.stopAllMapCompletionSounds());
+
+    // Normal çıkışta map tamamlama seslerini kapat.
+    // Haritalar arasında pushReplacement ile geçerken kapatma;
+    // aksi halde yeni MapPage kendi loop sesini başlatsa bile eski sayfanın
+    // dispose çağrısı o sesi hemen kesebiliyor.
+    if (!_isSwitchingMapPage) {
+      unawaited(SfxService.stopAllMapCompletionSounds());
+    }
+
     _bgController.dispose();
     _entryController.dispose();
     super.dispose();
@@ -891,6 +900,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     if (targetMapNumber < 1 || targetMapNumber > _maxMapCount) return;
 
     final movingForward = targetMapNumber > _mapNumber;
+    _isSwitchingMapPage = true;
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
@@ -1275,29 +1285,75 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                   Positioned.fill(
                     child: IgnorePointer(
                       child: Center(
-                        child: Container(
-                          width: 132,
-                          height: 132,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.black.withValues(alpha: 0.22),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.16),
-                              width: 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.26),
-                                blurRadius: 28,
-                                spreadRadius: 2,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          clipBehavior: Clip.none,
+                          children: [
+                            Positioned(
+                              top: -34,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 7,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(999),
+                                  color: Colors.black.withValues(alpha: 0.34),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.18),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.26),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  'YAKINDA',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.94),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.7,
+                                    shadows: [
+                                      Shadow(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.70),
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                            ],
-                          ),
-                          child: Icon(
-                            Icons.lock_rounded,
-                            size: 72,
-                            color: Colors.white.withValues(alpha: 0.88),
-                          ),
+                            ),
+                            Container(
+                              width: 132,
+                              height: 132,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.black.withValues(alpha: 0.22),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.16),
+                                  width: 2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.26),
+                                    blurRadius: 28,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                Icons.lock_rounded,
+                                size: 72,
+                                color: Colors.white.withValues(alpha: 0.88),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
