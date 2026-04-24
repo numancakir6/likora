@@ -686,17 +686,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
     if (!mounted) return;
 
-    if (_isDailyMode) {
-      Navigator.of(context).pop(
-        GamePageResult(
-          completed: _gameWon,
-          coinsAfterLevel: _coins,
-          earnedCoins: _gameWon ? _levelReward : 0,
-        ),
-      );
-      return;
-    }
-
+    // Her zaman pop ile geri dön — asla yeni MapPage oluşturma.
+    // Daily mod veya normal mod fark etmeksizin mevcut stack'e pop yap.
     Navigator.of(context).pop(
       GamePageResult(
         completed: _gameWon,
@@ -2681,6 +2672,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _exitLevel({required bool completed}) async {
+    // Durumu kaydet / temizle
     if (_isDailyMode) {
       if (completed) {
         await DailyPuzzleProgress.clearInProgressState();
@@ -2688,30 +2680,20 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       } else {
         await _persistLevelState();
       }
-
-      if (!mounted) return;
-      Navigator.pop(
-        context,
-        GamePageResult(
-          completed: completed,
-          coinsAfterLevel: _coins,
-          earnedCoins: completed ? _levelReward : 0,
-        ),
-      );
-      return;
-    }
-
-    if (completed) {
-      await PlayerProgress.clearInProgressLevelState(
-          widget.mapNumber, widget.level);
-      await _clearRefillState();
     } else {
-      await _persistLevelState();
+      if (completed) {
+        await PlayerProgress.clearInProgressLevelState(
+            widget.mapNumber, widget.level);
+        await _clearRefillState();
+      } else {
+        await _persistLevelState();
+      }
     }
 
     if (!mounted) return;
-    Navigator.pop(
-      context,
+
+    // Her zaman pop ile mevcut MapPage'e dön — asla yeni MapPage oluşturma.
+    Navigator.of(context).pop(
       GamePageResult(
         completed: completed,
         coinsAfterLevel: _coins,

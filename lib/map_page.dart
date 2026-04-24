@@ -797,7 +797,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       ),
     );
 
-    if (result?.completed == true && mounted) {
+    if (!mounted) return;
+
+    if (result?.completed == true) {
       final updatedCompleted = {...completedLevels, levelId};
       final wasMapAlreadyComplete = _isMapFullyCompleted(completedLevels);
 
@@ -807,28 +809,46 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       });
 
       await _saveProgress();
+      if (!mounted) return;
 
       final isMapFullyCompleted = _isMapFullyCompleted(updatedCompleted);
       if (isMapFullyCompleted) {
         if (!wasMapAlreadyComplete) {
+          // Harita ilk kez tamamlandı: ödül ver, intro sahnesini sıfırla ve başlat
           await _claimMapCompletionRewardIfNeeded();
           if (!mounted) return;
           await _showMapCompletionRewardDialog();
-
           if (!mounted) return;
 
+          // Intro-seen bayrağını sıfırla ki sahne yeniden oynatılsın
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove(_completionSceneSeenPrefsKey);
+
+          // State'i de sıfırla — persistent sahne açık kalmasın
+          setState(() {
+            _completionSceneIntroSeen = false;
+            _showPersistentCompletionScene = false;
+            _persistentSceneOpacity = 0.0;
+            _showCompletionCongratsCard = false;
+          });
+
+          if (!mounted) return;
           await _animateCompletionSceneTransition(markSeen: true);
           return;
         }
+
+        // Harita zaten tamamlıydı ama tekrar girildi: persistent sahneyi göster
         await _handleMapCompletionSceneActivation();
       }
     }
   }
 
   Future<void> _handleMapCompletionSceneActivation() async {
-    if (_showPersistentCompletionScene && _completionSceneIntroSeen) return;
+    // Zaten persistent sahne açık ve intro görüldüyse tekrar başlatma
+    if (_showPersistentCompletionScene && _completionSceneIntroSeen) {
+      _showPersistentCompletionOverlay(showCard: true);
+      return;
+    }
 
     if (_mapNumber < _maxMapCount && _mapNumber < _playableMapCount) {
       await PlayerProgress.unlockMap(_mapNumber + 1);
