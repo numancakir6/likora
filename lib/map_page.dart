@@ -8,6 +8,7 @@ import 'audio_service.dart';
 import 'game/core/game_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'map_page_completion_scenes.dart';
+
 // ─────────────────────────────────────────────
 //  DIFFICULTY
 // ─────────────────────────────────────────────
@@ -71,6 +72,7 @@ Color _adaptiveDifficultyRingColor({
 
   return candidate;
 }
+
 // ─────────────────────────────────────────────
 //  DATA MODEL
 // ─────────────────────────────────────────────
@@ -210,7 +212,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const double _nodeWidgetSize = 72;
   static const double _nodeHalfSize = _nodeWidgetSize / 2;
   static const double _nodeMinCenterDistance = 80;
-  static const bool _showDebugButtons = true;
 
   static final Map<int, Set<int>> _mapCompletedLevels = {
     for (var i = 1; i <= _maxMapCount; i++) i: <int>{},
@@ -268,6 +269,17 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   int get _mapCompletionReward => 200 + ((_mapNumber - 1) * 100);
 
+  void _showPersistentCompletionOverlay() {
+    if (!mounted) return;
+    setState(() {
+      _showPersistentCompletionScene = true;
+      _showFirstCompletionScene = false;
+      _completionSceneIntroSeen = true;
+      _firstSceneOpacity = 0.0;
+      _persistentSceneOpacity = 1.0;
+    });
+  }
+
   Future<bool> _claimMapCompletionRewardIfNeeded() async {
     final prefs = await SharedPreferences.getInstance();
     final alreadyClaimed = prefs.getBool(_mapRewardClaimedPrefsKey) ?? false;
@@ -282,12 +294,10 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   Future<bool> _showMapCompletionRewardDialog() async {
     if (!mounted) return false;
 
-    final outerContext = context;
-
     final shouldStartAnimation = await showDialog<bool>(
-      context: outerContext,
+      context: context,
       barrierDismissible: false,
-      builder: (_) {
+      builder: (dialogContext) {
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(horizontal: 28),
@@ -401,28 +411,34 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                   ),
                 ),
                 const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: _GlassButton(
-                    accentColor: _theme.accentColor,
-                    onTap: () async {
-                      await SfxService.playClick();
-                      await SettingsPage.vibrateTap();
-                      if (!outerContext.mounted) return;
-                      Navigator.of(outerContext).pop(true);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Text(
-                        'Tamamla',
-                        style: TextStyle(
-                          color: _theme.accentColor,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.2,
-                        ),
-                        textAlign: TextAlign.center,
+                GestureDetector(
+                  onTap: () async {
+                    await SfxService.playClick();
+                    await SettingsPage.vibrateTap();
+                    Navigator.of(dialogContext).pop(true);
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(colors: [
+                        Colors.white.withValues(alpha: 0.10),
+                        Colors.white.withValues(alpha: 0.04),
+                      ]),
+                      border: Border.all(
+                        color: _theme.accentColor.withValues(alpha: 0.25),
                       ),
+                    ),
+                    child: Text(
+                      'Tamamla',
+                      style: TextStyle(
+                        color: _theme.accentColor,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.2,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
                   ),
                 ),
@@ -452,6 +468,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       _completionSceneIntroSeen = seen;
       _showPersistentCompletionScene = fullyCompleted;
       _showFirstCompletionScene = false;
+      _firstSceneOpacity = 0.0;
+      _persistentSceneOpacity = fullyCompleted ? 1.0 : 0.0;
       _rebuildLevels();
     });
   }
@@ -461,26 +479,43 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     await PlayerProgress.setCompletedLevels(_mapNumber, completedLevels);
   }
 
-  /// TEST BUTTON: Bu haritanın tüm levellerini açar + önceki haritaları da unlock eder
-  Future<void> _unlockAllLevels() async {
-    // Tüm playable haritaları unlock et (1'den _playableMapCount'a kadar)
+  /// Haritadaki tüm bölümleri tamamlar, coinleri kazandırır ve tamamlanma sahnesini gösterir.
+  Future<void> _completeAllLevels() async {
+    await SfxService.playClick();
+    await SettingsPage.vibrateTap();
+
     for (var map = 1; map <= _playableMapCount; map++) {
       await PlayerProgress.unlockMap(map);
     }
 
-    // Şu anki haritanın tüm levellerini tamamlanmış say
     final allLevelIds =
         List.generate(_layout.totalLevels, (i) => i + 1).toSet();
+
+    final wasMapAlreadyComplete = _isMapFullyCompleted(completedLevels);
+
     _mapCompletedLevels[_mapNumber] = Set<int>.from(allLevelIds);
     await PlayerProgress.setCompletedLevels(_mapNumber, allLevelIds);
 
     if (!mounted) return;
     setState(() {
       completedLevels = Set<int>.from(allLevelIds);
-      _showPersistentCompletionScene = true;
-      _showFirstCompletionScene = false;
       _rebuildLevels();
     });
+
+    if (!wasMapAlreadyComplete) {
+      final rewarded = await _claimMapCompletionRewardIfNeeded();
+      if (rewarded && mounted) {
+        final startAnimation = await _showMapCompletionRewardDialog();
+        if (startAnimation && mounted) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_completionSceneSeenPrefsKey);
+          await _animateCompletionSceneTransition(markSeen: true);
+        }
+        return;
+      }
+    }
+
+    _showPersistentCompletionOverlay();
   }
 
   Duration _sceneRevealDurationForMap(int mapNumber) {
@@ -553,26 +588,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_completionSceneSeenPrefsKey, true);
     }
-  }
-
-  Future<void> _runCompletionSceneTest() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_completionSceneSeenPrefsKey);
-    await _animateCompletionSceneTransition(markSeen: true);
-  }
-
-  Future<void> _resetCompletionSceneTest() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_completionSceneSeenPrefsKey);
-
-    if (!mounted) return;
-    setState(() {
-      _completionSceneIntroSeen = false;
-      _showFirstCompletionScene = false;
-      _showPersistentCompletionScene = false;
-      _firstSceneOpacity = 0.0;
-      _persistentSceneOpacity = 0.0;
-    });
   }
 
   @override
@@ -772,8 +787,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           await _claimMapCompletionRewardIfNeeded();
           if (!mounted) return;
           final startAnimation = await _showMapCompletionRewardDialog();
-          if (!mounted) return;
-          if (startAnimation) {
+          if (startAnimation && mounted) {
             final prefs = await SharedPreferences.getInstance();
             await prefs.remove(_completionSceneSeenPrefsKey);
             await _animateCompletionSceneTransition(markSeen: true);
@@ -798,13 +812,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     if (!mounted) return;
 
     if (seen) {
-      setState(() {
-        _showPersistentCompletionScene = true;
-        _showFirstCompletionScene = false;
-        _completionSceneIntroSeen = true;
-        _firstSceneOpacity = 0.0;
-        _persistentSceneOpacity = 1.0;
-      });
+      _showPersistentCompletionOverlay();
       return;
     }
 
@@ -935,38 +943,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           ),
         ),
         const Spacer(),
-        // ── DEBUG BUTONLARI ──
-        if (_showDebugButtons) ...[
-          _GlassButton(
-            accentColor: Colors.orange,
-            onTap: _unlockAllLevels,
-            child: const Icon(
-              Icons.lock_open_rounded,
-              color: Colors.orange,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 8),
-          _GlassButton(
-            accentColor: Colors.cyan,
-            onTap: _runCompletionSceneTest,
-            child: const Icon(
-              Icons.play_arrow_rounded,
-              color: Colors.cyan,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 8),
-          _GlassButton(
-            accentColor: Colors.redAccent,
-            onTap: _resetCompletionSceneTest,
-            child: const Icon(
-              Icons.restart_alt_rounded,
-              color: Colors.redAccent,
-              size: 20,
-            ),
-          ),
-        ],
+        const SizedBox(width: 36),
       ]),
     );
   }
@@ -1131,15 +1108,110 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                   ),
                 if (!isComingSoon && _showPersistentCompletionScene)
                   Positioned.fill(
-                    child: IgnorePointer(
-                      child: AnimatedOpacity(
-                        opacity: _persistentSceneOpacity,
-                        duration: _sceneCrossfadeDurationForMap(_mapNumber),
-                        curve: Curves.easeOutCubic,
-                        child: MapCompletionAmbientScene(
-                          mapNumber: _mapNumber,
-                          intense: false,
-                        ),
+                    child: AnimatedOpacity(
+                      opacity: _persistentSceneOpacity,
+                      duration: _sceneCrossfadeDurationForMap(_mapNumber),
+                      curve: Curves.easeOutCubic,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: MapCompletionAmbientScene(
+                                mapNumber: _mapNumber,
+                                intense: false,
+                              ),
+                            ),
+                          ),
+                          Center(
+                            child: GestureDetector(
+                              onTap: () async {
+                                await SfxService.playClick();
+                                await SettingsPage.vibrateTap();
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 28, vertical: 18),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24),
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.black.withValues(alpha: 0.52),
+                                      Colors.black.withValues(alpha: 0.30),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  border: Border.all(
+                                    color: _theme.primaryColor
+                                        .withValues(alpha: 0.40),
+                                    width: 1.5,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: _theme.primaryColor
+                                          .withValues(alpha: 0.22),
+                                      blurRadius: 28,
+                                      spreadRadius: 2,
+                                    ),
+                                    BoxShadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.30),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.auto_awesome_rounded,
+                                      color: _theme.primaryColor,
+                                      size: 32,
+                                      shadows: [
+                                        Shadow(
+                                          color: _theme.primaryColor
+                                              .withValues(alpha: 0.7),
+                                          blurRadius: 16,
+                                        )
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'Tebrikler!',
+                                      style: TextStyle(
+                                        color: _theme.primaryColor,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.2,
+                                        shadows: [
+                                          Shadow(
+                                            color: _theme.primaryColor
+                                                .withValues(alpha: 0.6),
+                                            blurRadius: 14,
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '"${_theme.name}"ı Tamamladınız',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.92),
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.4,
+                                        height: 1.3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1330,8 +1402,6 @@ class _PremiumLevelNodeWidgetState extends State<PremiumLevelNodeWidget>
   @override
   void didUpdateWidget(PremiumLevelNodeWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Level state değiştiğinde (tamamlandı veya kilidi açıldı)
-    // orbit ve pulse animasyonlarını güncelle.
     if (oldWidget.data.isUnlocked != widget.data.isUnlocked ||
         oldWidget.data.isCompleted != widget.data.isCompleted) {
       _syncAnimations();

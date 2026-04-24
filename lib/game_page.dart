@@ -2730,11 +2730,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _exitLevel(completed: false);
   }
 
-  void _debugCompleteLevel() {
-    if (_gameWon || _activePlans.isNotEmpty) return;
-    _completeLevel();
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_restoringLevelState) {
@@ -3220,11 +3215,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
             children: [
               CoinPill(coinsValue: _coins),
               const Spacer(),
-              _TestLevelButton(
-                enabled: !_gameWon && _activePlans.isEmpty,
-                accentColor: _theme.accentColor,
-                onTap: _debugCompleteLevel,
-              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -3559,80 +3549,6 @@ class _UndoButton extends StatelessWidget {
   }
 }
 
-class _TestLevelButton extends StatelessWidget {
-  final bool enabled;
-  final Color accentColor;
-  final VoidCallback onTap;
-
-  const _TestLevelButton({
-    required this.enabled,
-    required this.accentColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      opacity: enabled ? 1.0 : 0.32,
-      duration: const Duration(milliseconds: 250),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: enabled ? onTap : null,
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-            height: 34,
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: enabled
-                    ? accentColor.withValues(alpha: 0.52)
-                    : Colors.white.withValues(alpha: 0.14),
-                width: 1.4,
-              ),
-              boxShadow: enabled
-                  ? [
-                      BoxShadow(
-                        color: accentColor.withValues(alpha: 0.16),
-                        blurRadius: 12,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.keyboard_double_arrow_up_rounded,
-                  color: enabled
-                      ? accentColor
-                      : Colors.white.withValues(alpha: 0.45),
-                  size: 16,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  'TEST',
-                  style: TextStyle(
-                    color: enabled
-                        ? accentColor
-                        : Colors.white.withValues(alpha: 0.45),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _BottomActionBtn extends StatelessWidget {
   final String label;
   final Color color;
@@ -3677,9 +3593,6 @@ class _BottomActionBtn extends StatelessWidget {
     );
   }
 }
-// ─────────────────────────────────────────────
-// TÜPLER SAHNESİ
-// ─────────────────────────────────────────────
 
 class _TutorialStep {
   final String title;
