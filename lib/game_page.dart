@@ -314,6 +314,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   final Queue<(int, int)> _commandQueue = Queue<(int, int)>();
 
   bool _gameWon = false;
+  bool _isPopping = false; // Çift pop koruması
   final Map<int, int> _celebratingDoneTubes = <int, int>{};
 
   // Geri alma geçmişi
@@ -681,13 +682,15 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _returnToMapPage() async {
+    if (_isPopping) return; // Çift pop koruması
+    _isPopping = true;
+
     if (!_missingPreset) {
       await _persistLevelState();
     }
     if (!mounted) return;
 
     // Her zaman pop ile geri dön — asla yeni MapPage oluşturma.
-    // Daily mod veya normal mod fark etmeksizin mevcut stack'e pop yap.
     Navigator.of(context).pop(
       GamePageResult(
         completed: _gameWon,
@@ -2672,6 +2675,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Future<void> _exitLevel({required bool completed}) async {
+    if (_isPopping) return; // Çift pop koruması
+    _isPopping = true;
+
     // Durumu kaydet / temizle
     if (_isDailyMode) {
       if (completed) {
@@ -2798,7 +2804,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     return PopScope(
         canPop: false,
-        onPopInvokedWithResult: (_, __) {
+        onPopInvokedWithResult: (didPop, __) {
+          // didPop true ise zaten pop gerçekleşti (Navigator.pop çağrısından),
+          // tekrar çağırmaya gerek yok — çift pop önlenir.
+          if (didPop) return;
           _returnToMapPage();
         },
         child: Scaffold(
