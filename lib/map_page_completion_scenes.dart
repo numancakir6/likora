@@ -206,8 +206,6 @@ class _Map1CompletionPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final skyRect = Offset.zero & size;
-
     // ── 1. Lightning flash bloom – very subtle, top-only glow only
     final flashPulse = intense
         ? max(0.0, sin(flash * pi * 3)) * 0.14
@@ -629,12 +627,17 @@ class _Map2CompletionSceneState extends State<Map2CompletionScene>
       duration: const Duration(seconds: 6),
     )..repeat();
 
-    // Her iki modda da alttan yukarı dolma animasyonu başlat
-    // intense = 5.2 sn (aksiyon), normal = 4.0 sn (sabit)
-    _introCtrl = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: widget.intense ? 5200 : 4000),
-    )..forward();
+    // Map 2 davranışı:
+    // intense=true  -> başlangıç aksiyon sahnesi: su alttan yukarı dolar.
+    // intense=false -> sabit sahne: su zaten dolu başlar, sadece balıklar/yüzey hareket eder.
+    if (widget.intense) {
+      _introCtrl = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 5200),
+      )..forward();
+    } else {
+      _introCtrl = null;
+    }
   }
 
   @override
@@ -653,7 +656,7 @@ class _Map2CompletionSceneState extends State<Map2CompletionScene>
         painter: _Map2CompletionPainter(
           t: _flowCtrl.value,
           intense: widget.intense,
-          fillProgress: _introCtrl?.value ?? 0.0,
+          fillProgress: widget.intense ? (_introCtrl?.value ?? 0.0) : 1.0,
         ),
         child: const SizedBox.expand(),
       ),
@@ -863,7 +866,7 @@ class _Map2CompletionPainter extends CustomPainter {
       if (waterLevel > 0.55) {
         // Fish data: [yBase(0..1 of screen), speedMult, phase, goRight]
         // [yBase, phaseOffset(0..1), goRight]  – speed sabit, t ile sürülür
-        const fishData = [
+        const fishData = <List<double>>[
           [0.42, 0.00, 1.0],
           [0.52, 0.25, 0.0],
           [0.60, 0.55, 1.0],
@@ -871,9 +874,9 @@ class _Map2CompletionPainter extends CustomPainter {
         ];
         final fishAlpha = ((waterLevel - 0.55) / 0.15).clamp(0.0, 1.0);
         for (final fd in fishData) {
-          final yBase = fd[0] as double;
-          final phaseOffset = fd[1] as double;
-          final goRight = (fd[2] as double) > 0.5;
+          final yBase = fd[0];
+          final phaseOffset = fd[1];
+          final goRight = fd[2] > 0.5;
           final progress = (t + phaseOffset) % 1.0;
           final fx = goRight
               ? lerpDouble(-36.0, size.width + 36.0, progress)!
@@ -892,7 +895,7 @@ class _Map2CompletionPainter extends CustomPainter {
       if (waterLevel > 0.50) {
         final fishAlpha = ((waterLevel - 0.50) / 0.25).clamp(0.0, 1.0);
         // [yBase, phaseOffset(0..1), goRight]  – speed sabit, t ile sürülür
-        const normalFishData = [
+        const normalFishData = <List<double>>[
           [0.30, 0.00, 1.0],
           [0.45, 0.20, 0.0],
           [0.60, 0.42, 1.0],
@@ -900,9 +903,9 @@ class _Map2CompletionPainter extends CustomPainter {
           [0.75, 0.82, 1.0],
         ];
         for (final fd in normalFishData) {
-          final yBase = fd[0] as double;
-          final phaseOffset = fd[1] as double;
-          final goRight = (fd[2] as double) > 0.5;
+          final yBase = fd[0];
+          final phaseOffset = fd[1];
+          final goRight = fd[2] > 0.5;
           final progress = (t + phaseOffset) % 1.0;
           final fx = goRight
               ? lerpDouble(-36.0, size.width + 36.0, progress)!
@@ -1008,16 +1011,26 @@ class _Map3CompletionSceneState extends State<Map3CompletionScene>
     _introCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2800),
-    )..forward();
+    );
 
     _fillCtrl = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: widget.intense ? 4400 : 3600),
     );
 
-    Future.delayed(const Duration(milliseconds: 850), () {
-      if (mounted) _fillCtrl.forward();
-    });
+    if (widget.intense) {
+      // Başlangıç aksiyon sahnesi: dağ alttan titreyerek gelsin,
+      // ardından içi lavla dolsun ve büyük patlama başlasın.
+      _introCtrl.forward();
+      Future.delayed(const Duration(milliseconds: 850), () {
+        if (mounted) _fillCtrl.forward();
+      });
+    } else {
+      // Sabit sahne: dağ asla alttan gelmesin.
+      // Ekranda hazır, içi lav dolu şekilde başlasın.
+      _introCtrl.value = 1.0;
+      _fillCtrl.value = 1.0;
+    }
   }
 
   @override
@@ -1032,35 +1045,49 @@ class _Map3CompletionSceneState extends State<Map3CompletionScene>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: Listenable.merge([_loopCtrl, _introCtrl, _fillCtrl]),
-      builder: (_, __) => Stack(
-        fit: StackFit.expand,
-        children: [
-          CustomPaint(
-            painter: _Map3BackgroundPainter(
-              t: _loopCtrl.value,
-              intro: _introCtrl.value,
-              fill: _fillCtrl.value,
-              intense: widget.intense,
-            ),
-            child: const SizedBox.expand(),
+      builder: (_, __) {
+        final introValue = _introCtrl.value.clamp(0.0, 1.0);
+        final introEased = Curves.easeOutCubic.transform(introValue);
+
+        // Dağ ilk gelirken bütün sahneyi titreştir.
+        // Titreşim girişin başında sert, dağ oturdukça giderek azalır.
+        final shakePower = (1.0 - introEased) * (widget.intense ? 16.0 : 9.0);
+        final sceneShakeX = sin(introValue * pi * 52.0) * shakePower;
+        final sceneShakeY = cos(introValue * pi * 41.0) * shakePower * 0.45;
+
+        return Transform.translate(
+          offset: Offset(sceneShakeX, sceneShakeY),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(
+                painter: _Map3BackgroundPainter(
+                  t: _loopCtrl.value,
+                  intro: _introCtrl.value,
+                  fill: _fillCtrl.value,
+                  intense: widget.intense,
+                ),
+                child: const SizedBox.expand(),
+              ),
+              _Map3MountainWidget(
+                t: _loopCtrl.value,
+                intro: _introCtrl.value,
+                fill: _fillCtrl.value,
+                intense: widget.intense,
+              ),
+              CustomPaint(
+                painter: _Map3EruptionPainter(
+                  t: _loopCtrl.value,
+                  intro: _introCtrl.value,
+                  fill: _fillCtrl.value,
+                  intense: widget.intense,
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ],
           ),
-          _Map3MountainWidget(
-            t: _loopCtrl.value,
-            intro: _introCtrl.value,
-            fill: _fillCtrl.value,
-            intense: widget.intense,
-          ),
-          CustomPaint(
-            painter: _Map3EruptionPainter(
-              t: _loopCtrl.value,
-              intro: _introCtrl.value,
-              fill: _fillCtrl.value,
-              intense: widget.intense,
-            ),
-            child: const SizedBox.expand(),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -1131,10 +1158,16 @@ class _Map3MountainWidget extends StatelessWidget {
         final mW = sw;
         final mH = sw / 1.776;
 
-        final introEased = Curves.easeOutCubic.transform(intro.clamp(0.0, 1.0));
-        final shakeStrength = (1.0 - introEased) * (intense ? 10.0 : 6.0);
-        final shakeX = sin(t * pi * 28) * shakeStrength;
-        final slideY = (1.0 - introEased) * sh * 0.5;
+        final introValue = intro.clamp(0.0, 1.0);
+        final introEased = Curves.easeOutCubic.transform(introValue);
+
+        // Dağın kendi gövdesi de titreyerek yerleşsin.
+        // Burada loop t yerine intro kullanıyoruz; böylece girişte hızlı titreşim olur,
+        // oturduktan sonra tamamen sakinleşir.
+        final shakeStrength = (1.0 - introEased) * (intense ? 18.0 : 10.0);
+        final shakeX = sin(introValue * pi * 64.0) * shakeStrength;
+        final shakeY = cos(introValue * pi * 49.0) * shakeStrength * 0.35;
+        final slideY = (1.0 - introEased) * sh * 0.5 + shakeY;
 
         final fillEased = Curves.easeInOutSine.transform(fill.clamp(0.0, 1.0));
         final surfaceFrac = lerpDouble(0.96, 0.028, fillEased)!;
@@ -1435,12 +1468,42 @@ class _Map3EruptionPainter extends CustomPainter {
     final fillEased = Curves.easeInOutSine.transform(fill.clamp(0.0, 1.0));
     if (fillEased < 0.80 || introEased < 0.95) return;
 
-    final eruptionPower = ((fillEased - 0.80) / 0.20).clamp(0.0, 1.0);
-
     final mH = size.width / 1.776;
     final mTop = size.height - mH;
     final craterX = size.width * 0.5;
     final craterY = mTop + mH * 0.04;
+
+    // Patlama akışı:
+    // - Lav dolumu bittikten sonra önce büyük lav topları yüksek güçle fırlar.
+    // - Sonra yeni büyük parçacık üretimi giderek azalır.
+    // - Hız azaltılmaz; parçalar geri çekiliyormuş gibi görünmez.
+    // - Sona doğru sadece küçük krater fışkırtmaları kalır.
+    final burstT = ((fillEased - 0.80) / 0.20).clamp(0.0, 1.0);
+
+    final double mainPower;
+    final double bigEmission;
+    final double residualPower;
+
+    if (!intense) {
+      mainPower = 0.26;
+      bigEmission = 0.0;
+      residualPower = 0.30;
+    } else if (burstT < 0.18) {
+      mainPower =
+          Curves.easeOutCubic.transform((burstT / 0.18).clamp(0.0, 1.0));
+      bigEmission = 1.0;
+      residualPower = 0.18;
+    } else if (burstT < 0.38) {
+      mainPower = 1.0;
+      bigEmission = 1.0;
+      residualPower = 0.20;
+    } else {
+      final decayT = Curves.easeInOutSine
+          .transform(((burstT - 0.38) / 0.62).clamp(0.0, 1.0));
+      mainPower = lerpDouble(1.0, 0.22, decayT)!;
+      bigEmission = lerpDouble(1.0, 0.0, decayT)!;
+      residualPower = lerpDouble(0.20, 0.34, decayT)!;
+    }
 
     // ── Krater ağzı ──────────────────────────────────────────────────────────
     final mouthPulse = 0.5 + 0.5 * sin(t * pi * 1.6);
@@ -1473,9 +1536,10 @@ class _Map3EruptionPainter extends CustomPainter {
     final jetCount = intense ? 14 : 7;
     for (int i = 0; i < jetCount; i++) {
       final x = craterX + (i - (jetCount - 1) / 2) * (intense ? 6.0 : 4.5);
-      final h = (intense ? 48.0 : 20.0) +
+      final rawH = (intense ? 48.0 : 20.0) +
           (i % 3) * (intense ? 16.0 : 8.0) +
           mouthPulse * (intense ? 26.0 : 12.0);
+      final h = rawH * (intense ? (0.28 + mainPower * 0.72) : 0.42);
       final path = Path()
         ..moveTo(x - 3, craterY + 1)
         ..quadraticBezierTo(x - 7, craterY - h * 0.45, x, craterY - h)
@@ -1496,26 +1560,9 @@ class _Map3EruptionPainter extends CustomPainter {
             ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // LAV PARÇACIKLARI
-    //
-    // Süreklilik için:
-    //   - Her parçanın sabit bir "döngü süresi" (cycleDur) var, saniye cinsinden.
-    //   - t * loopHz ile kaç döngü geçtiği hesaplanır.
-    //   - localT = döngü içindeki zaman 0..cycleDur (saniye)
-    //   - Parabolik fizik localT üzerinden çalışır (gerçek zaman birimi).
-    //   - Fade: localT 0→fadeIn görünür, localT>fadeOut solar.
-    //   - % operatörü SADECE döngü sayısını kesmek için kullanılır,
-    //     localT hiçbir zaman aniden sıfırlanmaz — her frame smooth geçer.
-    //
-    // intense=true  : 60 parça, ekranın tepesine ulaşan büyük güçlü patlamalar
-    // intense=false : 22 parça, minimal sürekli döngü
-    // ─────────────────────────────────────────────────────────────────────────
-
     // Çok uzun döngü kullanıyoruz; böylece akış başa sarmış gibi görünmez.
     final tSec = t * 60.0;
 
-    final introBoost = intense ? 1.35 : 1.0;
     final pCount = intense ? 96 : 30;
     final gravity = intense ? 250.0 : 160.0; // px/s²
 
@@ -1527,39 +1574,38 @@ class _Map3EruptionPainter extends CustomPainter {
       final s4 = _h(i * 0.99, 61.0);
       final s5 = _h(i * 5.55, 17.0);
 
-      // Her parçanın döngü süresi (saniye) — çeşitlilik için farklı
-      final cycleDur =
-          intense ? lerpDouble(2.6, 5.2, s0)! : lerpDouble(3.0, 5.8, s0)!;
+      // Büyük lav topları sadece erken burst fazında tam güçle üretilir.
+      // Sonlara doğru bu kapı giderek kapanır; hız değiştirilmediği için
+      // parçalar geri çekiliyormuş gibi görünmez.
+      final isLargeCandidate = intense && s0 <= bigEmission;
+      final isResidualCandidate = !intense || s0 > 0.72;
+      if (intense && !isLargeCandidate && !isResidualCandidate) continue;
 
-      // Başlangıç ofseti: parça döngüsüne göre tSec içindeki konumu
+      final particlePower = isLargeCandidate ? mainPower : residualPower;
+      if (particlePower <= 0.02) continue;
+
+      final cycleDur = isLargeCandidate
+          ? lerpDouble(2.8, 5.6, s0)!
+          : lerpDouble(2.2, 4.2, s0)!;
+
       final startOffset = s1 * cycleDur;
-      // localT: bu döngüde kaç saniye geçti (0..cycleDur), smooth
       final localT = ((tSec + startOffset) % cycleDur);
 
-      // Uçuş açısı
-      // intense: tüm yönler, bazıları neredeyse yatay
-      // normal: dar koni yukarı
-      final spreadRad = intense ? pi * 1.65 : pi * 0.78;
+      final spreadRad = isLargeCandidate ? pi * 1.65 : pi * 0.60;
       final angle = -pi / 2 + (s2 - 0.5) * spreadRad;
 
-      // Başlangıç hızı — intense'de ekranın tepesine ulaşacak kadar büyük
-      // Ekran yüksekliği ~800px, en yükseğe ulaşmak için: v²/(2g) = 800 → v=√(2*420*800)≈820
-      final vMin = intense ? 520.0 * introBoost : 120.0;
-      final vMax = intense ? 980.0 * introBoost : 240.0;
+      final vMin = isLargeCandidate ? 520.0 : (intense ? 90.0 : 85.0);
+      final vMax = isLargeCandidate ? 980.0 : (intense ? 210.0 : 180.0);
       final speed = lerpDouble(vMin, vMax, s3)!;
       final vx = cos(angle) * speed;
-      final vy = sin(angle) * speed; // negatif = yukarı
+      final vy = sin(angle) * speed;
 
-      // Parabolik konum
       final px = craterX + vx * localT;
       final py = craterY + vy * localT + 0.5 * gravity * localT * localT;
 
-      // Ekranın çok dışına çıkmışsa atla
       if (px < -80 || px > size.width + 80) continue;
       if (py > size.height + 60) continue;
 
-      // Opaklık: başta hızlı açılır, sonda yavaş solar
-      // Fade süresi sabit (saniye cinsinden)
       const fadeInSec = 0.18;
       final fadeOutStart = cycleDur * 0.74;
       final fadeOutEnd = cycleDur;
@@ -1574,19 +1620,19 @@ class _Map3EruptionPainter extends CustomPainter {
       }
       if (alpha < 0.02) continue;
 
-      // Boyut: intense'de çok daha büyük
-      final baseR =
-          intense ? lerpDouble(10.0, 40.0, s4)! : lerpDouble(3.5, 10.0, s4)!;
-      // Uçarken biraz büyür, düşerken küçülür
+      final baseR = isLargeCandidate
+          ? lerpDouble(10.0, 40.0, s4)!
+          : lerpDouble(2.6, intense ? 7.0 : 8.0, s4)!;
       final lifeT = localT / cycleDur;
-      final rNow = baseR * (0.65 + 0.45 * sin(lifeT * pi)) * eruptionPower;
+      final rNow = baseR * (0.65 + 0.45 * sin(lifeT * pi)) * particlePower;
 
       _drawBlob(canvas, Offset(px, py), rNow, s5, s2,
-          (alpha * eruptionPower).clamp(0.0, 1.0));
+          (alpha * particlePower).clamp(0.0, 1.0));
     }
 
     // ── Kıvılcımlar ──────────────────────────────────────────────────────────
     final spCount = intense ? 40 : 12;
+    final sparkPower = intense ? max(mainPower, residualPower) : residualPower;
     for (int i = 0; i < spCount; i++) {
       final s0 = _h(i * 7.13, 88.0);
       final cycleDur = lerpDouble(1.4, 2.8, s0)!;
@@ -1620,14 +1666,14 @@ class _Map3EruptionPainter extends CustomPainter {
           sr * 2.5,
           Paint()
             ..color = const Color(0xFFFF5500)
-                .withValues(alpha: 0.18 * alpha * eruptionPower)
+                .withValues(alpha: 0.18 * alpha * sparkPower)
             ..maskFilter = MaskFilter.blur(BlurStyle.normal, sr * 1.2));
       canvas.drawCircle(
           Offset(spx, spy),
           sr,
           Paint()
             ..color = const Color(0xFFFFF0A6)
-                .withValues(alpha: 0.92 * alpha * eruptionPower));
+                .withValues(alpha: 0.92 * alpha * sparkPower));
     }
   }
 

@@ -604,7 +604,7 @@ class DailyPuzzleGenerator {
 
     for (int attempt = 0; attempt < 300; attempt++) {
       final shuffled = List<int>.from(pieces)
-        ..shuffle(Random(rng.nextInt(1 << 32)));
+        ..shuffle(Random(rng.nextInt(1 << 30) + 1));
 
       final tubes = List<List<int>>.generate(
         filledTubeCount,

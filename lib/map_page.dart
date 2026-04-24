@@ -212,7 +212,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const double _nodeWidgetSize = 72;
   static const double _nodeHalfSize = _nodeWidgetSize / 2;
   static const double _nodeMinCenterDistance = 80;
-  static const bool _showDebugButtons = false;
 
   static final Map<int, Set<int>> _mapCompletedLevels = {
     for (var i = 1; i <= _maxMapCount; i++) i: <int>{},
@@ -487,52 +486,20 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     await PlayerProgress.setCompletedLevels(_mapNumber, completedLevels);
   }
 
-  Future<void> _completeAllLevels() async {
-    await SfxService.playClick();
-    await SettingsPage.vibrateTap();
-
-    for (var map = 1; map <= _playableMapCount; map++) {
-      await PlayerProgress.unlockMap(map);
-    }
-
-    final allLevelIds =
-        List.generate(_layout.totalLevels, (i) => i + 1).toSet();
-
-    final wasMapAlreadyComplete = _isMapFullyCompleted(completedLevels);
-
-    _mapCompletedLevels[_mapNumber] = Set<int>.from(allLevelIds);
-    await PlayerProgress.setCompletedLevels(_mapNumber, allLevelIds);
-
-    if (!mounted) return;
-    setState(() {
-      completedLevels = Set<int>.from(allLevelIds);
-      _rebuildLevels();
-    });
-
-    if (!wasMapAlreadyComplete) {
-      final rewarded = await _claimMapCompletionRewardIfNeeded();
-      if (rewarded && mounted) {
-        final startAnimation = await _showMapCompletionRewardDialog();
-        if (startAnimation && mounted) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.remove(_completionSceneSeenPrefsKey);
-          await _animateCompletionSceneTransition(markSeen: true);
-        }
-        return;
-      }
-    }
-
-    _showPersistentCompletionOverlay(showCard: true);
-  }
-
   Duration _sceneRevealDurationForMap(int mapNumber) {
     switch (mapNumber) {
       case 1:
+        // Map 1 hızlı ve sert kalsın: 2100ms aksiyon + 700ms yumuşak geçiş.
         return const Duration(milliseconds: 2800);
       case 2:
-        return const Duration(milliseconds: 3200);
+        // Map 2 su dolumu 5200ms sürüyor. Sabite geçiş bundan sonra başlamalı:
+        // 5200ms saf başlangıç sahnesi + 850ms crossfade = 6050ms toplam.
+        return const Duration(milliseconds: 6050);
       case 3:
-        return const Duration(milliseconds: 4200);
+        // Map 3'te lav dolumu 850ms gecikmeyle başlayıp 4400ms sürüyor.
+        // Patlama tam görünmeden sabite geçmesin diye uzun tutuldu:
+        // 6400ms aksiyon + 1200ms yumuşak geçiş = 7600ms toplam.
+        return const Duration(milliseconds: 9000);
       default:
         return const Duration(milliseconds: 2800);
     }
@@ -598,27 +565,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_completionSceneSeenPrefsKey, true);
     }
-  }
-
-  Future<void> _runCompletionSceneTest() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_completionSceneSeenPrefsKey);
-    await _animateCompletionSceneTransition(markSeen: true);
-  }
-
-  Future<void> _resetCompletionSceneTest() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_completionSceneSeenPrefsKey);
-
-    if (!mounted) return;
-    setState(() {
-      _completionSceneIntroSeen = false;
-      _showFirstCompletionScene = false;
-      _showPersistentCompletionScene = false;
-      _firstSceneOpacity = 0.0;
-      _persistentSceneOpacity = 0.0;
-      _showCompletionCongratsCard = false;
-    });
   }
 
   @override
@@ -855,11 +801,11 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       case 1:
         return const Duration(milliseconds: 2800);
       case 2:
-        return const Duration(milliseconds: 3000);
+        return const Duration(milliseconds: 6050);
       case 3:
-        return const Duration(milliseconds: 3200);
+        return const Duration(milliseconds: 7600);
       default:
-        return const Duration(milliseconds: 2500);
+        return const Duration(milliseconds: 2800);
     }
   }
 
@@ -974,15 +920,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           ),
         ),
         const Spacer(),
-        _GlassButton(
-          accentColor: _theme.primaryColor,
-          onTap: _completeAllLevels,
-          child: Icon(
-            Icons.done_all_rounded,
-            color: _theme.primaryColor,
-            size: 20,
-          ),
-        ),
+        const SizedBox(width: 46),
       ]),
     );
   }

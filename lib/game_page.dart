@@ -294,7 +294,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     return Offset(
       topLeft.dx + size.width * 0.5,
-      topLeft.dy + size.height * 0.22,
+      topLeft.dy + size.height * 0.5,
     );
   }
 
@@ -2261,8 +2261,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _persistLevelState();
     unawaited(_persistUndoHistoryState());
 
-    final waterStartMs = (kPourDuration.inMilliseconds * 0.36).round();
-    final waterStopMs = (kPourDuration.inMilliseconds * 0.955).round();
+    // Su sesi: tüp hedefe varıp yatmaya başladığı anda başlasın,
+    // tamamen ayağa kalktığı anda kesilsin. Böylece ses, görsel döküm
+    // animasyonunun tamamına yayılır ve kısa kalmaz.
+    final waterStartMs = (kPourDuration.inMilliseconds * 0.320).round();
+    final waterStopMs = (kPourDuration.inMilliseconds * 0.978).round();
     int? waterToken;
 
     Future.delayed(Duration(milliseconds: waterStartMs), () async {
@@ -2358,8 +2361,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _persistLevelState();
     unawaited(_persistUndoHistoryState());
 
-    final waterStartMs = (kPourDuration.inMilliseconds * 0.46).round();
-    final waterStopMs = (kPourDuration.inMilliseconds * 0.955).round();
+    // Su sesi: tüp hedefe varıp yatmaya başladığı anda başlasın,
+    // tamamen ayağa kalktığı anda kesilsin. Böylece ses, görsel döküm
+    // animasyonunun tamamına yayılır ve kısa kalmaz.
+    final waterStartMs = (kPourDuration.inMilliseconds * 0.320).round();
+    final waterStopMs = (kPourDuration.inMilliseconds * 0.978).round();
     int? waterToken;
 
     Future.delayed(Duration(milliseconds: waterStartMs), () async {
@@ -3862,11 +3868,11 @@ class _TubeStageState extends State<_TubeStage> {
         duration: kPourDuration,
         curve: Curves.linear,
         builder: (context, timeline, _) {
-          const pPourEnd = 0.90;
+          const pPourEnd = 0.885;
           const vHeadEnd =
-              0.68; // akışın sıvıya değdiği an (vStreamStart 0.58 + 0.10)
+              0.642; // _FlyingTube: _pTiltEnd(0.422) + head inişi(0.22)
 
-          // Dolum akışın sıvıya değdiği anda başlar, pPourEnd'de tamamlanır.
+          // Dolum, akış çizgisinin ucu gerçekten sıvı yüzeyine ulaştığında başlar ve pPourEnd'de tamamlanır.
           final incomingPhase = timeline <= vHeadEnd
               ? 0.0
               : Curves.easeInOutCubic.transform(
@@ -4499,15 +4505,6 @@ class _FlyingTubeState extends State<_FlyingTube>
     // döküm konumunu builder içinde tekrar tekrar değiştirmiyoruz.
     // Hedef şişenin ağzına, sabit bir tilt ile TEK bir top-left hesaplayıp
     // tüm hareketi o noktaya yapıyoruz.
-    final fixedTilt = tiltSign *
-        _targetTiltForRemaining(widget.plan.fromSnapshot.length.toDouble());
-    final fixedPourTopLeft = _tubeTopLeftToMatchMouth(
-      targetMouth: targetLip,
-      mouthLocal: mouthLocal,
-      anchorLocal: anchorLocal,
-      angle: fixedTilt,
-    );
-
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) {
@@ -4578,21 +4575,33 @@ class _FlyingTubeState extends State<_FlyingTube>
 
         const vStreamStart = _pTiltEnd;
         // Akış aşamaları:
-        // 1) vStreamStart → vHeadEnd : head düz hızda iner (linear)
-        // 2) vHeadEnd → vTailStart   : döküm boyunca sürekli akış
-        // 3) vTailStart → vTailEnd   : tail yukarıdan kesilir (döküm biter bitmez)
-        const vHeadEnd = vStreamStart + 0.10; // hızlı iniş
-        const vTailStart = _pPourEnd; // döküm bitene kadar akış sürer
-        const vTailEnd = vTailStart + 0.04; // hızlı kesim
+        // 1) vStreamStart → vHeadEnd : akış ucu hedef sıvı yüzeyine iner.
+        // 2) vHeadEnd → vTailStart   : hedef sıvı yavaşça yükselirken akış sürer.
+        // 3) vTailStart → vTailEnd   : şişe dikleşmeden önce çizgi hızlıca kesilir.
+        const vHeadEnd = vStreamStart +
+            0.22; // akış ucunun aşağı inişi bilinçli olarak yavaş
+        const vTailStart =
+            _pPourEnd - 0.035; // çizgi, dönüş başlamadan kesilmeye başlasın
+        const vTailEnd =
+            _pPourEnd; // tüp dikleşirken ekranda akış çizgisi kalmasın
 
-        // Anlık hedef sıvı yüzeyi: döküm ilerledikçe yukarı çıkar
-        final currentToVolume =
-            (widget.plan.toSnapshot.length + widget.plan.count * drainProgress)
-                .clamp(0.0, widget.targetCapacity.toDouble());
+        // Hedef sıvı yüzeyi, kaynak boşalma hızına değil hedef tüpte görünen
+        // dolum hızına bağlı yükselir. Böylece akış çizgisi yukarı kaçmaz.
+        final targetFillProgress = v <= vHeadEnd
+            ? 0.0
+            : Curves.easeInOutCubic.transform(
+                ((v - vHeadEnd) / max(0.0001, _pPourEnd - vHeadEnd))
+                    .clamp(0.0, 1.0),
+              );
+
+        // Anlık hedef sıvı yüzeyi: döküm ilerledikçe, hedef dolumla senkron yükselir.
+        final currentToVolume = (widget.plan.toSnapshot.length +
+                widget.plan.count * targetFillProgress)
+            .clamp(0.0, widget.targetCapacity.toDouble());
         final rawMountainSurface = widget.plan.isMountainTarget
             ? widget.getMountainSurface(
-                (widget.plan.mountainFillBefore ?? 0) +
-                    widget.plan.count * drainProgress,
+                (widget.plan.mountainFillBefore) +
+                    widget.plan.count * targetFillProgress,
               )
             : null;
         // Mountain surface x'ini tup merkeziyle hizala (mountain widget ekrandan
@@ -4867,7 +4876,6 @@ class _TubeWidget extends StatefulWidget {
   final double pourProgress;
   final double bubbleBurst;
   final double receiveFlow;
-  final double lavaTime; // 0→1 döngüsel, AnimationController'dan
   final bool blindMode;
   final int visibleLayerCount;
   final int revealGlowTick;
@@ -4891,7 +4899,6 @@ class _TubeWidget extends StatefulWidget {
     this.revealGlowTick = 0,
     this.tubeStyle = PuzzleTubeStyle.classic,
     this.capacity = kCap,
-    this.lavaTime = 0.0,
   });
 
   @override
