@@ -510,76 +510,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     await PlayerProgress.setCompletedLevels(_mapNumber, completedLevels);
   }
 
-  Future<void> testCompleteAllLevelsWithRealPopup() async {
-    await SfxService.playClick();
-    await SettingsPage.vibrateTap();
-
-    _clearCompletionSoundTimers();
-    await SfxService.stopAllMapCompletionSounds();
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_completionSceneSeenPrefsKey);
-    await prefs.remove(_mapRewardClaimedPrefsKey);
-
-    for (var map = 1; map <= _playableMapCount; map++) {
-      await PlayerProgress.unlockMap(map);
-    }
-
-    final allLevelIds =
-        List<int>.generate(_layout.totalLevels, (i) => i + 1).toSet();
-
-    _mapCompletedLevels[_mapNumber] = Set<int>.from(allLevelIds);
-    await PlayerProgress.setCompletedLevels(_mapNumber, allLevelIds);
-
-    if (!mounted) return;
-    setState(() {
-      completedLevels = Set<int>.from(allLevelIds);
-      _completionSceneIntroSeen = false;
-      _showFirstCompletionScene = false;
-      _showPersistentCompletionScene = false;
-      _firstSceneOpacity = 0.0;
-      _persistentSceneOpacity = 0.0;
-      _showCompletionCongratsCard = false;
-      _rebuildLevels();
-    });
-
-    await _claimMapCompletionRewardIfNeeded();
-    if (!mounted) return;
-
-    final startAnimation = await _showMapCompletionRewardDialog();
-    if (startAnimation && mounted) {
-      await prefs.remove(_completionSceneSeenPrefsKey);
-      await _animateCompletionSceneTransition(markSeen: true);
-    }
-  }
-
-  Future<void> testResetAllLevelsForThisMap() async {
-    await SfxService.playClick();
-    await SettingsPage.vibrateTap();
-
-    _clearCompletionSoundTimers();
-    await SfxService.stopAllMapCompletionSounds();
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_completionSceneSeenPrefsKey);
-    await prefs.remove(_mapRewardClaimedPrefsKey);
-
-    _mapCompletedLevels[_mapNumber] = <int>{};
-    await PlayerProgress.setCompletedLevels(_mapNumber, <int>{});
-
-    if (!mounted) return;
-    setState(() {
-      completedLevels = <int>{};
-      _completionSceneIntroSeen = false;
-      _showFirstCompletionScene = false;
-      _showPersistentCompletionScene = false;
-      _firstSceneOpacity = 0.0;
-      _persistentSceneOpacity = 0.0;
-      _showCompletionCongratsCard = false;
-      _rebuildLevels();
-    });
-  }
-
   Duration _sceneRevealDurationForMap(int mapNumber) {
     switch (mapNumber) {
       case 1:
@@ -883,12 +813,13 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         if (!wasMapAlreadyComplete) {
           await _claimMapCompletionRewardIfNeeded();
           if (!mounted) return;
-          final startAnimation = await _showMapCompletionRewardDialog();
-          if (startAnimation && mounted) {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.remove(_completionSceneSeenPrefsKey);
-            await _animateCompletionSceneTransition(markSeen: true);
-          }
+          await _showMapCompletionRewardDialog();
+
+          if (!mounted) return;
+
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_completionSceneSeenPrefsKey);
+          await _animateCompletionSceneTransition(markSeen: true);
           return;
         }
         await _handleMapCompletionSceneActivation();
