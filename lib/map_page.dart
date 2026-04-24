@@ -834,6 +834,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
           if (!mounted) return;
           await _animateCompletionSceneTransition(markSeen: true);
+          if (!mounted) return;
+
+          // Harita tamamlama animasyonu bittikten sonra sıradaki haritayı aç.
+          if (_mapNumber < _maxMapCount && _mapNumber < _playableMapCount) {
+            await PlayerProgress.unlockMap(_mapNumber + 1);
+          }
           return;
         }
 
