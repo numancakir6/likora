@@ -114,58 +114,34 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
   bool get isClassicPuzzle => _dailyPuzzle.mapStyle == DailyPuzzleMapStyle.map1;
 
   String _difficultyText(int difficulty) {
-    if (_isVolcanoPuzzle) {
-      switch (difficulty) {
-        case 5:
-          return 'VOLKANİK';
-        case 6:
-          return 'KRİTİK';
-        default:
-          return 'VOLKANİK';
-      }
-    }
-
-    if (_isBlindPuzzle) {
-      switch (difficulty) {
-        case 3:
-          return 'DİKKATLİ';
-        case 4:
-          return 'ZOR';
-        case 5:
-          return 'ÇOK ZOR';
-        default:
-          return 'DİKKATLİ';
-      }
-    }
-
-    switch (difficulty) {
-      case 2:
+    switch (difficulty.clamp(1, 5)) {
+      case 1:
         return 'KOLAY';
-      case 3:
+      case 2:
         return 'ORTA';
+      case 3:
+        return 'DENGELİ';
       case 4:
         return 'ZOR';
       case 5:
-        return 'ÇOK ZOR';
       default:
-        return 'ORTA';
+        return 'ÇOK ZOR';
     }
   }
 
   int _rewardForDifficulty(int difficulty) {
-    switch (difficulty) {
+    switch (difficulty.clamp(1, 5)) {
+      case 1:
+        return 100;
       case 2:
-        return 50;
-      case 3:
-        return 100;
-      case 4:
         return 150;
+      case 3:
+        return 200;
+      case 4:
+        return 300;
       case 5:
-        return _isVolcanoPuzzle ? 250 : 200;
-      case 6:
-        return 350;
       default:
-        return 100;
+        return 500;
     }
   }
 
@@ -221,7 +197,7 @@ class _DailyPuzzlePageState extends State<DailyPuzzlePage> {
   }
 
   String _mapNameLabel() {
-    if (_isVolcanoPuzzle) return 'LAV DAĞI';
+    if (_isVolcanoPuzzle) return 'VOLKAN YÜREĞİ';
     if (_isBlindPuzzle) return 'DERİN SULAR';
     return 'KOZMİK BULUT';
   }

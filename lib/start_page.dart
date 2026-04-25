@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'map_page.dart';
 import 'daily_puzzle_page.dart';
+import 'daily_puzzle_progress.dart';
 import 'settings_page.dart';
 import 'contact_page.dart';
 import 'player_progress.dart';
@@ -20,6 +21,7 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
   late AnimationController _btnController;
   final List<Animation<double>> _buttonAnimations = [];
   final Stopwatch _stopwatch = Stopwatch();
+  bool _showDailyNewBadge = true;
 
   late final List<_Bubble> _bubbles =
       List.generate(20, (i) => _Bubble.random(i));
@@ -59,8 +61,22 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
 
   Future<void> _loadProgress() async {
     await PlayerProgress.ensureLoaded();
+
+    final todayKey = _todayDateKey();
+    final dailyOpenedToday = await DailyPuzzleProgress.isOpened(todayKey);
+
     if (!mounted) return;
-    setState(() {});
+    setState(() {
+      _showDailyNewBadge = !dailyOpenedToday;
+    });
+  }
+
+  String _todayDateKey() {
+    final now = DateTime.now().toLocal();
+    final y = now.year.toString().padLeft(4, '0');
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    return '$y$m$d';
   }
 
   @override
@@ -74,7 +90,30 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
     await SfxService.playClick();
     await SettingsPage.vibrateTap();
     if (!mounted) return;
-    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    if (!mounted) return;
+    await _loadProgress();
+  }
+
+  Future<void> _openDailyPuzzle() async {
+    await SfxService.playClick();
+    await SettingsPage.vibrateTap();
+
+    final todayKey = _todayDateKey();
+    await DailyPuzzleProgress.markOpened(todayKey);
+
+    if (!mounted) return;
+    setState(() {
+      _showDailyNewBadge = false;
+    });
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DailyPuzzlePage()),
+    );
+
+    if (!mounted) return;
+    await _loadProgress();
   }
 
   @override
@@ -161,36 +200,37 @@ class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
                                 const Color(0xFFF5A623),
                               ],
                               glowColor: const Color(0xFFFF6D00),
-                              onTap: () async => _navigate(DailyPuzzlePage()),
+                              onTap: _openDailyPuzzle,
                             ),
-                            Positioned(
-                              top: -8,
-                              right: 14,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFFFFD700),
-                                      Color(0xFFF5A623),
-                                    ],
+                            if (_showDailyNewBadge)
+                              Positioned(
+                                top: -8,
+                                right: 14,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 3,
                                   ),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: const Text(
-                                  "YENİ",
-                                  style: TextStyle(
-                                    color: Color(0xFF3A1E00),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.5,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFFFFD700),
+                                        Color(0xFFF5A623),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Text(
+                                    "YENİ",
+                                    style: TextStyle(
+                                      color: Color(0xFF3A1E00),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
                           ],
                         ),
                       ),
